@@ -1,4 +1,5 @@
 // Settings stored as JSON in the app folder. Passwords and API keys are encrypted with the OS keychain (safeStorage).
+import type { OpenFeed } from './sources/opendata';
 import { app, safeStorage } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,6 +21,11 @@ export type Settings = {
   };
   whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
   signals: { on: boolean; everyDays: number; perRun: number };
+  /** Daily request ceilings per source; 0 = no limit. */
+  budgets: Record<string, number>;
+  openFeeds: OpenFeed[];
+  npiIndividuals: boolean;
+  findWebsites: boolean;
 };
 
 export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey'] as const;
@@ -37,6 +43,10 @@ export const defaults: Settings = {
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
   signals: { on: true, everyDays: 7, perRun: 30 },
+  budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0 },
+  openFeeds: [],
+  npiIndividuals: false,
+  findWebsites: true,
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');

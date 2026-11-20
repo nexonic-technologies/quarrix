@@ -737,3 +737,29 @@ h1, h2, h3, .brand, .topbar h1, .stat b, .big-n, .live-stats b, .camp-stats b, .
 .sig-legend div { display: flex; gap: 7px; } .sig-legend svg { flex: none; margin-top: 2px; color: var(--violet); } .sig-legend b { color: var(--ink-2); }
 .clickable-row { cursor: pointer; } .clickable-row:hover { color: var(--violet); }
 @media (max-width: 1150px) { .sig-layout { grid-template-columns: 1fr; } }
+
+/* 0.13: sources, map search, batch */
+.src-table { display: grid; gap: 6px; }
+.src-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; padding: 8px 10px; border: 1px solid var(--line, #ece8f6); border-radius: 10px; background: #fff; }
+.src-main { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; min-width: 0; }
+.src-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.src-main .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.src-limit { display: flex; align-items: center; gap: 6px; }
+.src-limit .input { width: 84px; padding: 4px 8px; }
+.src-fix { grid-column: 1 / -1; font-size: 12px; color: #b45309; }
+.src-info { grid-column: 1 / -1; display: grid; grid-template-columns: 90px 1fr; gap: 3px 10px; margin: 4px 0 0; font-size: 12.5px; }
+.src-info dt { color: var(--muted, #6b7280); }
+.src-info dd { margin: 0; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.feed { display: grid; gap: 8px; margin-top: 8px; }
+.note.warn { background: #fff7ed; border-color: #fed7aa; color: #9a3412; margin-bottom: 10px; }
+.mapbox { height: 340px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line, #ece8f6); }
+.mapbox.tall { height: calc(100vh - 230px); min-height: 380px; }
+.leaflet-container { font: inherit; }
+.preview-grid { display: grid; gap: 8px; }
+.preview-src { padding: 10px 12px; border: 1px solid var(--line, #ece8f6); border-radius: 10px; }
+.preview-src ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.preview-src .err { color: #b91c1c; font-size: 12.5px; }
+.modal-wide { width: min(860px, 94vw); }
+.batch textarea { min-height: 120px; resize: vertical; font: inherit; }
+@media (prefers-reduced-motion: reduce) { .leaflet-marker-icon, .leaflet-zoom-anim .leaflet-zoom-animated { transition: none !important; } }

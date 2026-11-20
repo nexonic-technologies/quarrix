@@ -56,6 +56,12 @@ async function mock(ch: string, args: unknown[]): Promise<{ ok: boolean; data?: 
     'leads:get': () => ({ lead: demoLeads.find((l) => l.id === args[0]) ?? demoLeads[0], messages: [], events: [] }),
     'messages:list': () => (args[0] === 'draft' ? demoLeads.slice(0, 3).map((l, i) => ({ id: i + 1, lead_id: l.id, channel: 'email', step: 0, subject: `${l.domain} on a phone`, body: `Hi ${l.name} team,\n\nI had a look at ${l.domain} on my phone this week…`, status: 'draft', due_at: null, sent_at: null, error: '', lead_name: l.name, lead_email: l.email, lead_city: l.city, lead_country: l.country })) : []),
     'dnc:list': () => [],
+    'sources:catalog': () => [
+      { id: 'osm', name: 'OpenStreetMap', fields: 'name, address, phone, website', coverage: 'Worldwide', license: 'ODbL 1.0', auth: 'none', cost: 'Free', freshness: 'Community-edited', restrictions: 'Credit OpenStreetMap contributors.', export: true, contact: true, attribution: '© OpenStreetMap contributors' },
+      { id: 'tomtom', name: 'TomTom', fields: 'name, address, phone, website', coverage: 'Worldwide', license: 'TomTom terms', auth: 'free key', cost: 'Free tier: 2,500 requests a day', freshness: 'Monthly', restrictions: 'Check your plan.', export: true, contact: true, attribution: 'TomTom' },
+    ],
+    'sources:usage': () => ({ osm: 42 }),
+    'templates:list': () => [],
     'mail:cap': () => 16,
     'search:log': () => [{ at: new Date().toISOString(), msg: 'Google Maps: 118 places listed' }, { at: new Date().toISOString(), msg: '+ Lakeside Dental Studio' }, { at: new Date().toISOString(), msg: '+ Hill Country Smiles' }, { at: new Date().toISOString(), msg: 'Google Maps: area 3 of 42, Hyde Park' }],
     'campaigns:list': () => [{ id: 1, name: 'Dentists, USA', category: 'Dentists', places: JSON.stringify(['Austin, Texas', 'Dallas, Texas', 'Houston, Texas']), sources: '["gmaps","osm","web"]', daily: 20, auto_send: 1, enabled: 1, cursor: 2, last_run: new Date().toISOString(), leads: 412, with_email: 233, sent: 61, replies: 4 }],

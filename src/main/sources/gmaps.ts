@@ -5,6 +5,9 @@ import { assertPublicUrl, countryCode, sleep } from '../util';
 import type { Candidate, Progress } from './types';
 
 let win: BrowserWindow | null = null;
+let mapsHook: () => void = () => undefined;
+/** Called before each Maps page load (usage counting and budgets). */
+export const onMapsLoad = (fn: () => void) => { mapsHook = fn; };
 let stopFlag = false;
 export const stopMaps = () => { stopFlag = true; };
 
@@ -38,7 +41,9 @@ async function waitFor(selector: string, ms = 12000) {
 
 export async function searchMaps(category: string, place: string, limit: number, delayMs: number, progress: Progress, seen = new Set<string>()): Promise<Candidate[]> {
   if (limit <= 0) return [];
-  await load(`https://www.google.com/maps/search/${encodeURIComponent(`${category} in ${place}`)}?hl=en`);
+  // "@lat,lon,15z" searches one grid cell around a point; anything else is a place name.
+  mapsHook();
+  await load(place.startsWith('@') ? `https://www.google.com/maps/search/${encodeURIComponent(category)}/${place}?hl=en` : `https://www.google.com/maps/search/${encodeURIComponent(`${category} in ${place}`)}?hl=en`);
   if (await js<boolean>(`/unusual traffic|not a robot/i.test(document.body.innerText)`)) throw new Error('Google is asking for a captcha. Pause Google Maps searches for an hour, or use the Places API or OpenStreetMap.');
 
   // A single exact match opens the place page directly.

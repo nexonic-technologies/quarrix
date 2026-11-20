@@ -1,26 +1,26 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-Source: Quarrix_Missing_Features_Backlog.md. An item is Done only when the listed check passes. Partial means some groundwork exists but the item is not complete end to end.
+Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test. **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end.
 
 | ID | Feature | Pri | Status | Where | Verified by |
 |---|---|---|---|---|---|
-| QF-001 | Persisted pause/resume checkpoints | P1 | To do |  |  |
-| QF-002 | Batch search builder | P1 | To do |  |  |
-| QF-003 | Interactive radius and polygon search | P2 | To do |  |  |
-| QF-004 | Geographic grid coverage | P2 | To do |  |  |
-| QF-005 | Overture Maps connector | P1 | To do |  |  |
-| QF-006 | Socrata open-data adapter | P2 | To do |  |  |
-| QF-007 | ArcGIS public-layer adapter | P2 | To do |  |  |
-| QF-008 | US NPI healthcare registry adapter | P2 | To do |  |  |
-| QF-009 | Wikidata business source | P3 | To do |  |  |
-| QF-010 | Source capability catalog | P1 | To do |  |  |
-| QF-011 | Provider connectivity diagnostics | P1 | To do |  |  |
-| QF-012 | Per-provider request budgets | P1 | To do |  |  |
-| QF-013 | Batch preflight/small-sample preview | P1 | To do |  |  |
+| QF-001 | Persisted pause/resume checkpoints | P1 | Built | jobs.ts checkpoints (searches.checkpoint), requeueInterrupted, pause/resume | typecheck; needs live run |
+| QF-002 | Batch search builder | P1 | Built | jobs.queueBatch, search_templates table, FindTools BatchModal | preview UI |
+| QF-003 | Interactive radius and polygon search | P2 | Partial | Radius on a map (FindTools MapPicker, search:geo). Polygon drawing not built. | test/discovery.test.ts (geometry) |
+| QF-004 | Geographic grid coverage | P2 | Done | geo.ts gridCells/zoomFor; Google Maps grid in jobs.ts | test/discovery.test.ts |
+| QF-005 | Overture Maps connector | P1 | Partial | Overture GeoJSON import (opendata.overtureToCandidates). No live query: Overture has no query API. | test/discovery.test.ts |
+| QF-006 | Socrata open-data adapter | P2 | Done | sources/opendata.ts searchSocrata; Settings → Sources feeds | test/discovery.test.ts (recorded shape) |
+| QF-007 | ArcGIS public-layer adapter | P2 | Done | sources/opendata.ts searchArcgis | test/discovery.test.ts (recorded shape) |
+| QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
+| QF-009 | Wikidata business source | P3 | Built | sources/opendata.ts searchWikidata (SPARQL) | typecheck; needs live run |
+| QF-010 | Source capability catalog | P1 | Done | sources/catalog.ts; SourcesPanel | test/discovery.test.ts |
+| QF-011 | Provider connectivity diagnostics | P1 | Built | health.ts checkSources; SourcesPanel "Check all sources" | typecheck; needs live run |
+| QF-012 | Per-provider request budgets | P1 | Built | budget.ts (host-based counting), provider_usage table, limits in Settings | typecheck; needs live run |
+| QF-013 | Batch preflight/small-sample preview | P1 | Built | jobs.previewSearch; FindTools PreviewModal | preview UI |
 | QF-014 | Separated browser navigation workers | P0 | Done | sources/gmaps.ts pageHtml (own window, own session, own queue) | manual (Electron) |
-| QF-015 | Business search map with clustering | P2 | To do |  |  |
-| QF-016 | Optional company website lookup | P2 | To do |  |  |
-| QF-017 | Contact-source permissions registry | P1 | To do |  |  |
+| QF-015 | Business search map with clustering | P2 | Built | FindTools LeadMap (Leaflet + markercluster), Leads → Map | preview UI |
+| QF-016 | Optional company website lookup | P2 | Done | sources/lookup.ts findWebsite + websiteEvidence; provenance.website | test/discovery.test.ts (evidence rule) |
+| QF-017 | Contact-source permissions registry | P1 | Built | catalog export/contact/attribution; export skips no-export sources and adds "Data credit" | test/discovery.test.ts (flags) |
 | QF-018 | Company-versus-branch hierarchy | P1 | To do |  |  |
 | QF-019 | Multi-contact relationships | P1 | To do |  |  |
 | QF-020 | Operating-hours data | P2 | To do |  |  |
@@ -32,7 +32,7 @@ Source: Quarrix_Missing_Features_Backlog.md. An item is Done only when the liste
 | QF-026 | Business imagery and profile media | P3 | To do |  |  |
 | QF-027 | Website technology inventory | P2 | To do |  |  |
 | QF-028 | Company size and growth fields | P3 | To do |  |  |
-| QF-029 | Evidence and source provenance per field | P1 | To do |  |  |
+| QF-029 | Evidence and source provenance per field | P1 | Partial | leads.provenance: listing source/ref/date, website evidence | — |
 | QF-030 | Field freshness and stale-data warnings | P1 | Partial | leads.checked_at + weekly recheck (signals.ts) | typecheck only |
 | QF-031 | Configurable enrichment waterfall | P1 | To do |  |  |
 | QF-032 | Provider conflict reconciliation | P2 | To do |  |  |
@@ -120,7 +120,7 @@ Source: Quarrix_Missing_Features_Backlog.md. An item is Done only when the liste
 | QF-114 | Guided first-launch wizard | P1 | To do |  |  |
 | QF-115 | One-click offline sample/demo data | P1 | To do |  |  |
 | QF-116 | Distinct Business and Career workspaces | P1 | To do |  |  |
-| QF-117 | Advanced search preview and estimate | P1 | To do |  |  |
+| QF-117 | Advanced search preview and estimate | P1 | Built | same as QF-013 | preview UI |
 | QF-118 | Safe export wizard with field mapping | P2 | To do |  |  |
 | QF-119 | Encrypted database backups and recovery | P1 | To do |  |  |
 | QF-120 | Per-feature privacy disclosures | P1 | To do |  |  |

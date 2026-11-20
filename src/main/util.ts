@@ -22,6 +22,10 @@ export async function assertPublicUrl(url: string) {
   }
 }
 
+let requestHook: (host: string) => void = () => undefined;
+/** Called before every request (budgets and usage counts). The hook may throw to stop a request. */
+export const onRequest = (fn: (host: string) => void) => { requestHook = fn; };
+
 /**
  * Fetch a page as text. Redirects are followed by hand (up to 5) so every hop is checked, and the body is capped
  * (3 MB by default). Pass allowLocal only for endpoints the user typed themselves, such as a local AI server.
@@ -37,6 +41,7 @@ export async function fetchText(url: string, opts: FetchOpts = {}) {
     let body = opts.body;
     for (let hop = 0; ; hop++) {
       if (!opts.allowLocal) await assertPublicUrl(cur);
+      requestHook(new URL(cur).hostname);
       const r = await fetch(cur, {
         method, body, signal: ctrl.signal, redirect: 'manual',
         headers: { 'User-Agent': opts.ua ?? UA, Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', ...(opts.headers ?? {}) },

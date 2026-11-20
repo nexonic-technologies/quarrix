@@ -4,19 +4,19 @@ import { domainOf, fetchText, isPlatformHost, sleep, UA } from '../util';
 import type { Candidate, Progress } from './types';
 
 // Results from these sites are lists, news or social pages, not the business itself.
-const SKIP = /(^|\.)(google|bing|duckduckgo|yahoo|wikipedia|wikimedia|youtube|facebook|instagram|linkedin|twitter|x|tiktok|pinterest|reddit|quora|medium|yelp|yellowpages|yell|tripadvisor|clutch|goodfirms|glassdoor|indeed|crunchbase|mapquest|foursquare|bbb|trustpilot|angi|houzz|thumbtack|upwork|fiverr|amazon|apple|microsoft|github|gov|edu|forbes|nytimes|bloomberg|businesswire|prnewswire|zoominfo|dnb|manta|chamberofcommerce|expertise|designrush|sortlist|themanifest|topdevelopers)\.[a-z.]+$/i;
+export const SKIP = /(^|\.)(google|bing|duckduckgo|yahoo|wikipedia|wikimedia|youtube|facebook|instagram|linkedin|twitter|x|tiktok|pinterest|reddit|quora|medium|yelp|yellowpages|yell|tripadvisor|clutch|goodfirms|glassdoor|indeed|crunchbase|mapquest|foursquare|bbb|trustpilot|angi|houzz|thumbtack|upwork|fiverr|amazon|apple|microsoft|github|gov|edu|forbes|nytimes|bloomberg|businesswire|prnewswire|zoominfo|dnb|manta|chamberofcommerce|expertise|designrush|sortlist|themanifest|topdevelopers)\.[a-z.]+$/i;
 
 function clean(title: string) {
   return title.split(/\s[|–—-]\s|\s·\s|:\s/)[0].replace(/\b(home|homepage|official site|welcome to)\b/gi, '').trim().slice(0, 120);
 }
 
-async function bing(q: string, page: number) {
+export async function bing(q: string, page: number) {
   const r = await fetchText(`https://www.bing.com/search?q=${encodeURIComponent(q)}&first=${page * 10 + 1}&setlang=en`, { ua: UA, timeout: 20000 });
   const $ = cheerio.load(r.text);
   return $('li.b_algo').map((_, li) => ({ title: $(li).find('h2').text().trim(), url: $(li).find('h2 a').attr('href') ?? '' })).get();
 }
 
-async function ddg(q: string, page: number) {
+export async function ddg(q: string, page: number) {
   const r = await fetchText(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}${page ? `&s=${page * 30}` : ''}`, { ua: UA, timeout: 20000 });
   const $ = cheerio.load(r.text);
   return $('a.result__a').map((_, a) => {

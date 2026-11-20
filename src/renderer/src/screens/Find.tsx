@@ -4,9 +4,10 @@ import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
 import { HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
 import { CityInput, CountryInput } from '../CityInput';
-import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, ChevronRight } from 'lucide-react';
+import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, ChevronRight, Stethoscope, Library, Landmark, Crosshair, Eye, Layers, Pause, Play } from 'lucide-react';
 import { COUNTRIES } from '../countries';
 import { LiveSearch } from './LiveSearch';
+import { BatchModal, MapPicker, PreviewModal, type Geo } from './FindTools';
 
 const SOURCES: [string, string, string, typeof Map][] = [
   ['gmaps', 'Google Maps', 'free, slower', Map],
@@ -17,6 +18,9 @@ const SOURCES: [string, string, string, typeof Map][] = [
   ['foursquare', 'Foursquare', 'free key, phones, websites, socials', KeyRound],
   ['posts', 'Job posts', 'people asking for help now', Megaphone],
   ['places', 'Google Places API', 'your key', KeyRound],
+  ['npi', 'NPI registry', 'US healthcare, official', Stethoscope],
+  ['wikidata', 'Wikidata', 'notable organisations, open data', Library],
+  ['opendata', 'Open data feeds', 'city licence registers you add', Landmark],
 ];
 const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], ['replied', 'Replied'], ['interested', 'Interested'], ['won', 'Won']];
 
@@ -32,6 +36,8 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [searches, setSearches] = useState<Search[]>([]);
   const [progress, setProgress] = useState<Record<number, string>>({});
   const [stats, setStats] = useState<any>(null);
+  const [geo, setGeo] = useState<Geo | null>(null);
+  const [tool, setTool] = useState<'' | 'map' | 'preview' | 'batch'>('');
   const placeRef = useRef<HTMLInputElement>(null);
   const catRef = useRef<HTMLInputElement>(null);
 
@@ -50,13 +56,19 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
     return (q ? CATEGORIES.filter((c) => c.name.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)) : CATEGORIES).slice(0, 40);
   }, [category]);
 
+  const whereText = () => [place.trim(), COUNTRIES.find((c) => c[0] === country)?.[1] ?? ''].filter(Boolean).join(', ');
+  const ready = () => {
+    if (!category.trim()) { catRef.current?.focus(); setOpen(true); toast.push('First, type or pick a kind of business.', true); return false; }
+    if (!geo && !whereText()) { placeRef.current?.focus(); toast.push('Type a city, pick a country, or choose an area on the map.', true); return false; }
+    if (!sources.length) { toast.push('Choose at least one source.', true); return false; }
+    return true;
+  };
   const start = async () => {
-    if (!category.trim()) { catRef.current?.focus(); setOpen(true); toast.push('First, type or pick a kind of business.', true); return; }
-    const cname = COUNTRIES.find((c) => c[0] === country)?.[1] ?? '';
-    const where = [place.trim(), cname].filter(Boolean).join(', ');
-    if (!where) { placeRef.current?.focus(); toast.push('Type a city or pick a country.', true); return; }
-    if (!sources.length) { toast.push('Choose at least one source.', true); return; }
-    const id = await call<number>('search:start', category, where, sources);
+    if (!ready()) return;
+    const where = whereText();
+    const id = geo
+      ? await call<number>('search:geo', category, `within ${geo.km} km of ${where || `${geo.lat}, ${geo.lon}`}`, geo, sources)
+      : await call<number>('search:start', category, where, sources);
     const list = await call<Search[]>('search:list');
     setSearches(list);
     setLive(list.find((x) => x.id === id) ?? null);
@@ -101,7 +113,10 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>
         <div className="finder-foot">
-          <span className="muted small">Sources</span>
+          <span className="chip" role="button" tabIndex={0} aria-pressed={!!geo} onClick={() => setTool('map')} onKeyDown={(e) => e.key === 'Enter' && setTool('map')} title="Search a radius on the map"><Crosshair size={13} /> {geo ? `${geo.km} km area` : 'Map area'}</span>
+          <span className="chip" role="button" tabIndex={0} onClick={() => ready() && setTool('preview')} onKeyDown={(e) => e.key === 'Enter' && ready() && setTool('preview')} title="See a few real results and an estimate first"><Eye size={13} /> Preview</span>
+          <span className="chip" role="button" tabIndex={0} onClick={() => setTool('batch')} onKeyDown={(e) => e.key === 'Enter' && setTool('batch')} title="Many business types in many places"><Layers size={13} /> Batch</span>
+          <span className="muted small" style={{ marginLeft: 6 }}>Sources</span>
           {SOURCES.map(([id, label, hint, Icon]) => (
             <span key={id} className="chip" role="button" tabIndex={0} aria-pressed={sources.includes(id)} title={hint}
               onClick={() => setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
@@ -169,12 +184,13 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                 <span className={`search-icon ${run ? 'run' : ''}`}><MapPin size={18} /></span>
                 <div>
                   <h3>{s.category} in {s.place}</h3>
-                  <p>{run ? progress[s.id] ?? (s.status === 'queued' ? 'Waiting to start' : 'Starting') : s.error ? s.error : `${src}, ${new Date(s.created_at).toLocaleDateString()}`}</p>
+                  <p>{run ? progress[s.id] ?? (s.status === 'queued' ? 'Waiting to start' : 'Starting') : s.status === 'paused' ? 'Paused. Resume to continue where it stopped.' : s.error ? s.error : `${src}, ${new Date(s.created_at).toLocaleDateString()}`}</p>
                 </div>
                 <div className={`bar ${run ? 'run' : ''}`}><i style={{ width: run ? '100%' : s.found ? '100%' : '0%' }} /></div>
                 <div className="muted">{s.added} new{s.found > s.added ? `, ${s.found - s.added} already saved` : ''}</div>
                 <div className="row">
-                  {run ? <button className="btn small" onClick={(e) => { e.stopPropagation(); void call('search:stop', s.id); }}>Stop</button>
+                  {run ? <><button className="btn small" title="Pause and keep progress" onClick={(e) => { e.stopPropagation(); void call('search:pause', s.id); }}><Pause size={13} /> Pause</button><button className="btn small ghost" onClick={(e) => { e.stopPropagation(); void call('search:stop', s.id); }}>Stop</button></>
+                    : s.status === 'paused' ? <button className="btn small" onClick={(e) => { e.stopPropagation(); void call('search:resume', s.id); }}><Play size={13} /> Resume</button>
                     : <button className="btn small" onClick={(e) => { e.stopPropagation(); sessionStorage.setItem('quarrix.search', String(s.id)); go('leads'); }}>View leads</button>}
                   <ChevronRight size={16} className="muted" />
                 </div>
@@ -183,6 +199,9 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           })}
         </div>
       )}
+      {tool === 'map' && <MapPicker value={geo} onChange={setGeo} onClose={() => setTool('')} />}
+      {tool === 'preview' && <PreviewModal category={category} place={whereText() || `${geo?.lat}, ${geo?.lon}`} sources={sources} geo={geo} onRun={start} onClose={() => setTool('')} />}
+      {tool === 'batch' && <BatchModal sources={sources} onClose={() => setTool('')} />}
       {live && <LiveSearch search={searches.find((x) => x.id === live.id) ?? live} tick={tick} onClose={() => setLive(null)} go={go} />}
     </div>
   );

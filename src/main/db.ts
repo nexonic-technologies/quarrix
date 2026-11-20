@@ -13,7 +13,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
-  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string;
+  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -51,6 +51,8 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
     message_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS messages_due ON messages(status, due_at);
+  CREATE TABLE IF NOT EXISTS search_templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, categories TEXT NOT NULL, places TEXT NOT NULL, sources TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS provider_usage (day TEXT NOT NULL, source TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, source));
   CREATE TABLE IF NOT EXISTS suppress (value TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY, lead_id INTEGER, at TEXT NOT NULL, type TEXT NOT NULL, detail TEXT NOT NULL DEFAULT ''
@@ -70,7 +72,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -81,7 +83,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {
@@ -194,7 +196,7 @@ export function facets() {
 
 /* ---------- Searches ---------- */
 
-export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null; watch_id: number | null };
+export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null; watch_id: number | null; checkpoint: string; geo: string };
 
 export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null) {
   return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id, watch_id) VALUES (?, ?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId, watchId).lastInsertRowid);
@@ -249,6 +251,17 @@ export const updateSearch = (id: number, patch: Partial<Search>) => {
   db.prepare(`UPDATE searches SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => (patch as Record<string, unknown>)[c] as never), id);
 };
 export const listSearches = (limit = 30) => db.prepare('SELECT * FROM searches ORDER BY id DESC LIMIT ?').all(limit) as Search[];
+export function addSearchGeo(id: number, geo: string) { db.prepare('UPDATE searches SET geo = ? WHERE id = ?').run(geo, id); }
+export const saveCheckpoint = (id: number, cp: unknown) => db.prepare('UPDATE searches SET checkpoint = ? WHERE id = ?').run(JSON.stringify(cp), id);
+/** After a crash or restart, searches that were running go back in the queue and continue from their checkpoint. */
+export const requeueInterrupted = () => db.prepare("UPDATE searches SET status = 'queued' WHERE status = 'running'").run().changes;
+export const listTemplates = () => db.prepare('SELECT * FROM search_templates ORDER BY name').all();
+export const saveTemplate = (t: { id?: number; name: string; categories: string[]; places: string[]; sources: string[] }) => t.id
+  ? db.prepare('UPDATE search_templates SET name = ?, categories = ?, places = ?, sources = ? WHERE id = ?').run(t.name, JSON.stringify(t.categories), JSON.stringify(t.places), JSON.stringify(t.sources), t.id)
+  : db.prepare('INSERT INTO search_templates (name, categories, places, sources, created_at) VALUES (?, ?, ?, ?, ?)').run(t.name, JSON.stringify(t.categories), JSON.stringify(t.places), JSON.stringify(t.sources), now());
+export const deleteTemplate = (id: number) => db.prepare('DELETE FROM search_templates WHERE id = ?').run(id);
+export const usageToday = () => Object.fromEntries((db.prepare('SELECT source, requests FROM provider_usage WHERE day = ?').all(now().slice(0, 10)) as { source: string; requests: number }[]).map((r) => [r.source, r.requests]));
+export const addUsage = (source: string, n = 1) => db.prepare('INSERT INTO provider_usage (day, source, requests) VALUES (?, ?, ?) ON CONFLICT(day, source) DO UPDATE SET requests = requests + excluded.requests').run(now().slice(0, 10), source, n);
 export const nextQueuedSearch = () => db.prepare("SELECT * FROM searches WHERE status = 'queued' ORDER BY id LIMIT 1").get() as Search | undefined;
 
 /* ---------- Messages ---------- */

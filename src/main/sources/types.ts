@@ -1,5 +1,5 @@
 export type Candidate = {
-  source: 'osm' | 'places' | 'gmaps' | 'import' | 'web' | 'yelp' | 'yellowpages' | 'yell' | 'reddit' | 'hotfrog' | 'tomtom' | 'foursquare';
+  source: 'osm' | 'places' | 'gmaps' | 'import' | 'web' | 'yelp' | 'yellowpages' | 'yell' | 'reddit' | 'hotfrog' | 'tomtom' | 'foursquare' | 'npi' | 'wikidata' | 'socrata' | 'arcgis' | 'overture';
   source_ref: string;
   name: string;
   category: string;

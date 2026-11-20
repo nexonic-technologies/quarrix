@@ -1,4 +1,6 @@
 // Import leads from CSV, Excel, JSON or PDF, and export them to CSV, Excel or JSON.
+import { overtureToCandidates } from './sources/opendata';
+import { sourceInfo } from './sources/catalog';
 import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -115,7 +117,11 @@ async function pdfLeads(path: string): Promise<Partial<db.Lead>[]> {
 }
 
 export async function importFile(path: string) {
-  const leads = extname(path).toLowerCase() === '.pdf'
+  const ext = extname(path).toLowerCase();
+  const geo = ext === '.geojson' || ext === '.json' ? (() => { try { const j = JSON.parse(readFileSync(path, 'utf8')); return j?.type === 'FeatureCollection' ? j : null; } catch { return null; } })() : null;
+  const leads = geo
+    ? overtureToCandidates(geo).map((c) => ({ ...c, socials: JSON.stringify(c.socials ?? {}), domain: c.website ? domainOf(c.website) : '', emails: '[]', status: 'new', provenance: JSON.stringify({ listing: { source: 'overture', ref: c.source_ref, at: db.now(), file: path.split(/[\\/]/).pop() } }) }) as Partial<db.Lead>)
+    : ext === '.pdf'
     ? await pdfLeads(path)
     : await (async () => {
       const rows = await readRows(path);
@@ -136,13 +142,16 @@ export async function importFile(path: string) {
 
 const EXPORT_COLS: [keyof db.Lead, string][] = [['name', 'Name'], ['category', 'Category'], ['email', 'Email'], ['phone', 'Phone'], ['website', 'Website'], ['address', 'Address'], ['city', 'City'], ['region', 'Region'], ['country', 'Country'], ['postcode', 'Postcode'], ['rating', 'Rating'], ['reviews', 'Reviews'], ['status', 'Status'], ['score', 'Website score'], ['tags', 'Tags'], ['notes', 'Notes'], ['source', 'Source'], ['created_at', 'Added']];
 
-export async function exportLeads(rows: db.Lead[], path: string) {
+export async function exportLeads(all: db.Lead[], path: string) {
   const ext = extname(path).toLowerCase();
+  // Sources whose terms do not allow exporting stored data (QF-017) are left out.
+  const rows = all.filter((r) => sourceInfo(r.source)?.export !== false);
   const flat = rows.map((r) => {
     const o: Record<string, unknown> = Object.fromEntries(EXPORT_COLS.map(([k, label]) => [label, r[k]]));
     const socials = JSON.parse(r.socials || '{}');
     for (const k of ['facebook', 'instagram', 'linkedin', 'x', 'youtube', 'tiktok']) o[k[0].toUpperCase() + k.slice(1)] = socials[k] ?? '';
     o['Other emails'] = JSON.parse(r.emails || '[]').filter((e: string) => e !== r.email).join(', ');
+    o['Data credit'] = sourceInfo(r.source)?.attribution ?? '';
     return o;
   });
   if (ext === '.json') writeFileSync(path, JSON.stringify(flat, null, 2));

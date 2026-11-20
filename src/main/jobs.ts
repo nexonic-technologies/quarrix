@@ -8,9 +8,14 @@ import { searchPosts } from './sources/posts';
 import { searchFoursquare, searchTomTom } from './sources/keyed';
 import { load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
+import { findWebsite } from './sources/lookup';
+import { searchArcgis, searchNpi, searchSocrata, searchWikidata } from './sources/opendata';
+import { sourceInfo } from './sources/catalog';
+import { BudgetError, remaining } from './budget';
+import { bboxOf, gridCells, inside, zoomFor, type Geo } from './geo';
 import { searchPlaces } from './sources/places';
 import { resetMaps, searchMaps, stopMaps } from './sources/gmaps';
-import type { Candidate } from './sources/types';
+import type { Candidate, Progress } from './sources/types';
 import { countryCode, domainOf, isPlatformHost, normalizePhone, sleep } from './util';
 
 type Notify = (event: string, data?: unknown) => void;
@@ -32,6 +37,8 @@ export const isSearching = () => running;
 export function start(n: Notify) {
   notify = n;
   repairCountries();
+  const back = db.requeueInterrupted();
+  if (back) log(0, `Resuming ${back} interrupted search(es)`);
   setInterval(() => { void runSearches(); void runEnrichment(); }, 4000);
 }
 
@@ -49,6 +56,57 @@ export function stopSearch(id: number) {
   notify('searches');
 }
 
+type Checkpoint = { done: string[]; areas: Record<string, string[]>; seen: Record<string, string[]> };
+type Ctx = { category: string; place: string; where: Place | null; geo: Geo | null; limit: number; progress: Progress; seen: Set<string> };
+
+/** One request batch from one source for one area. Shared by real searches and the preview (QF-013). */
+async function fetchFrom(src: string, area: string, left: number, c: Ctx): Promise<Candidate[]> {
+  const settings = load();
+  const near = area === c.place && c.where ? { lat: c.where.lat, lon: c.where.lon } : null;
+  const city = c.where?.city || c.place.split(',')[0];
+  switch (src) {
+    case 'gmaps': return searchMaps(c.category, area, left, settings.sources.mapsDelayMs, c.progress, c.seen);
+    case 'osm': return searchOsm(c.category, area, left, area === c.place ? c.where : null);
+    case 'web': return searchWeb(c.category, area, left, c.progress);
+    case 'dir': return searchDirectories(c.category, area, c.where?.country ?? '', left, c.progress);
+    case 'tomtom': {
+      const key = settings.sources.tomtomKey;
+      if (!key) throw new Error('Add a free TomTom key in Settings → Sources.');
+      return searchTomTom(key, c.category, area, near, c.where?.country ?? '', left, c.progress);
+    }
+    case 'foursquare': {
+      const key = settings.sources.foursquareKey;
+      if (!key) throw new Error('Add a free Foursquare key in Settings → Sources.');
+      return searchFoursquare(key, c.category, area, near, left, c.progress);
+    }
+    case 'posts': return searchPosts(c.category, left, c.progress);
+    case 'places':
+      if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');
+      return searchPlaces(settings.sources.placesKey, c.category, area, left, c.progress);
+    case 'npi':
+      if (c.where?.country && c.where.country !== 'US') throw new Error('The NPI registry covers the United States only.');
+      return searchNpi(c.category, city, c.where?.region ? stateCode(c.where.region) : '', left, c.progress, settings.npiIndividuals);
+    case 'wikidata': return searchWikidata(c.category, city, left, c.progress);
+    case 'opendata': {
+      const feeds = (settings.openFeeds ?? []).filter((f) => f.on);
+      if (!feeds.length) throw new Error('Add an open data feed in Settings → Sources first.');
+      const out: Candidate[] = [];
+      for (const f of feeds) {
+        try { out.push(...await (f.kind === 'socrata' ? searchSocrata : searchArcgis)(f, c.category, city, left - out.length, c.progress)); }
+        catch (e: any) { c.progress(`${f.name}: ${e.message ?? e}`); }
+      }
+      return out;
+    }
+  }
+  throw new Error(`Unknown source ${src}`);
+}
+
+const US_STATES: Record<string, string> = { alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA', colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA', hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA', kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD', massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS', missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV', 'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY', 'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK', oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC', 'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY', 'district of columbia': 'DC' };
+const stateCode = (region: string) => US_STATES[region.toLowerCase()] ?? (region.length === 2 ? region.toUpperCase() : '');
+
+/** Sources that search one named area at a time and benefit from neighbourhood or grid splitting. */
+const AREA_SOURCES: Record<string, number> = { gmaps: Infinity, places: Infinity, web: 15, dir: 10, tomtom: 20, foursquare: 20 };
+
 async function runSearches() {
   if (running) return;
   const s = db.nextQueuedSearch();
@@ -56,12 +114,17 @@ async function runSearches() {
   running = true;
   const settings = load();
   const sources = JSON.parse(s.sources) as string[];
+  const cp: Checkpoint = { done: [], areas: {}, seen: {}, ...JSON.parse(s.checkpoint || '{}') };
+  const geo: Geo | null = s.geo ? JSON.parse(s.geo) : null;
+  const resumed = cp.done.length > 0 || Object.keys(cp.areas).length > 0;
   db.updateSearch(s.id, { status: 'running' });
   notify('searches');
-  let found = 0, added = 0;
+  let found = s.found, added = s.added;
   const errors: string[] = [];
-  let where: Place | null = await geocode(s.place).catch(() => null);
-  let anchored = false;
+  const progress = (msg: string) => { log(s.id, msg); notify('progress', { id: s.id, msg }); };
+  if (resumed) progress('Continuing where this search stopped…');
+  let where: Place | null = geo ? await cityAt(geo.lat, geo.lon).catch(() => null) : await geocode(s.place).catch(() => null);
+  let anchored = !!geo;
   // Trust the real results over the typed place name: find the city around the first results' location.
   const anchor = async (list: Candidate[]) => {
     if (anchored) return;
@@ -74,6 +137,7 @@ async function runSearches() {
   };
   const watchRan = !!(s.watch_id && (db.raw().prepare('SELECT runs FROM watches WHERE id = ?').get(s.watch_id) as { runs: number } | undefined)?.runs);
   const save = (list: Candidate[]) => {
+    if (geo) list = list.filter((c) => inside(geo, c));
     const tx = db.raw().transaction(() => {
       for (const c of list) {
         const country = c.country || where?.country || '';
@@ -86,6 +150,7 @@ async function runSearches() {
           emails: JSON.stringify(c.email ? [c.email.toLowerCase()] : []), website, domain: website ? domainOf(website) : '',
           socials: JSON.stringify(socials), rating: c.rating ?? null, reviews: c.reviews ?? null, source: c.source, source_ref: c.source_ref, search_id: s.id,
           tags: c.chain ? 'chain' : '', summary: c.summary ?? '', contact_name: c.contact_name ?? '',
+          provenance: JSON.stringify({ listing: { source: c.source, ref: c.source_ref, at: db.now(), search: s.id } }),
         });
         found++;
         if (created) {
@@ -102,7 +167,6 @@ async function runSearches() {
     db.updateSearch(s.id, { found, added });
     notify('leads');
   };
-  const progress = (msg: string) => { log(s.id, msg); notify('progress', { id: s.id, msg }); };
   const limit = settings.sources.maxPerSearch > 0 ? settings.sources.maxPerSearch : Infinity; // 0 = everything available
   let areas: string[] | null = null;
   const moreAreas = async () => {
@@ -113,51 +177,135 @@ async function runSearches() {
     }
     return areas;
   };
-  // Google lists only about 120 places per query (Places API: 60), so after the whole-city query
-  // the search repeats for each neighbourhood until the limit is reached. Duplicates are merged.
-  const byArea = async (label: string, run: (where: string, left: number) => Promise<Candidate[]>, maxAreas = Infinity) => {
-    const first = await run(s.place, limit);
-    await anchor(first);
-    save(first);
-    let got = first.length;
-    const list = (await moreAreas()).slice(0, maxAreas);
-    for (const [i, area] of list.entries()) {
-      if (cancelSearch === s.id || got >= limit) break;
-      progress(`${label}: area ${i + 1} of ${list.length}, ${area.split(',')[0]}`);
-      try { const c = await run(area, limit - got); got += c.length; save(c); } catch { /* skip this area */ }
-    }
-  };
+  const checkpoint = () => db.saveCheckpoint(s.id, cp);
   for (const src of sources) {
     if (cancelSearch === s.id) break;
+    if (cp.done.includes(src)) continue;
+    if (src === 'gmaps') resetMaps();
+    const seen = new Set(cp.seen[src] ?? []);
+    const ctx: Ctx = { category: s.category, place: s.place, where, geo, limit, progress, seen };
+    const doneAreas = new Set(cp.areas[src] ?? []);
+    const mark = (area: string) => { doneAreas.add(area); cp.areas[src] = [...doneAreas]; cp.seen[src] = [...seen].slice(-5000); checkpoint(); };
     try {
-      if (src === 'gmaps') { resetMaps(); const seen = new Set<string>(); await byArea('Google Maps', (w, left) => searchMaps(s.category, w, left, settings.sources.mapsDelayMs, progress, seen)); }
-      if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit, where)); }
-      if (src === 'web') { await byArea('Web search', (w, left) => searchWeb(s.category, w, left, progress), 15); }
-      if (src === 'dir') { const country = where?.country ?? ''; await byArea('Directories', (w, left) => searchDirectories(s.category, w, country, left, progress), 10); }
-      if (src === 'tomtom') {
-        const key = (settings.sources as any).tomtomKey;
-        if (!key) throw new Error('Add a free TomTom key in Settings → Sources.');
-        await byArea('TomTom', (w, left) => searchTomTom(key, s.category, w, w === s.place && where ? { lat: where.lat, lon: where.lon } : null, where?.country ?? '', left, progress), 20);
+      const label = sourceInfo(src)?.name ?? src;
+      let list: string[];
+      if (geo && src === 'gmaps') {
+        // Radius search: a grid of small map views, centre first (QF-003, QF-004).
+        const cellKm = Math.min(2.5, Math.max(0.8, geo.km / 3));
+        list = gridCells(geo, cellKm).map((c) => `@${c.lat.toFixed(5)},${c.lon.toFixed(5)},${zoomFor(cellKm)}z`);
+      } else if (geo && src === 'osm') {
+        list = ['bbox'];
+      } else {
+        list = [s.place, ...(AREA_SOURCES[src] ? (await moreAreas()).slice(0, AREA_SOURCES[src]) : [])];
       }
-      if (src === 'foursquare') {
-        const key = (settings.sources as any).foursquareKey;
-        if (!key) throw new Error('Add a free Foursquare key in Settings → Sources.');
-        await byArea('Foursquare', (w, left) => searchFoursquare(key, s.category, w, null, left, progress), 20);
+      let got = 0;
+      for (const [i, area] of list.entries()) {
+        if (cancelSearch === s.id || got >= limit) break;
+        if (doneAreas.has(area)) continue;
+        if (list.length > 1) progress(`${label}: area ${i + 1} of ${list.length}${area.startsWith('@') ? '' : `, ${area.split(',')[0]}`}`);
+        else progress(`${label}: searching…`);
+        try {
+          const batch = area === 'bbox'
+            ? await searchOsm(s.category, s.place, limit, geoPlace(geo!, where))
+            : await withRetry(() => fetchFrom(src, area, limit - got, ctx), src);
+          if (i === 0) await anchor(batch);
+          got += batch.length;
+          save(batch);
+          mark(area);
+        } catch (e: any) {
+          if (e instanceof BudgetError || i === 0) throw e;
+          progress(`${label}: skipped an area (${String(e.message ?? e).slice(0, 80)})`);
+        }
       }
-      if (src === 'posts') { progress('Job posts: searching…'); save(await searchPosts(s.category, limit, progress)); }
-      if (src === 'places') {
-        if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');
-        await byArea('Google Places', (w, left) => searchPlaces(settings.sources.placesKey, s.category, w, left, progress));
-      }
+      cp.done.push(src);
+      checkpoint();
     } catch (e: any) {
       errors.push(String(e.message ?? e));
     }
   }
   if (cancelSearch !== s.id) db.updateSearch(s.id, { status: errors.length && !found ? 'failed' : 'done', error: errors.join(' · '), finished_at: db.now() });
-  if (s.watch_id) db.raw().prepare('UPDATE watches SET runs = runs + 1 WHERE id = ?').run(s.watch_id);
+  if (s.watch_id && cancelSearch !== s.id) db.raw().prepare('UPDATE watches SET runs = runs + 1 WHERE id = ?').run(s.watch_id);
   running = false;
   notify('searches');
   void runEnrichment();
+}
+
+/** An OSM place limited to the circle's bounding box (Nominatim order: south, north, west, east). */
+function geoPlace(geo: Geo, where: Place | null): Place {
+  const b = bboxOf(geo);
+  return { label: where?.label ?? '', city: where?.city ?? '', region: where?.region ?? '', country: where?.country ?? '', lat: geo.lat, lon: geo.lon, bbox: [b.s, b.n, b.w, b.e] };
+}
+
+/** Retry a source call twice on network errors, with backoff. Captchas, missing keys and budgets fail at once. */
+async function withRetry<T>(fn: () => Promise<T>, src: string): Promise<T> {
+  for (let i = 0; ; i++) {
+    try { return await fn(); } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (i >= 2 || e instanceof BudgetError || /captcha|bot check|key|limit|covers|Add an|Unknown source|must/i.test(msg)) throw e;
+      log(0, `${src}: retry ${i + 1} after ${msg}`);
+      await sleep(2000 * (i + 1) ** 2);
+    }
+  }
+}
+
+/** Run each source on the main area with a small limit and estimate the full run, without saving anything (QF-013, QF-117). */
+export async function previewSearch(category: string, place: string, sources: string[], geo: Geo | null) {
+  const where = geo ? await cityAt(geo.lat, geo.lon).catch(() => null) : await geocode(place).catch(() => null);
+  const areaCount = geo ? null : (await subAreas(where ?? place, 200).catch(() => [])).length;
+  const settings = load();
+  const out: { source: string; name: string; sample: Candidate[]; error: string; seconds: number; areas: number; estimate: string; budgetLeft: number | null }[] = [];
+  for (const src of sources) {
+    const info = sourceInfo(src);
+    const t = Date.now();
+    let sample: Candidate[] = [], error = '';
+    try {
+      const ctx: Ctx = { category, place, where, geo, limit: 5, progress: () => undefined, seen: new Set() };
+      sample = geo && src === 'gmaps'
+        ? await fetchFrom(src, `@${geo.lat},${geo.lon},${zoomFor(Math.min(2.5, geo.km))}z`, 5, ctx)
+        : await fetchFrom(src, place, 5, ctx);
+      if (geo) sample = sample.filter((c) => inside(geo, c));
+    } catch (e: any) { error = String(e.message ?? e); }
+    const seconds = Math.round((Date.now() - t) / 1000);
+    const areas = geo && src === 'gmaps' ? gridCells(geo, Math.min(2.5, Math.max(0.8, geo.km / 3))).length : AREA_SOURCES[src] ? 1 + Math.min(areaCount ?? 0, AREA_SOURCES[src]) : 1;
+    const perArea = src === 'gmaps' ? 120 : src === 'places' ? 60 : src === 'web' ? 50 : src === 'dir' ? 60 : src === 'tomtom' || src === 'foursquare' ? 100 : null;
+    const minutes = src === 'gmaps' ? Math.round((areas * 120 * (settings.sources.mapsDelayMs + 900)) / 60000) : Math.max(1, Math.round((areas * Math.max(seconds, 3)) / 60));
+    const left = remaining(src);
+    out.push({ source: src, name: info?.name ?? src, sample: sample.slice(0, 5), error, seconds, areas,
+      estimate: error ? '' : `${areas} ${areas === 1 ? 'query' : 'areas'}${perArea ? `, up to about ${(areas * perArea).toLocaleString()} listings` : ''}, about ${minutes} min`,
+      budgetLeft: Number.isFinite(left) ? left : null });
+  }
+  return { where: where ? `${where.city || where.label}${where.country ? `, ${where.country}` : ''}` : place, sources: out };
+}
+
+/** Queue every category × place combination (QF-002). */
+export function queueBatch(categories: string[], places: string[], sources: string[]) {
+  const ids: number[] = [];
+  for (const p of places.map((x) => x.trim()).filter(Boolean)) for (const c of categories.map((x) => x.trim()).filter(Boolean)) ids.push(db.addSearch(c, p, sources, null, null));
+  notify('searches');
+  void runSearches();
+  return ids;
+}
+
+export function queueGeoSearch(category: string, label: string, geo: Geo, sources: string[]) {
+  const id = db.addSearch(category.trim(), label, sources, null, null);
+  db.addSearchGeo(id, JSON.stringify(geo));
+  notify('searches');
+  void runSearches();
+  return id;
+}
+
+/** Pause keeps the checkpoint; resume puts the search back in the queue (QF-001). */
+export function pauseSearch(id: number) {
+  cancelSearch = id;
+  stopMaps();
+  db.updateSearch(id, { status: 'paused' });
+  notify('searches');
+}
+export function resumeSearch(id: number) {
+  if (cancelSearch === id) cancelSearch = 0;
+  db.updateSearch(id, { status: 'queued', error: '' });
+  notify('searches');
+  void runSearches();
 }
 
 /** Website visits run three at a time, oldest first. */
@@ -179,6 +327,14 @@ export async function runEnrichment(ids?: number[]) {
 export async function enrichOne(lead: db.Lead) {
   const settings = load();
   db.updateLead(lead.id, { enriched_at: db.now() });
+  if (!lead.website && settings.findWebsites && lead.source !== 'reddit' && lead.name && lead.city) {
+    const hit = await findWebsite(lead).catch(() => null);
+    if (hit) {
+      const prov = { ...JSON.parse(lead.provenance || '{}'), website: { url: hit.url, method: 'web search', evidence: hit.evidence, query: hit.query, at: db.now() } };
+      db.updateLead(lead.id, { website: hit.url, domain: domainOf(hit.url), provenance: JSON.stringify(prov) });
+      lead = db.getLead(lead.id)!;
+    }
+  }
   if (!lead.website) {
     // No website at all: the clearest need. With a model, still ask it to judge the fit from the other facts.
     let f = guessFit(lead);

@@ -31,7 +31,7 @@ export async function geocode(q: string): Promise<Place | null> {
 }
 
 export async function searchOsm(category: string, place: string, limit: number, known?: Place | null): Promise<Candidate[]> {
-  const where = known?.area ? known : await geocode(place);
+  const where = known?.area || known?.bbox ? known : await geocode(place);
   if (!where) throw new Error(`OpenStreetMap could not find "${place}".`);
   const cat = categoryByName(category);
   const scope = where.area ? '(area.a)' : `(${where.bbox![0]},${where.bbox![2]},${where.bbox![1]},${where.bbox![3]})`;

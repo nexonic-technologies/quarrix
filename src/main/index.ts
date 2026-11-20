@@ -1,4 +1,10 @@
 import { isSafeExternalUrl } from './safety';
+import * as budget from './budget';
+import { checkSources } from './health';
+import { SOURCES } from './sources/catalog';
+import { onMapsLoad } from './sources/gmaps';
+import { geocode } from './sources/osm';
+import type { Geo } from './geo';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { join } from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -38,6 +44,19 @@ function createWindow() {
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
 
+const KNOWN_SOURCES = new Set(SOURCES.map((x) => x.id));
+const validSources = (v: unknown) => {
+  const list = Array.isArray(v) ? v.map(String).filter((x) => KNOWN_SOURCES.has(x)) : [];
+  if (!list.length) throw new Error('Choose at least one source.');
+  return list;
+};
+const validGeo = (g: any): Geo | null => {
+  if (!g) return null;
+  const lat = Number(g.lat), lon = Number(g.lon), km = Number(g.km);
+  if (![lat, lon, km].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || km <= 0 || km > 100) throw new Error('The map area is not valid (radius 0.1 to 100 km).');
+  return { lat, lon, km };
+};
+
 const handle = (ch: string, fn: (...a: any[]) => unknown) =>
   ipcMain.handle(ch, async (e, ...args) => {
     // Only the app's own page may call the main process.
@@ -55,6 +74,26 @@ function registerIpc() {
 
   handle('search:start', (category: string, place: string, sources: string[]) => jobs.queueSearch(category, place, sources));
   handle('search:stop', (id: number) => jobs.stopSearch(id));
+  handle('search:pause', (id: number) => jobs.pauseSearch(Number(id)));
+  handle('search:resume', (id: number) => jobs.resumeSearch(Number(id)));
+  handle('search:preview', (category: string, place: string, sources: string[], geo: Geo | null) => jobs.previewSearch(String(category), String(place), validSources(sources), validGeo(geo)));
+  handle('search:batch', (categories: string[], places: string[], sources: string[]) => {
+    if (!Array.isArray(categories) || !Array.isArray(places)) throw new Error('Give a list of business types and places.');
+    if (categories.length * places.length > 500) throw new Error('That is more than 500 searches. Split it into smaller batches.');
+    return jobs.queueBatch(categories.map(String), places.map(String), validSources(sources));
+  });
+  handle('search:geo', (category: string, label: string, geo: Geo, sources: string[]) => {
+    const g = validGeo(geo);
+    if (!g) throw new Error('Pick a point on the map and a radius.');
+    return jobs.queueGeoSearch(String(category), String(label), g, validSources(sources));
+  });
+  handle('templates:list', () => db.listTemplates());
+  handle('templates:save', (t) => db.saveTemplate(t));
+  handle('templates:delete', (id: number) => db.deleteTemplate(Number(id)));
+  handle('sources:catalog', () => SOURCES);
+  handle('geo:find', async (q: string) => { const p = await geocode(String(q).slice(0, 200)); return p ? { lat: p.lat, lon: p.lon } : null; });
+  handle('sources:health', () => checkSources());
+  handle('sources:usage', () => db.usageToday());
   handle('search:list', () => db.listSearches());
 
   handle('leads:query', (q) => db.queryLeads(q));
@@ -142,7 +181,7 @@ function registerIpc() {
   handle('dnc:remove', (v: string) => db.unsuppress(v));
 
   handle('file:import', async () => {
-    const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], filters: [{ name: 'Leads', extensions: ['csv', 'xlsx', 'json', 'pdf', 'tsv', 'txt'] }] });
+    const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], filters: [{ name: 'Leads', extensions: ['csv', 'xlsx', 'json', 'geojson', 'pdf', 'tsv', 'txt'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
     const out = await importFile(r.filePaths[0]);
     send('leads');
@@ -165,6 +204,8 @@ app.whenReady().then(() => {
   db.openDb();
   registerIpc();
   createWindow();
+  budget.install();
+  onMapsLoad(() => budget.spend('gmaps'));
   jobs.start(send);
   autopilot.start(send);
   signals.start(send);
