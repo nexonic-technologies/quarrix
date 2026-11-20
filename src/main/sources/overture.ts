@@ -59,6 +59,21 @@ export function overlappingGroups(meta: any, box: Box) {
   return out;
 }
 
+/** Category of a place across Overture schema versions: `categories` (to mid-2025), then `taxonomy` and `basic_category`. Pure. */
+export function placeCategory(p: any): { primary: string; alternates: string[] } {
+  const t = p.taxonomy, c = p.categories;
+  const primary = t?.primary ?? c?.primary ?? p.basic_category ?? '';
+  const alternates = [...(t?.alternates ?? []), ...(t?.hierarchy ?? []), ...(c?.alternate ?? []), ...(p.basic_category ? [p.basic_category] : [])].map(String);
+  return { primary: String(primary), alternates };
+}
+/** Columns this release actually has (the place schema changes between releases). Pure. */
+export function placeColumns(meta: any) {
+  const top = new Set<string>();
+  for (const g of meta.row_groups?.slice(0, 1) ?? []) for (const c of g.columns ?? []) top.add((c.meta_data?.path_in_schema ?? [])[0]);
+  const want = ['id', 'names', 'categories', 'taxonomy', 'basic_category', 'websites', 'phones', 'addresses', 'bbox'];
+  return want.filter((w) => top.has(w));
+}
+
 /** One Overture place row → a Quarrix candidate. Pure. */
 export function rowToCandidate(p: any): Candidate | null {
   const name = p.names?.primary;
@@ -66,7 +81,7 @@ export function rowToCandidate(p: any): Candidate | null {
   const ad = (p.addresses ?? [])[0] ?? {};
   const b = p.bbox ?? {};
   return {
-    source: 'overture', source_ref: `overture:${p.id}`, name, category: p.categories?.primary ?? '', address: ad.freeform ?? '', city: ad.locality ?? '',
+    source: 'overture', source_ref: `overture:${p.id}`, name, category: placeCategory(p).primary, address: ad.freeform ?? '', city: ad.locality ?? '',
     region: ad.region ?? '', country: String(ad.country ?? '').toUpperCase(), postcode: ad.postcode ?? '',
     lat: b.ymin != null ? (Number(b.ymin) + Number(b.ymax)) / 2 : null, lon: b.xmin != null ? (Number(b.xmin) + Number(b.xmax)) / 2 : null,
     phone: (p.phones ?? [])[0] ?? '', email: '', website: (p.websites ?? [])[0] ?? '', summary: 'Overture Maps Foundation',
@@ -98,12 +113,13 @@ export async function searchOverture(category: string, box: Box, limit: number, 
     if (out.length >= limit) break;
     if (read >= maxGroups) { progress(`Overture: stopped after ${read} of ${plan.length} map blocks (read limit); results for this area are partial`, out.length); break; }
     read++;
-    const rows = await parquetReadObjects({ file: g.file, metadata: g.meta, rowStart: g.start, rowEnd: g.end, columns: ['id', 'names', 'categories', 'websites', 'phones', 'addresses', 'bbox'], compressors });
+    const rows = await parquetReadObjects({ file: g.file, metadata: g.meta, rowStart: g.start, rowEnd: g.end, columns: placeColumns(g.meta), compressors });
     for (const r of rows as any[]) {
       const b = r.bbox ?? {};
       const lat = (Number(b.ymin) + Number(b.ymax)) / 2, lon = (Number(b.xmin) + Number(b.xmax)) / 2;
       if (!inBox(lat, lon, box) || seen.has(r.id)) continue;
-      if (!categoryMatches(words, r.categories?.primary ?? '', r.categories?.alternate ?? [])) continue;
+      const pc = placeCategory(r);
+      if (!categoryMatches(words, pc.primary, pc.alternates)) continue;
       const c = rowToCandidate(r);
       if (c) { seen.add(r.id); out.push(c); }
     }

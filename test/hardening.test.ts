@@ -5,7 +5,7 @@ import { fetchText, isSensitiveHeader, redirectHeaders, redirectUrl, TooLargeErr
 import { isBlockedHost, isPrivateAddress, outreachBlock } from '../src/main/safety';
 import { validate } from '../src/main/sources/sdk';
 import { registerSdk, sourceInfo } from '../src/main/sources/catalog';
-import { boxes, categoryMatches, categoryWords, inBox, listedFiles, overlappingGroups } from '../src/main/sources/overture';
+import { boxes, categoryMatches, categoryWords, inBox, listedFiles, overlappingGroups, placeCategory, placeColumns, rowToCandidate } from '../src/main/sources/overture';
 
 type Call = { url: string; headers: Record<string, string>; method: string; body: unknown };
 function stub(routes: Record<string, (c: Call) => Response>) {
@@ -113,4 +113,14 @@ test('Overture: listing pages, antimeridian boxes and category words', () => {
   assert.deepEqual(categoryWords('Coffee shops & bakeries'), ['coffee', 'bakery']);
   assert.ok(categoryMatches(categoryWords('Hair salons'), 'beauty_salon', ['hair_salon']));
   assert.ok(!categoryMatches(categoryWords('Dentists'), 'restaurant'));
+});
+
+test('Overture: old and new place schemas (categories → taxonomy/basic_category)', () => {
+  assert.deepEqual(placeCategory({ categories: { primary: 'dentist', alternate: ['health'] } }), { primary: 'dentist', alternates: ['health'] });
+  const n = placeCategory({ taxonomy: { primary: 'general_dentistry', hierarchy: ['health_care', 'dentist', 'general_dentistry'], alternates: [] }, basic_category: 'dentist' });
+  assert.equal(n.primary, 'general_dentistry');
+  assert.ok(categoryMatches(categoryWords('Dentists'), n.primary, n.alternates));
+  const meta = { row_groups: [{ columns: ['id', 'names', 'taxonomy', 'taxonomy', 'basic_category', 'bbox'].map((x) => ({ meta_data: { path_in_schema: [x, 'x'] } })) }] };
+  assert.deepEqual(placeColumns(meta), ['id', 'names', 'taxonomy', 'basic_category', 'bbox'], 'only columns the file has are requested');
+  assert.equal(rowToCandidate({ id: '1', names: { primary: 'Smile' }, basic_category: 'dentist' })?.category, 'dentist');
 });

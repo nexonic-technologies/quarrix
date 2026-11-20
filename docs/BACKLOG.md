@@ -12,7 +12,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-006 | Socrata open-data adapter | P2 | Done | sources/opendata.ts searchSocrata; Settings → Sources feeds | test/discovery.test.ts (recorded shape) |
 | QF-007 | ArcGIS public-layer adapter | P2 | Done | sources/opendata.ts searchArcgis | test/discovery.test.ts (recorded shape) |
 | QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
-| QF-009 | Wikidata business source | P3 | Built | sources/opendata.ts searchWikidata (SPARQL) | typecheck; needs live run |
+| QF-009 | Wikidata business source | P3 | Done | sources/opendata.ts searchWikidata (SPARQL) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 8 hospitals in London |
 | QF-010 | Source capability catalog | P1 | Done | sources/catalog.ts; SourcesPanel | test/discovery.test.ts |
 | QF-011 | Provider connectivity diagnostics | P1 | Built | health.ts checkSources; SourcesPanel "Check all sources" | typecheck; needs live run |
 | QF-012 | Per-provider request budgets | P1 | Built | budget.ts (host-based counting), provider_usage table, limits in Settings | typecheck; needs live run |
@@ -31,7 +31,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-025 | Review distribution and trends | P2 | Done | Review trend plus 5-to-1 star counts from Google Maps, used only when they add up to the review count | test/partials.test.ts, test/formula.test.ts |
 | QF-026 | Business imagery and profile media | P3 | Built | Image from the business's own site (schema.org logo/image or og:image), shown not stored | typecheck |
 | QF-027 | Website technology inventory | P2 | Done | intel.detectTech (34 technologies with markers) | test/intel.test.ts |
-| QF-028 | Company size and growth fields | P3 | Built | Size, employee growth per year, founding, revenue from Wikidata (CC0) matched by official website | test/partials.test.ts (claims → facts); live lookup not run here |
+| QF-028 | Company size and growth fields | P3 | Done | Size, employee growth per year, founding, revenue from Wikidata (CC0) matched by official website | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): Stripe: 8,000 employees, founded 2010 |
 | QF-029 | Evidence and source provenance per field | P1 | Built | leads.provenance: listing, website evidence, email pages, checks, conflicts | typecheck |
 | QF-030 | Field freshness and stale-data warnings | P1 | Built | settings.freshDays; signals runner re-checks stale leads; "Not checked in 90 days" filter | typecheck |
 | QF-031 | Configurable enrichment waterfall | P1 | Built | settings.waterfall order and stop rule; provenance.waterfall trail | typecheck |
@@ -98,9 +98,9 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-092 | Lever jobs connector | P1 | Done | ats.ts (Lever postings API, US and EU) | test/jobs.test.ts (recorded shape) |
 | QF-093 | Ashby jobs connector | P1 | Built | ats.ts (Ashby posting API) | typecheck; needs live run |
 | QF-094 | SmartRecruiters connector | P2 | Built | ats.ts (SmartRecruiters postings API) | typecheck; needs live run |
-| QF-095 | Workday careers connector | P2 | Built | ats.ts (Workday public jobs endpoint) | typecheck; needs live run |
+| QF-095 | Workday careers connector | P2 | Done | ats.ts (Workday public jobs endpoint) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 400 NVIDIA Workday jobs |
 | QF-096 | Personio/Pinpoint connectors | P2 | Built | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run |
-| QF-097 | Hacker News hiring posts | P2 | Built | ats.hnHiring (HN Algolia API, latest thread) | typecheck; needs live run |
+| QF-097 | Hacker News hiring posts | P2 | Done | ats.hnHiring (HN Algolia API, latest thread) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 48 posts from the latest thread |
 | QF-098 | Glassdoor search connector | P2 | Blocked | Glassdoor has no public jobs API; its terms forbid scraping | — |
 | QF-099 | ZipRecruiter connector | P2 | Blocked | ZipRecruiter API is partner-only; needs a partner account | — |
 | QF-100 | SEEK, JobStreet and JobsDB connectors | P2 | Blocked | SEEK/JobStreet/JobsDB: no public API without partner approval | — |
@@ -131,8 +131,8 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 
 ## Totals
 
-- Done: 76
-- Built: 39
+- Done: 80
+- Built: 35
 - Blocked: 8
 - Partial: 0
 - Not done: 1

@@ -31,7 +31,8 @@ const strip = (s = '') => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').rep
 const iso = (v: unknown) => { const d = typeof v === 'number' ? new Date(v) : new Date(String(v ?? '')); return Number.isNaN(+d) ? '' : d.toISOString(); };
 const remote = (s: string) => (/remote/i.test(s) ? 'remote' : /hybrid/i.test(s) ? 'hybrid' : '') as Job['workplace'];
 async function getJson(url: string, opts: Parameters<typeof fetchText>[1] = {}) {
-  const r = await fetchText(url, { ua: BOT_UA, timeout: 25000, headers: { Accept: 'application/json', ...(opts.headers ?? {}) }, ...opts });
+  // Big employers publish feeds of tens of MB (full descriptions); the limit is generous but still enforced.
+  const r = await fetchText(url, { ua: BOT_UA, timeout: 45000, maxBytes: 40_000_000, headers: { Accept: 'application/json', ...(opts.headers ?? {}) }, ...opts });
   if (r.status === 404) throw new Error('job board not found (check the company name)');
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return JSON.parse(r.text);
