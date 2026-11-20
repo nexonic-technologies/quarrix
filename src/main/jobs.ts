@@ -5,6 +5,7 @@ import { guessFit, research } from './ai';
 import { searchWeb } from './sources/web';
 import { searchDirectories } from './sources/directories';
 import { searchPosts } from './sources/posts';
+import { searchFoursquare, searchTomTom } from './sources/keyed';
 import { load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { searchPlaces } from './sources/places';
@@ -125,6 +126,16 @@ async function runSearches() {
       if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit, where)); }
       if (src === 'web') { await byArea('Web search', (w, left) => searchWeb(s.category, w, left, progress), 15); }
       if (src === 'dir') { const country = where?.country ?? ''; await byArea('Directories', (w, left) => searchDirectories(s.category, w, country, left, progress), 10); }
+      if (src === 'tomtom') {
+        const key = (settings.sources as any).tomtomKey;
+        if (!key) throw new Error('Add a free TomTom key in Settings → Sources.');
+        await byArea('TomTom', (w, left) => searchTomTom(key, s.category, w, w === s.place && where ? { lat: where.lat, lon: where.lon } : null, where?.country ?? '', left, progress), 20);
+      }
+      if (src === 'foursquare') {
+        const key = (settings.sources as any).foursquareKey;
+        if (!key) throw new Error('Add a free Foursquare key in Settings → Sources.');
+        await byArea('Foursquare', (w, left) => searchFoursquare(key, s.category, w, null, left, progress), 20);
+      }
       if (src === 'posts') { progress('Job posts: searching…'); save(await searchPosts(s.category, limit, progress)); }
       if (src === 'places') {
         if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');

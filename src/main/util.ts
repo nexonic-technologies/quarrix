@@ -15,7 +15,7 @@ export async function fetchText(url: string, opts: { timeout?: number; ua?: stri
       headers: { 'User-Agent': opts.ua ?? UA, Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', ...(opts.headers ?? {}) },
     });
     const text = await r.text();
-    return { ok: r.ok, status: r.status, url: r.url, text, ms: Date.now() - start, type: r.headers.get('content-type') ?? '' };
+    return { ok: r.ok, status: r.status, url: r.url, text, ms: Date.now() - start, type: r.headers.get('content-type') ?? '', link: r.headers.get('link') ?? '' };
   } finally {
     clearTimeout(t);
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
-import { HeroArt, HeroBg, spotlight, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
 import { CityInput } from '../CityInput';
 import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
 import { COUNTRIES } from '../countries';
@@ -12,7 +12,9 @@ const SOURCES: [string, string, string, typeof Map][] = [
   ['gmaps', 'Google Maps', 'free, slower', Map],
   ['osm', 'OpenStreetMap', 'free, open data', Database],
   ['web', 'Web search', 'Bing and DuckDuckGo', Globe2],
-  ['dir', 'Directories', 'Yelp, Yellow Pages, Yell', BookOpen],
+  ['dir', 'Directories', 'Hotfrog, Yelp, Yellow Pages, Yell', BookOpen],
+  ['tomtom', 'TomTom', 'free key, phones and websites', KeyRound],
+  ['foursquare', 'Foursquare', 'free key, phones, websites, socials', KeyRound],
   ['posts', 'Job posts', 'people asking for help now', Megaphone],
   ['places', 'Google Places API', 'your key', KeyRound],
 ];
@@ -21,7 +23,7 @@ const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], 
 export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [category, setCategory] = useState('');
   const [place, setPlace] = useState('');
-  const [sources, setSources] = useState<string[]>(['gmaps', 'osm', 'web']);
+  const [sources, setSources] = useState<string[]>(['gmaps', 'osm', 'web', 'dir']);
   const [country, setCountry] = useState('');
   const [live, setLive] = useState<Search | null>(null);
   const [focused, setFocused] = useState(false);
@@ -63,7 +65,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
 
   return (
     <div className="page">
-      <div className="finder" data-mode={mode} data-kind="leads" onMouseMove={spotlight} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+      <div className="finder" data-mode={mode} data-kind="leads" onMouseMove={spotlight} onMouseLeave={spotlightReset} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
         <HeroBg kind="leads" mode={mode} />
         <div className="finder-art"><HeroArt kind="leads" /></div>
         <div className="finder-text">
@@ -113,7 +115,6 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               <Icon size={13} /> {label}
             </span>
           ))}
-          {!category && !place && <button className="btn link" onClick={() => { setCategory('Dentists'); setPlace('Austin, Texas'); }}>Try an example</button>}
         </div>
       </div>
 

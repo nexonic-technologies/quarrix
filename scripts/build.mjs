@@ -14,7 +14,7 @@ const common = {
   format: 'cjs',
   sourcemap: dev,
   minify: !dev,
-  external: ['electron', 'better-sqlite3', 'pdfjs-dist'],
+  external: ['electron', 'better-sqlite3', 'pdfjs-dist', 'all-the-cities'],
   logLevel: 'info',
 };
 const main = { ...common, entryPoints: ['src/main/index.ts'], outfile: 'out/main/index.js' };

@@ -484,8 +484,10 @@ table.leads .t2 { display: block; color: var(--ink); }
 @keyframes blob { from { transform: translate(0, 0) scale(1); } to { transform: translate(60px, 30px) scale(1.2); } }
 .finder::before { display: none; }
 
-.hero-art { position: relative; width: 170px; height: 170px; transition: transform 0.5s var(--ease); }
-.finder:hover .hero-art { transform: scale(1.06) rotate(-4deg); }
+.hero-art { position: relative; width: 170px; height: 170px; transform: perspective(520px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) rotate(var(--spin, 0deg)); transition: transform 1.1s cubic-bezier(0.22, 1.5, 0.36, 1); will-change: transform; }
+.finder.tracking .hero-art { transition: transform 0.18s ease-out; }
+.hero-art .core img { transform: rotate(calc(-1 * var(--spin, 0deg))); transition: transform 1.1s cubic-bezier(0.22, 1.5, 0.36, 1); }
+.finder.tracking .hero-art .core img { transition: transform 0.18s ease-out; }
 .hero-art .ring { position: absolute; border-radius: 50%; border: 1px solid rgba(124, 58, 237, 0.22); background: rgba(255, 255, 255, 0.18); }
 .hero-art .r1 { inset: 0; } .hero-art .r2 { inset: 24px; } .hero-art .r3 { inset: 48px; background: rgba(255, 255, 255, 0.35); }
 .hero-art .sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(124, 58, 237, 0.32), rgba(124, 58, 237, 0) 70deg, transparent 360deg); animation: spin 4s linear infinite; }
@@ -494,7 +496,7 @@ table.leads .t2 { display: block; color: var(--ink); }
 .hero-art .core img { width: 58px; height: 58px; filter: drop-shadow(0 8px 14px rgba(76, 29, 149, 0.45)); }
 @keyframes core { 50% { transform: scale(1.07); } }
 .hero-art .orbit { position: absolute; inset: 0; animation: spin 16s linear infinite; }
-.hero-art .orbit.ob1 { animation-duration: 22s; animation-direction: reverse; inset: 20px; }
+.hero-art .orbit.ob1 { animation-duration: 22s; animation-delay: -11s; animation-direction: reverse; inset: 20px; }
 .hero-art .orbit.ob2 { animation-duration: 19s; animation-delay: -6s; inset: 8px; }
 .hero-art .orbit.ob3 { animation-duration: 26s; animation-delay: -12s; animation-direction: reverse; inset: 30px; }
 .finder:hover .hero-art .orbit { animation-duration: 6s; }

@@ -273,29 +273,15 @@ export async function matchJobs(settings: Settings, jobs: Job[], profile: string
   return Object.fromEntries(out);
 }
 
-/** Cities and towns of a country, largest first, for the city picker. Cached on disk after the first load. */
+/** Cities and towns of a country, largest first, for the city picker.
+ *  From the bundled GeoNames list (all places over 1,000 people), so it works offline and instantly. */
+let allCities: { name: string; country: string; population: number }[] | null = null;
 const cityCache = new Map<string, string[]>();
 export async function citiesOf(cc: string): Promise<string[]> {
   if (cityCache.has(cc)) return cityCache.get(cc)!;
-  const { app } = await import('electron');
-  const { existsSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
-  const dir = (await import('node:path')).join(app.getPath('userData'), 'cities');
-  const f = `${dir}/${cc}.json`;
-  if (existsSync(f)) { const l = JSON.parse(readFileSync(f, 'utf8')); cityCache.set(cc, l); return l; }
-  const ask = async (types: string) => {
-    const q = `[out:json][timeout:45];area["ISO3166-1"="${cc}"]["admin_level"="2"]->.a;node(area.a)["place"~"^(${types})$"];out tags;`;
-    for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
-      const r = await fetchText(host, { method: 'POST', ua: BOT_UA, timeout: 55000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(() => null);
-      if (r?.ok) return (JSON.parse(r.text).elements ?? []) as any[];
-    }
-    return null;
-  };
-  let els = await ask('city');
-  if (els && els.length < 25) els = [...els, ...((await ask('town')) ?? [])];
-  if (!els) throw new Error('The city list is not available right now. You can type the city instead.');
-  const list = [...new Set(els.map((e) => ({ n: String(e.tags['name:en'] ?? e.tags.name), p: parseInt(String(e.tags.population ?? '0').replace(/\D/g, ''), 10) || 0, cap: e.tags.capital ? 1 : 0 }))
-    .filter((x) => /[a-z]/i.test(x.n)).sort((a, b) => b.cap - a.cap || b.p - a.p).map((x) => x.n))].slice(0, 500);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  allCities ??= require('all-the-cities') as { name: string; country: string; population: number }[];
+  const list = [...new Set(allCities.filter((c) => c.country === cc).sort((a, b) => b.population - a.population).map((c) => c.name))].slice(0, 1500);
   cityCache.set(cc, list);
-  try { mkdirSync(dir, { recursive: true }); writeFileSync(f, JSON.stringify(list)); } catch { /* cache is optional */ }
   return list;
 }

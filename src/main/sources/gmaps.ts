@@ -126,6 +126,9 @@ export function closeMaps() {
 /** Open any page in the hidden browser (real Chrome engine, so pages that need scripts work) and return its HTML. */
 export async function pageHtml(url: string, waitSelector = 'body', settleMs = 1200): Promise<string> {
   await load(url);
+  // Cloudflare-style "Just a moment" pages often clear by themselves in a real browser.
+  for (let i = 0; i < 8 && (await js<boolean>(`/just a moment|checking your browser/i.test(document.title)`)); i++) await sleep(2000);
+  if (await js<boolean>(`/just a moment|checking your browser/i.test(document.title)`)) throw new Error('The site is behind a bot check right now.');
   await waitFor(waitSelector, 12000);
   await sleep(settleMs);
   if (await js<boolean>(`/unusual traffic|not a robot|verify you are human|access denied|captcha/i.test(document.title + ' ' + document.body.innerText.slice(0, 600))`)) throw new Error('The site asked for a captcha.');

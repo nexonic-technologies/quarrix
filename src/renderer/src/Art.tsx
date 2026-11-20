@@ -165,10 +165,26 @@ export function useSceneMode(busy: boolean, focused: boolean): SceneMode {
   }, [busy]);
   return busy ? 'busy' : done ? 'done' : focused ? 'focus' : 'idle';
 }
+/** Mouse over a banner: the light follows the pointer and the radar turns and tilts toward it.
+ *  When the pointer leaves, everything springs back to where it started. */
 export const spotlight = (e: React.MouseEvent<HTMLElement>) => {
-  const r = e.currentTarget.getBoundingClientRect();
-  e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`);
-  e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
+  const el = e.currentTarget;
+  const r = el.getBoundingClientRect();
+  el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  el.style.setProperty('--my', `${e.clientY - r.top}px`);
+  const art = el.querySelector('.hero-art')?.getBoundingClientRect();
+  if (!art) return;
+  const cx = art.left + art.width / 2, cy = art.top + art.height / 2;
+  const dx = e.clientX - cx, dy = e.clientY - cy;
+  el.classList.add('tracking');
+  el.style.setProperty('--spin', `${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg`);
+  el.style.setProperty('--tx', `${Math.max(-18, Math.min(18, -dy / 14))}deg`);
+  el.style.setProperty('--ty', `${Math.max(-18, Math.min(18, dx / 22))}deg`);
+};
+export const spotlightReset = (e: React.MouseEvent<HTMLElement>) => {
+  const el = e.currentTarget;
+  el.classList.remove('tracking');
+  for (const k of ['--spin', '--tx', '--ty']) el.style.setProperty(k, '0deg');
 };
 
 /* Full-banner animated scene that reacts to what the person is doing.

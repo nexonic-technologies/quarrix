@@ -83,9 +83,38 @@ async function yell(category: string, place: string, limit: number, progress: Pr
   return out;
 }
 
+// Hotfrog: business directory with country sites. Listing pages give name, address and category.
+const HOTFROG: Record<string, string> = { US: 'www.hotfrog.com', GB: 'www.hotfrog.co.uk', AU: 'www.hotfrog.com.au', CA: 'www.hotfrog.ca', IN: 'www.hotfrog.in', ZA: 'www.hotfrog.co.za', IE: 'www.hotfrog.ie', NZ: 'www.hotfrog.co.nz', SG: 'www.hotfrog.sg', MY: 'www.hotfrog.com.my', PH: 'www.hotfrog.ph', DE: 'www.hotfrog.de', FR: 'www.hotfrog.fr', NL: 'www.hotfrog.nl', ES: 'www.hotfrog.es', IT: 'www.hotfrog.it', BR: 'www.hotfrog.com.br', MX: 'www.hotfrog.com.mx' };
+async function hotfrog(category: string, place: string, country: string, limit: number, progress: Progress) {
+  const host = HOTFROG[country];
+  if (!host) return [];
+  const slug = (x: string) => x.toLowerCase().replace(/,.*$/, '').trim().replace(/[^a-z0-9]+/g, '-');
+  const out: Candidate[] = [];
+  for (let page = 1; page <= 15 && out.length < limit; page++) {
+    const $ = cheerio.load(await pageHtml(`https://${host}/search/${slug(place)}/${slug(category)}${page > 1 ? `/${page}` : ''}`, '.entity-data, body', 900));
+    const cards = $('.entity-data');
+    if (!cards.length) break;
+    let fresh = 0;
+    cards.each((_, el) => {
+      const c = $(el);
+      const a = c.find('.entity-title a').first();
+      const name = a.text().trim();
+      const href = a.attr('href') ?? '';
+      if (!name || out.some((x) => x.source_ref === href)) return;
+      fresh++;
+      out.push(base({ source: 'hotfrog', source_ref: href, name, category: c.find('.entity-categories span').first().text().trim() || category,
+        address: c.find('.entity-address').text().trim().replace(/\s+/g, ' '), country }));
+    });
+    progress(`Hotfrog: ${out.length} businesses`, out.length);
+    if (!fresh) break;
+    await sleep(1200);
+  }
+  return out;
+}
+
 /** Runs the directories that cover this country. Errors are collected, not thrown, unless every directory failed. */
 export async function searchDirectories(category: string, place: string, country: string, limit: number, progress: Progress) {
-  const runs: [string, () => Promise<Candidate[]>][] = [['Yelp', () => yelp(category, place, limit, progress)]];
+  const runs: [string, () => Promise<Candidate[]>][] = [['Hotfrog', () => hotfrog(category, place, country, limit, progress)], ['Yelp', () => yelp(category, place, limit, progress)]];
   if (country === 'US' || !country) runs.push(['Yellow Pages', () => yellowPages(category, place, limit, progress)]);
   if (country === 'GB') runs.push(['Yell', () => yell(category, place, limit, progress)]);
   const out: Candidate[] = [];
