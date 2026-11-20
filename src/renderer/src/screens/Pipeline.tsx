@@ -94,7 +94,7 @@ export function DealEditor({ deal, stages, onClose, onSaved }: { deal: Partial<D
           </div>
           {d.stage === 'lost' && <label className="field"><span>Why it was lost</span><input className="input" value={d.lost_reason ?? ''} onChange={(e) => put('lost_reason', e.target.value)} placeholder="Price, timing, went with someone else…" /></label>}
           <label className="field"><span>Notes</span><textarea className="input" rows={3} value={d.notes ?? ''} onChange={(e) => put('notes', e.target.value)} /></label>
-          {fields.length > 0 && <div className="grid2">{fields.map((f) => <CustomInput key={f.id} field={f} value={custom[f.key]} onChange={(v) => setD((o) => ({ ...o, custom: JSON.stringify({ ...custom, [f.key]: v }) }))} />)}</div>}
+          {fields.filter((f) => f.type !== 'formula').length > 0 && <div className="grid2">{fields.filter((f) => f.type !== 'formula').map((f) => <CustomInput key={f.id} field={f} value={custom[f.key]} onChange={(v) => setD((o) => ({ ...o, custom: JSON.stringify({ ...custom, [f.key]: v }) }))} />)}</div>}
           {hist.length > 0 && <><h3 className="sub-h">History</h3><div className="timeline small">{hist.map((h) => <div key={h.id}><span>{h.at.slice(0, 16).replace('T', ' ')}</span><span>{h.field}: {h.before ?? '—'} → {h.after ?? '—'}</span></div>)}</div></>}
         </div>
         <footer className="row" style={{ justifyContent: 'space-between' }}>

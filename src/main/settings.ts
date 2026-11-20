@@ -59,6 +59,9 @@ export type Settings = {
   mailboxes: Mailbox[];
   /** Email-finding order (QF-031). */
   waterfall: { order: ('website' | 'hunter')[]; stopOnFirst: boolean };
+  /** Client workspaces (QF-056): new leads are filed under the current client. */
+  clients: string[];
+  currentClient: string;
   onboarded: boolean;
   workspace: 'both' | 'business' | 'career';
 };
@@ -96,6 +99,8 @@ export const defaults: Settings = {
   sheets: { spreadsheetId: '', refresh: '', user: '' },
   mailboxes: [],
   waterfall: { order: ['website', 'hunter'], stopOnFirst: true },
+  clients: [],
+  currentClient: '',
   onboarded: false,
   workspace: 'both',
 };

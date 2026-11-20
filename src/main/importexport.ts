@@ -1,6 +1,7 @@
 // Import leads from CSV, Excel, JSON or PDF, and export them to CSV, Excel or JSON.
 import { overtureToCandidates } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
+import { computed } from './crm';
 import ExcelJS from 'exceljs';
 import Papa from 'papaparse';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -159,7 +160,7 @@ export async function exportLeads(all: db.Lead[], path: string, opts: { fields?:
     o['Other emails'] = JSON.parse(r.emails || '[]').filter((e: string) => e !== r.email).join(', ');
     o['Data credit'] = sourceInfo(r.source)?.attribution ?? '';
     o.Grade = (r as any).grade ?? '';
-    for (const [k, v] of Object.entries(JSON.parse((r as any).custom || '{}'))) o[labels[k] ?? k] = v;
+    for (const [k, v] of Object.entries({ ...JSON.parse((r as any).custom || '{}'), ...computed('lead', r as any) })) o[labels[k] ?? k] = v;
     if (opts.fields?.length) for (const k of Object.keys(o)) if (!opts.fields.includes(k) && !Object.values(labels).includes(k)) delete o[k];
     return o;
   });

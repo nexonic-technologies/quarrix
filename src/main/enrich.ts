@@ -1,5 +1,5 @@
 // Visit a business's own website (home + contact/about pages) for its published emails, phones, social links and site facts.
-import { actionLinks, detectTech } from './intel';
+import { actionLinks, detectTech, schemaDetails } from './intel';
 import * as cheerio from 'cheerio';
 import { promises as dns } from 'node:dns';
 import { domainOf, fetchText, isPlatformHost, normalizePhone } from './util';
@@ -55,7 +55,7 @@ export type SiteFacts = {
   platform: string; copyrightYear: number; booking: boolean; form: boolean; analytics: boolean; schema: boolean; noSolicit: boolean;
 };
 
-export type EnrichResult = { ok: true; emailSources: Record<string, string>; tech: ReturnType<typeof detectTech>; links: Record<string, string>; people: { name: string; role: string }[]; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string>; contact: { name: string; role: string }; text: string } | { ok: false; error: string };
+export type EnrichResult = { ok: true; emailSources: Record<string, string>; tech: ReturnType<typeof detectTech>; links: Record<string, string>; people: { name: string; role: string }[]; extra: Record<string, unknown>; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string>; contact: { name: string; role: string }; text: string } | { ok: false; error: string };
 
 export async function enrichWebsite(website: string, country: string, pages = 3): Promise<EnrichResult> {
   let start = /^https?:\/\//i.test(website) ? website : `https://${website}`;
@@ -101,12 +101,14 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   }
 
   const schema: Record<string, string> = {};
+  const nodes: any[] = [];
   const people: { name: string; role: string }[] = [];
   $('script[type="application/ld+json"]').each((_, s) => {
     try {
       const j = JSON.parse($(s).text());
       for (const node of [j, ...(Array.isArray(j) ? j : []), ...(j['@graph'] ?? [])]) {
         if (!node || typeof node !== 'object') continue;
+        nodes.push(node);
         if (node.telephone && !schema.phone) schema.phone = String(node.telephone);
         if (node.email && !schema.email) schema.email = String(node.email).replace(/^mailto:/, '');
         for (const f of [node.founder, node.employee, node.author].flat().filter(Boolean)) {
@@ -145,7 +147,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
     if (mine) uniqueEmails = [mine, ...uniqueEmails.filter((e) => e !== mine)];
   }
   const text = htmls.map((h) => cheerio.load(h)('body').text()).join('\n').replace(/\s+/g, ' ').slice(0, 6000);
-  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema, contact, text, emailSources, tech: detectTech(all), links: actionLinks(anchors), people };
+  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema, contact, text, emailSources, tech: detectTech(all), links: actionLinks(anchors), people, extra: schemaDetails(nodes, home.text) };
 }
 
 const ROLES = 'Founder|Co-Founder|Cofounder|CEO|Chief Executive Officer|Owner|Co-Owner|Managing Director|Managing Partner|Director|Principal|President|Proprietor|Head Doctor|Lead Dentist|Practice Owner|Partner';

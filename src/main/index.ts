@@ -4,7 +4,7 @@ import { lockAll, lockContents } from './guard';
 import * as budget from './budget';
 import { checkSources } from './health';
 import { SOURCES } from './sources/catalog';
-import { EMAIL_STATUS, listingUrl, PRESETS } from './intel';
+import { EMAIL_STATUS, listingUrl, PRESETS, reviewTrend } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
 import * as oauth from './oauth';
 import * as crm from './crm';
@@ -141,6 +141,12 @@ function registerIpc() {
   handle('outreach:attention', () => db.attention());
   handle('outreach:metrics', () => { const m = db.outreachMetrics() as any; return { ...m, ab: abResult(m.variants.A, m.variants.B), mailboxes: mb.stats() }; });
   handle('mailboxes:stats', () => mb.stats());
+  handle('fields:computed', (entity: string, id: number) => { const rec = entity === 'deal' ? db.raw().prepare('SELECT * FROM deals WHERE id = ?').get(Number(id)) : db.getLead(Number(id)); return rec ? crm.computed(entity === 'deal' ? 'deal' : 'lead', rec as any) : {}; });
+  handle('companies:list', (q?: string) => crm.listCompanies(String(q ?? '')));
+  handle('companies:locations', (id: number) => crm.companyLocations(Number(id)));
+  handle('companies:rename', (id: number, name: string) => crm.renameCompany(Number(id), String(name)));
+  handle('clients:set', (current: string, list?: string[]) => { const s = load(); save({ currentClient: String(current ?? ''), clients: Array.isArray(list) ? [...new Set(list.map(String).filter(Boolean))].slice(0, 100) : s.clients }); send('leads'); return load().currentClient; });
+  handle('leads:trend', (id: number) => reviewTrend((db.listSnapshots(Number(id)) as any[]).map((x) => ({ at: x.at, ...JSON.parse(x.data) }))));
   handle('mailboxes:authorize', (id: string, on: boolean) => mb.authorize_(String(id), !!on));
   handle('mailboxes:connect', (id: string, p: string) => { if (p !== 'google' && p !== 'microsoft') throw new Error('Unknown provider.'); return mb.connectBox(String(id), p); });
   handle('mail:placement', async (address: string, boxId: string) => {
@@ -231,7 +237,7 @@ function registerIpc() {
   handle('sources:usage', () => db.usageToday());
   handle('search:list', () => db.listSearches());
 
-  handle('leads:query', (q) => db.queryLeads(q));
+  handle('leads:query', (q) => db.queryLeads({ ...(load().currentClient ? { client: load().currentClient } : {}), ...(q ?? {}) }));
   handle('leads:get', (id: number) => ({ lead: db.getLead(id), messages: db.messagesFor(id), events: db.eventsFor(id) }));
   handle('leads:update', (id: number, patch) => { db.updateLead(id, patch); if (patch.status === 'do_not_contact') { const l = db.getLead(id); if (l?.email) db.suppress(l.email, 'marked do not contact'); db.cancelPending(id, 'Marked do not contact'); } return db.getLead(id); });
   handle('leads:delete', (ids: number[]) => db.deleteLeads(ids));

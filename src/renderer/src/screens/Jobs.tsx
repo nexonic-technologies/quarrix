@@ -13,6 +13,7 @@ type Job = { firstSeen?: string; isNew?: boolean; repost?: boolean; ageDays?: nu
 
 const OPT = {
   extra: [['loose', 'Show loosely matching titles too'], ['onlyNew', 'Only new since last search'], ['hideReposts', 'Hide reposted jobs'], ['hideRecruiters', 'Hide recruiters and agencies'], ['fresh', 'Posted in the last 30 days']],
+  radius: [['', 'Any distance'], ['10', 'Within 10 km'], ['25', 'Within 25 km'], ['50', 'Within 50 km'], ['100', 'Within 100 km']],
   salary: [['', 'Any salary'], ['30000', '30,000+ a year'], ['50000', '50,000+ a year'], ['75000', '75,000+ a year'], ['100000', '100,000+ a year'], ['150000', '150,000+ a year']],
   posted: [['', 'Any time'], ['1', 'Past 24 hours'], ['7', 'Past week'], ['30', 'Past month']],
   workplace: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']],
@@ -72,6 +73,7 @@ export function Jobs() {
     return off;
   }, []);
   const [salary, setSalary] = useState<string[]>(['']);
+  const [radius, setRadius] = useState<string[]>(['']);
   const [panel, setPanel] = useState<'' | 'employers' | 'alerts'>('');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
@@ -94,7 +96,7 @@ export function Jobs() {
   }, []);
   useEffect(() => { setCity(''); }, [country]);
 
-  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources, strict: !extra.includes('loose'), onlyNew: extra.includes('onlyNew'), hideReposts: extra.includes('hideReposts'), hideRecruiters: extra.includes('hideRecruiters') || undefined, maxAgeDays: extra.includes('fresh') ? 30 : undefined, salaryMin: Number(salary[0]) || undefined });
+  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources, strict: !extra.includes('loose'), onlyNew: extra.includes('onlyNew'), hideReposts: extra.includes('hideReposts'), hideRecruiters: extra.includes('hideRecruiters') || undefined, maxAgeDays: extra.includes('fresh') ? 30 : undefined, salaryMin: Number(salary[0]) || undefined, radiusKm: city ? Number(radius[0]) || undefined : undefined });
   const rank = async (list: Job[], quiet = false) => {
     if (!cv) { if (!quiet) toast.push('Upload your CV first, so jobs can be matched to you.', true); return list; }
     setRanking(true);
@@ -175,6 +177,7 @@ export function Jobs() {
         <Pill label="Employment type" options={OPT.type} value={type} multi onChange={setType} />
         <Pill label="Job boards" options={OPT.sources} value={sources} multi onChange={setSources} />
         <Pill label="Salary" options={OPT.salary} value={salary} onChange={setSalary} />
+        {city && <Pill label="Distance" options={OPT.radius} value={radius} onChange={setRadius} />}
         <Pill label="More filters" options={OPT.extra} value={extra} multi onChange={setExtra} />
         <button className="pill-btn" onClick={() => setPanel(panel === 'employers' ? '' : 'employers')}>Employers</button>
         <button className="pill-btn" onClick={() => setPanel(panel === 'alerts' ? '' : 'alerts')}>Alerts</button>

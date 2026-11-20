@@ -19,6 +19,8 @@ export type Candidate = {
   chain?: boolean;
   summary?: string;
   contact_name?: string;
+  /** Hours, open/closed status, price level, amenities, payments (QF-020 to QF-022). */
+  details?: Record<string, unknown>;
 };
 
 export type Progress = (msg: string, found?: number) => void;

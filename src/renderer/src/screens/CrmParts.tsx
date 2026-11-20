@@ -1,6 +1,6 @@
 // CRM pieces used on the Leads screen and in Settings: lead deals/tasks/fields card, saved views (QF-051),
 // duplicate review (QF-053), pipeline stages, custom fields (QF-050) and encrypted backups (QF-119).
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { call, json, type Lead } from '../api';
 import { toast } from '../App';
 import { Plus, Trash2, X, Bookmark, Copy, Undo2, Download, Upload, Briefcase } from 'lucide-react';
@@ -40,7 +40,7 @@ export function LeadCrmCard({ lead, onChange }: { lead: Lead; onChange: () => vo
         </div>
       </div>
       <label className="switch" style={{ marginTop: 8 }}><input type="checkbox" checked={!!(lead as any).wa_consent} onChange={async (e) => { await call('leads:update', lead.id, { wa_consent: e.target.checked ? 1 : 0 }); onChange(); }} /> They agreed to WhatsApp messages (needed for WhatsApp Cloud API sends)</label>
-      {fields.length > 0 && <div className="grid2" style={{ marginTop: 8 }}>{fields.map((f) => (
+      {fields.filter((f) => f.type !== "formula").length > 0 && <div className="grid2" style={{ marginTop: 8 }}>{fields.filter((f) => f.type !== "formula").map((f) => (
         <CustomInput key={f.id} field={f} value={custom[f.key]} onChange={async (v) => { try { await call('fields:set', 'lead', lead.id, f.key, v); onChange(); } catch (e: any) { toast.push(e.message, true); } }} />
       ))}</div>}
       {edit && <DealEditor deal={edit} stages={stages} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); onChange(); }} />}
@@ -116,13 +116,15 @@ export function DataSettings({ s, set }: { s: any; set: (p: string, v: unknown) 
       <button className="btn small" onClick={() => { const label = prompt('Stage name'); if (!label) return; const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20); const at = Math.max(1, stages.length - 2); setStages([...stages.slice(0, at), { key, label, probability: 50 }, ...stages.slice(at)]); }}><Plus size={13} /> Add a stage</button>
 
       <h2 style={{ marginTop: 14 }}>Custom fields</h2>
+      <p className="muted small" style={{ margin: 0 }}>Formula fields calculate from other fields: numbers, text in quotes, + - * /, comparisons, and if(), round(), min(), max(), concat(), contains(), len(), days_since(). Example: <code>round(reviews / days_since(created_at) * 30, 1)</code></p>
       {fields.map((f) => <div key={f.id} className="contact-row"><span><b>{f.label}</b> · {f.type}{f.type === 'select' ? ` (${json<string[]>(f.options, []).join(', ')})` : ''}</span><span className="muted small">on {f.entity}s</span><button className="btn small ghost" aria-label={`Delete ${f.label}`} onClick={async () => { if (!confirm(`Delete the field "${f.label}"? Saved values stay in the data but are hidden.`)) return; await call('fields:delete', f.id); void load(); }}><Trash2 size={12} /></button></div>)}
       <div className="row" style={{ gap: 6 }}>
         <select className="input" value={nf.entity} onChange={(e) => setNf({ ...nf, entity: e.target.value })} aria-label="Field on"><option value="lead">Leads</option><option value="deal">Deals</option></select>
         <input className="input" placeholder="Field name" value={nf.label} onChange={(e) => setNf({ ...nf, label: e.target.value })} />
-        <select className="input" value={nf.type} onChange={(e) => setNf({ ...nf, type: e.target.value })} aria-label="Type">{['text', 'number', 'date', 'select', 'url'].map((t) => <option key={t}>{t}</option>)}</select>
+        <select className="input" value={nf.type} onChange={(e) => setNf({ ...nf, type: e.target.value })} aria-label="Type">{['text', 'number', 'date', 'select', 'url', 'formula'].map((t) => <option key={t}>{t}</option>)}</select>
         {nf.type === 'select' && <input className="input" placeholder="Choices, comma separated" value={nf.options} onChange={(e) => setNf({ ...nf, options: e.target.value })} />}
-        <button className="btn small" disabled={!nf.label} onClick={async () => { try { await call('fields:save', { ...nf, options: nf.options.split(',') }); setNf({ ...nf, label: '', options: '' }); void load(); } catch (e: any) { toast.push(e.message, true); } }}><Plus size={13} /> Add</button>
+        {nf.type === 'formula' && <input className="input" placeholder='e.g. if(rating < 4, "Needs reviews", "OK")' value={nf.options} onChange={(e) => setNf({ ...nf, options: e.target.value })} />}
+        <button className="btn small" disabled={!nf.label} onClick={async () => { try { await call('fields:save', { ...nf, options: nf.type === 'formula' ? [nf.options] : nf.options.split(',') }); setNf({ ...nf, label: '', options: '' }); void load(); } catch (e: any) { toast.push(e.message, true); } }}><Plus size={13} /> Add</button>
       </div>
 
       <h2 style={{ marginTop: 14 }}>Backups</h2>
@@ -138,5 +140,49 @@ export function DataSettings({ s, set }: { s: any; set: (p: string, v: unknown) 
         }}><Upload size={14} /> Restore…</button>
       </div>
     </section>
+  );
+}
+
+/** Companies and their locations (QF-018, QF-052). */
+export function Companies({ onOpen }: { onOpen: (id: number) => void }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState<number | null>(null);
+  const [locs, setLocs] = useState<any[]>([]);
+  useEffect(() => { const t = setTimeout(() => call<any[]>('companies:list', q).then((x) => setRows(x ?? [])), 200); return () => clearTimeout(t); }, [q]);
+  return (
+    <div className="panel panel-pad">
+      <div className="row" style={{ gap: 6, marginBottom: 8 }}><input className="input" placeholder="Find a company" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">Locations that share one website are grouped under one company.</span></div>
+      <table className="leads"><thead><tr><th>Company</th><th>Locations</th><th>Cities</th><th>Rating</th><th>Contacts</th><th>Open deals</th></tr></thead><tbody>
+        {rows.map((c) => (
+          <Fragment key={c.id}>
+            <tr className="clickable" onClick={async () => { if (open === c.id) { setOpen(null); return; } setOpen(c.id); setLocs((await call<any[]>('companies:locations', c.id)) ?? []); }}>
+              <td><b>{c.name}</b><span className="sub">{c.domain}</span></td><td>{c.locations}</td><td className="clip small">{c.cities}</td>
+              <td>{c.rating ?? '—'}{c.reviews ? <span className="muted"> ({c.reviews})</span> : null}</td><td>{c.contacts}</td><td>{c.pipeline ? Math.round(c.pipeline).toLocaleString() : '—'}</td>
+            </tr>
+            {open === c.id && <tr><td colSpan={6}><div className="contacts">{locs.map((l) => <div key={l.id} className="contact-row"><button className="link" onClick={() => onOpen(l.id)}>{l.name}</button><span className="muted small">{[l.address, l.city].filter(Boolean).join(', ')}{l.phone ? ` · ${l.phone}` : ''}</span><span className="small">{l.grade || ''}</span></div>)}</div></td></tr>}
+          </Fragment>
+        ))}
+        {!rows.length && <tr><td colSpan={6} className="muted">No companies yet. They appear once leads have a website.</td></tr>}
+      </tbody></table>
+    </div>
+  );
+}
+
+/** Client workspaces (QF-056): new leads go to the chosen client; Leads, exports and the API show that client's leads. */
+export function ClientPicker({ onChange }: { onChange: () => void }) {
+  const [s, setS] = useState<any>(null);
+  useEffect(() => { call('settings:get').then(setS); }, []);
+  if (!s) return null;
+  const list: string[] = s.clients ?? [];
+  const pick = async (v: string) => {
+    if (v === '__new') { const name = prompt('Client name'); if (!name?.trim()) return; await call('clients:set', name.trim(), [...list, name.trim()]); }
+    else await call('clients:set', v);
+    setS(await call('settings:get')); onChange();
+  };
+  return (
+    <select className="select" value={s.currentClient ?? ''} onChange={(e) => pick(e.target.value)} aria-label="Client workspace" title="New leads from searches are filed under this client">
+      <option value="">All clients</option>{list.map((c) => <option key={c} value={c}>Client: {c}</option>)}<option value="__new">+ New client…</option>
+    </select>
   );
 }

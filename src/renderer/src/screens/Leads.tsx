@@ -1,6 +1,6 @@
 import { LeadMap } from './FindTools';
 import { EvidenceCard, EMAIL_TEXT } from './Evidence';
-import { Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
+import { ClientPicker, Companies, Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
 import { ExportWizard } from './ExportWizard';
 import { useCallback, useEffect, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
@@ -23,7 +23,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [page, setPage] = useState(0);
   const [facets, setFacets] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
   const [sel, setSel] = useState<Set<number>>(new Set());
-  const [view, setView] = useState<'list' | 'map'>('list');
+  const [view, setView] = useState<'list' | 'map' | 'companies'>('list');
   const [grade, setGrade] = useState('');
   const [dupes, setDupes] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -101,7 +101,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <option value="">Any grade</option><option value="A">A: strong match</option><option value="B">B: good match</option><option value="C">C: check first</option><option value="D">D: poor match</option>
         </select>
         <input className="select" style={{ width: 130 }} placeholder="Contact role" value={role} onChange={(e) => { setRole(e.target.value); setPage(0); }} aria-label="Contact role, for example owner" />
-        <div className="seg" role="group" aria-label="View"><button className={`btn small ${view === 'list' ? 'primary' : 'ghost'}`} aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className={`btn small ${view === 'map' ? 'primary' : 'ghost'}`} aria-pressed={view === 'map'} onClick={() => setView('map')}>Map</button></div>
+        <div className="seg" role="group" aria-label="View"><button className={`btn small ${view === 'list' ? 'primary' : 'ghost'}`} aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className={`btn small ${view === 'map' ? 'primary' : 'ghost'}`} aria-pressed={view === 'map'} onClick={() => setView('map')}>Map</button><button className={`btn small ${view === 'companies' ? 'primary' : 'ghost'}`} aria-pressed={view === 'companies'} onClick={() => setView('companies')}>Companies</button></div>
+        <ClientPicker onChange={() => { setPage(0); void load(); }} />
         <select className="select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
           <option value="fit">Best fit first</option><option value="newest">Newest first</option><option value="name">Name</option><option value="score">Website needs most help</option><option value="rating">Best rated</option>
         </select>
@@ -112,6 +113,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       {dupes && <Duplicates onClose={() => { setDupes(false); void load(); }} />}
       {rows.length === 0 ? (
         <div className="panel empty"><EmptyArt /><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>
+      ) : view === 'companies' ? (
+        <Companies onOpen={setOpen} />
       ) : view === 'map' ? (
         <LeadMap leads={rows} onOpen={setOpen} />
       ) : (

@@ -147,3 +147,60 @@ export function signalConfidence(type: string, detail = '') {
   if (type === 'new_listing') return 'medium';
   return 'medium';
 }
+
+// ── Business details (QF-020, QF-021, QF-022, QF-026, QF-028) ──
+const AMENITY_TAGS: Record<string, string> = { wheelchair: 'Wheelchair access', internet_access: 'Wi-Fi', outdoor_seating: 'Outdoor seating', takeaway: 'Takeaway', delivery: 'Delivery', drive_through: 'Drive-through', parking: 'Parking', air_conditioning: 'Air conditioning', reservation: 'Reservations', smoking: 'Smoking area', changing_table: 'Baby changing', toilets: 'Toilets', 'diet:vegetarian': 'Vegetarian options', 'diet:vegan': 'Vegan options', 'diet:halal': 'Halal' };
+/** OpenStreetMap tags → hours, status, amenities and payment methods, keeping the source. Pure. */
+export function osmDetails(t: Record<string, string>) {
+  const yes = (v?: string) => !!v && !/^(no|none)$/i.test(v);
+  const amenities = Object.entries(AMENITY_TAGS).filter(([k]) => yes(t[k]) && !(k === 'internet_access' && t[k] === 'no')).map(([, v]) => v);
+  const payments = Object.keys(t).filter((k) => k.startsWith('payment:') && t[k] === 'yes').map((k) => k.slice(8).replace(/_/g, ' '));
+  const status = t['disused:shop'] || t['disused:amenity'] || t['was:shop'] ? 'closed_permanently' : /^(no|closed)$/i.test(t.opening_hours ?? '') ? 'closed_temporarily' : t.opening_hours ? 'operational' : '';
+  const out: Record<string, unknown> = { source: 'OpenStreetMap' };
+  if (t.opening_hours) out.hours = t.opening_hours;
+  if (status) out.status = status;
+  if (amenities.length) out.amenities = amenities;
+  if (payments.length) out.payments = payments;
+  if (t.check_date || t['check_date:opening_hours']) out.checked = t['check_date:opening_hours'] ?? t.check_date;
+  return out;
+}
+
+/** schema.org data on a business's own website → hours, price, amenities, payments, image and company facts. Pure. */
+export function schemaDetails(nodes: any[], html: string) {
+  const out: Record<string, unknown> = {};
+  const hours: string[] = [];
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue;
+    for (const h of [n.openingHours].flat().filter(Boolean)) hours.push(String(h));
+    for (const sp of [n.openingHoursSpecification].flat().filter(Boolean)) if (sp?.dayOfWeek) hours.push(`${[sp.dayOfWeek].flat().map((d: string) => String(d).split('/').pop()?.slice(0, 2)).join(',')} ${sp.opens ?? ''}-${sp.closes ?? ''}`.trim());
+    if (n.priceRange && !out.price) out.price = String(n.priceRange).slice(0, 20);
+    const am = [n.amenityFeature].flat().filter(Boolean).map((a: any) => (typeof a === 'string' ? a : a?.value !== false && a?.name)).filter(Boolean);
+    if (am.length) out.amenities = am.slice(0, 15);
+    if (n.paymentAccepted && !out.payments) out.payments = String(n.paymentAccepted).split(/,\s*/).slice(0, 10);
+    if (n.foundingDate && !out.founded) out.founded = String(n.foundingDate).slice(0, 10);
+    const emp = n.numberOfEmployees?.value ?? n.numberOfEmployees?.maxValue ?? (typeof n.numberOfEmployees === 'number' ? n.numberOfEmployees : null);
+    if (emp && !out.employees) out.employees = Number(emp);
+    const img = [n.image, n.logo].flat().map((x: any) => (typeof x === 'string' ? x : x?.url)).find((x: string) => /^https:\/\//.test(x ?? ''));
+    if (img && !out.image) out.image = img;
+  }
+  if (hours.length) out.hours = [...new Set(hours)].join('; ').slice(0, 300);
+  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["'](https:[^"']+)["']/i)?.[1];
+  if (og && !out.image) out.image = og;
+  const est = html.replace(/<[^>]+>/g, ' ').match(/\b(?:established|founded|since|serving[^.]{0,30}since)\s+(?:in\s+)?((?:19|20)\d{2})\b/i)?.[1];
+  if (est && !out.founded) out.founded = est;
+  if (Object.keys(out).length) out.source = 'their website (schema.org)';
+  return out;
+}
+
+/** Ratings over time (QF-025): change per month and the latest direction, from dated snapshots. Pure. */
+export function reviewTrend(snaps: { at: string; rating: number | null; reviews: number | null }[]) {
+  const s = snaps.filter((x) => x.reviews != null).sort((a, b) => a.at.localeCompare(b.at));
+  if (s.length < 2) return null;
+  const first = s[0], last = s[s.length - 1];
+  const months = Math.max(0.5, (Date.parse(last.at) - Date.parse(first.at)) / (30 * 864e5));
+  return {
+    perMonth: Math.round((((last.reviews ?? 0) - (first.reviews ?? 0)) / months) * 10) / 10,
+    ratingChange: last.rating != null && first.rating != null ? Math.round((last.rating - first.rating) * 100) / 100 : null,
+    from: first.at.slice(0, 10), to: last.at.slice(0, 10), points: s.length,
+  };
+}

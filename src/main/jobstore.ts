@@ -5,7 +5,8 @@ import { extname } from 'node:path';
 import Papa from 'papaparse';
 import * as db from './db';
 import { detectAts, employerJobs, isRecruiter, parseSalary, placeScore, postingState, titleScore, type Employer } from './ats';
-import { searchJobs, type Job, type JobQuery } from './jobsearch';
+import { cityPoint, searchJobs, type Job, type JobQuery } from './jobsearch';
+import { distanceKm } from './geo';
 import { load } from './settings';
 import { csvSafe, fetchText, UA } from './util';
 
@@ -78,7 +79,7 @@ function logSearch(q: Record<string, any>, results: number, errors: string[], ms
 export const recentSearches = () => (raw().prepare('SELECT * FROM job_search_log ORDER BY id DESC LIMIT 20').all() as any[]).map((r) => ({ ...r, query: JSON.parse(r.query), errors: JSON.parse(r.errors) }));
 export const clearSearches = () => raw().prepare('DELETE FROM job_search_log').run();
 
-export type JobFilters = { strict?: boolean; onlyNew?: boolean; salaryMin?: number; hideRecruiters?: boolean; hideCompanies?: string[]; preferCompanies?: string[]; hideReposts?: boolean; maxAgeDays?: number };
+export type JobFilters = { strict?: boolean; radiusKm?: number; onlyNew?: boolean; salaryMin?: number; hideRecruiters?: boolean; hideCompanies?: string[]; preferCompanies?: string[]; hideReposts?: boolean; maxAgeDays?: number };
 /** Search every board plus followed employers and HN, then mark new, reposted and old postings, and apply the extra filters. */
 export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source: string; jobs: Annotated[]; error: string; ms: number }) => void = () => undefined) {
   const started = Date.now();
@@ -87,8 +88,16 @@ export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source:
   const s = load();
   const hide = [...(q.hideCompanies ?? []), ...(s.jobs?.hideCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
   const prefer = [...(q.preferCompanies ?? []), ...(s.jobs?.preferCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
+  // Distance filter (QF-110): job locations are free text, so the first part that names a known city is used.
+  const centre = q.radiusKm && q.city ? cityPoint(q.city, q.country) : null;
+  const near = (j: Job) => {
+    if (!centre || j.workplace === 'remote' || /remote|anywhere|worldwide/i.test(j.location)) return true;
+    const p = j.location.split(/[,·|/-]/).map((x) => x.trim()).filter(Boolean).map((x) => cityPoint(x, q.country)).find(Boolean);
+    return !p || distanceKm(centre, p) <= q.radiusKm!;
+  };
   const list = annotate(jobs).filter((j) => {
     if (!strictOk(j)) return false;
+    if (!near(j)) return false;
     if (q.onlyNew && !j.isNew) return false;
     if (q.hideReposts && j.repost) return false;
     if ((q.hideRecruiters ?? s.jobs?.hideRecruiters) && j.recruiter) return false;

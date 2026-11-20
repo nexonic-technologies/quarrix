@@ -2,6 +2,7 @@
 import { categoryByName } from '../../shared/categories';
 import { BOT_UA, fetchText, sleep } from '../util';
 import type { Candidate } from './types';
+import { osmDetails } from '../intel';
 
 export type Place = { label: string; city: string; region: string; country: string; lat: number; lon: number; area?: number; bbox?: number[] };
 const placeCache = new Map<string, Place | null>();
@@ -60,6 +61,7 @@ export async function searchOsm(category: string, place: string, limit: number, 
       website: t.website ?? t['contact:website'] ?? t.url ?? '',
       socials: Object.fromEntries(Object.entries({ facebook: t['contact:facebook'], instagram: t['contact:instagram'], linkedin: t['contact:linkedin'] }).filter(([, v]) => v)) as Record<string, string>,
       chain: !!(t.brand || t['brand:wikidata']),
+      details: osmDetails(t),
     });
     if (out.length >= limit) break;
   }

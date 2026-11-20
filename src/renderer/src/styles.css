@@ -863,3 +863,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .toy-over { position: absolute; inset: 22px; border-radius: 50%; background: rgba(255,255,255,.92); display: grid; place-content: center; justify-items: center; gap: 2px; z-index: 4; box-shadow: 0 10px 30px -10px rgba(76,29,149,.5); }
 .toy-over b { font: 700 28px var(--display); color: var(--violet); }
 .toy-over span { font-size: 11px; color: var(--ink-2); }
+.biz-img { width: 100%; max-height: 140px; object-fit: cover; border-radius: 10px; margin-bottom: 8px; }

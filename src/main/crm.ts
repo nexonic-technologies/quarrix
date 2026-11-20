@@ -2,6 +2,7 @@
 // duplicate review with undo, and forecast numbers. Uses the same SQLite file as the leads.
 import * as db from './db';
 import { load } from './settings';
+import { compile, evaluate } from './formula';
 
 const raw = () => db.raw();
 const now = () => db.now();
@@ -27,7 +28,11 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS saved_views (id INTEGER PRIMARY KEY, screen TEXT NOT NULL, name TEXT NOT NULL, filters TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS merges (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kept_id INTEGER NOT NULL, removed TEXT NOT NULL, kept_before TEXT NOT NULL, moved TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0);
   `);
-  for (const [t, c] of [['leads', "custom TEXT NOT NULL DEFAULT '{}'"]]) { try { raw().exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* exists */ } }
+  for (const [t, c] of [['leads', "custom TEXT NOT NULL DEFAULT '{}'"], ['leads', 'company_id INTEGER']]) { try { raw().exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* exists */ } }
+  raw().exec("CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, domain TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)");
+  // Existing data: one company per website domain, with its locations linked (QF-018, QF-052).
+  const missing = raw().prepare("SELECT id FROM leads WHERE company_id IS NULL AND domain <> '' LIMIT 100000").all() as { id: number }[];
+  if (missing.length) raw().transaction(() => { for (const m of missing) linkCompany(m.id); })();
 }
 
 // ── Deals (QF-047, QF-048) ──
@@ -124,14 +129,15 @@ export function dueReminders() {
 }
 
 // ── Custom fields (QF-050) ──
-const TYPES = ['text', 'number', 'date', 'select', 'url'];
+const TYPES = ['text', 'number', 'date', 'select', 'url', 'formula'];
 export const listFields = (entity?: string) => raw().prepare(`SELECT * FROM custom_fields ${entity ? 'WHERE entity = ?' : ''} ORDER BY id`).all(...(entity ? [entity] : []));
 export function saveField(f: { id?: number; entity: string; label: string; type: string; options?: string[] }) {
   if (!['lead', 'deal'].includes(f.entity)) throw new Error('Fields can be added to leads or deals.');
   if (!TYPES.includes(f.type)) throw new Error('Unknown field type.');
   if (!f.label?.trim()) throw new Error('Name the field.');
   const key = f.label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'field';
-  const opts = JSON.stringify((f.options ?? []).map((o) => String(o).trim()).filter(Boolean));
+  if (f.type === 'formula') compile(String(f.options?.[0] ?? '')); // reject bad formulas when saving
+  const opts = JSON.stringify(f.type === 'formula' ? [String(f.options?.[0] ?? '')] : (f.options ?? []).map((o) => String(o).trim()).filter(Boolean));
   if (f.id) return raw().prepare('UPDATE custom_fields SET label = ?, type = ?, options = ? WHERE id = ?').run(f.label.trim(), f.type, opts, f.id);
   return raw().prepare('INSERT INTO custom_fields (entity, key, label, type, options) VALUES (?, ?, ?, ?, ?)').run(f.entity, key, f.label.trim(), f.type, opts);
 }
@@ -145,6 +151,11 @@ export function cleanValue(type: string, v: unknown, options: string[] = []) {
   if (type === 'url') { try { const u = new URL(/^https?:\/\//.test(s) ? s : `https://${s}`); return u.toString(); } catch { throw new Error(`"${s}" is not a link.`); } }
   if (type === 'select') { if (options.length && !options.includes(s)) throw new Error(`"${s}" is not one of the choices.`); return s; }
   return s.slice(0, 2000);
+}
+/** Values of formula fields for one record: its columns and custom values are the variables. */
+export function computed(entity: 'lead' | 'deal', rec: Record<string, any>) {
+  const vars = { ...rec, ...JSON.parse(rec.custom || '{}') };
+  return Object.fromEntries((listFields(entity) as any[]).filter((f) => f.type === 'formula').map((f) => [f.key, evaluate(JSON.parse(f.options)[0] ?? '', vars)]));
 }
 export function setCustom(entity: 'lead' | 'deal', id: number, key: string, value: unknown) {
   const f = raw().prepare('SELECT * FROM custom_fields WHERE entity = ? AND key = ?').get(entity, key) as any;
@@ -239,3 +250,21 @@ export function undoMerge(mergeId: number) {
 export const listMerges = () => raw().prepare('SELECT id, at, kept_id, removed, undone FROM merges ORDER BY id DESC LIMIT 50').all();
 /** Mark a suggested group as "not duplicates" so it is not suggested again. */
 export const keepApart = (ids: number[]) => raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved, undone) VALUES (?, 0, ?, \'{}\', \'{}\', 0)').run(now(), JSON.stringify({ keep_apart: [...ids].sort().join(',') }));
+
+// ── Companies and their locations (QF-018, QF-052) ──
+/** Link a lead (a location) to the company that owns its website domain, creating the company once. */
+export function linkCompany(leadId: number) {
+  const l = raw().prepare('SELECT id, name, domain, company_id FROM leads WHERE id = ?').get(leadId) as { id: number; name: string; domain: string; company_id: number | null } | undefined;
+  if (!l?.domain || l.company_id) return;
+  raw().prepare('INSERT OR IGNORE INTO companies (name, domain, created_at) VALUES (?, ?, ?)').run(l.name.split(/\s[-–|,]\s/)[0].slice(0, 120), l.domain, now());
+  const c = raw().prepare('SELECT id FROM companies WHERE domain = ?').get(l.domain) as { id: number };
+  raw().prepare('UPDATE leads SET company_id = ? WHERE id = ?').run(c.id, l.id);
+}
+export function listCompanies(q = '', limit = 200) {
+  return raw().prepare(`SELECT c.*, COUNT(l.id) locations, ROUND(AVG(l.rating), 1) rating, SUM(COALESCE(l.reviews, 0)) reviews, GROUP_CONCAT(DISTINCT l.city) cities,
+    (SELECT COUNT(*) FROM contacts ct JOIN leads x ON x.id = ct.lead_id WHERE x.company_id = c.id) contacts,
+    (SELECT COALESCE(SUM(d.value), 0) FROM deals d JOIN leads x ON x.id = d.lead_id WHERE x.company_id = c.id AND d.stage NOT IN ('lost')) pipeline
+    FROM companies c JOIN leads l ON l.company_id = c.id ${q ? 'WHERE c.name LIKE ? OR c.domain LIKE ?' : ''} GROUP BY c.id ORDER BY locations DESC, c.name LIMIT ?`).all(...(q ? [`%${q}%`, `%${q}%`] : []), limit);
+}
+export const companyLocations = (id: number) => raw().prepare('SELECT id, name, address, city, country, phone, rating, reviews, status, grade FROM leads WHERE company_id = ? ORDER BY city, name').all(id);
+export const renameCompany = (id: number, name: string) => raw().prepare('UPDATE companies SET name = ? WHERE id = ?').run(name.trim().slice(0, 120), id);

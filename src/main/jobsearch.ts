@@ -310,12 +310,25 @@ export async function matchJobs(settings: Settings, jobs: Job[], profile: string
 /** Cities and towns of a country, largest first, for the city picker.
  *  From the bundled GeoNames list (all places over 1,000 people), so it works offline and instantly. */
 let allCities: { name: string; country: string; population: number }[] | null = null;
+let byName: Map<string, any[]> | null = null;
 const cityCache = new Map<string, string[]>();
+/** Coordinates of a city by name (largest match, preferring the given country), from the offline GeoNames list (QF-110). */
+export function cityPoint(name: string, cc = ''): { lat: number; lon: number } | null {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  allCities ??= require('all-the-cities');
+  const n = name.toLowerCase().trim();
+  if (!n) return null;
+  if (!byName) { byName = new Map(); for (const c of allCities as any[]) { const k = c.name.toLowerCase(); const l = byName.get(k); l ? l.push(c) : byName.set(k, [c]); } }
+  const hits = byName.get(n) ?? [];
+  const best = hits.filter((c) => !cc || c.country === cc).sort((a, b) => b.population - a.population)[0] ?? hits.sort((a, b) => b.population - a.population)[0];
+  return best ? { lat: best.loc.coordinates[1], lon: best.loc.coordinates[0] } : null;
+}
+
 export async function citiesOf(cc: string): Promise<string[]> {
   if (cityCache.has(cc)) return cityCache.get(cc)!;
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  allCities ??= require('all-the-cities') as { name: string; country: string; population: number }[];
-  const list = [...new Set(allCities.filter((c) => c.country === cc).sort((a, b) => b.population - a.population).map((c) => c.name))].slice(0, 1500);
+  allCities ??= require('all-the-cities');
+  const list = [...new Set(allCities!.filter((c) => c.country === cc).sort((a, b) => b.population - a.population).map((c) => c.name))].slice(0, 1500);
   cityCache.set(cc, list);
   return list;
 }

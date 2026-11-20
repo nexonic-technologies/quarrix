@@ -11,6 +11,7 @@ import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm'
 import { findWebsite } from './sources/lookup';
 import { checkEmail, hunterDomain } from './verify';
 import { diffSnapshot, scoreLead } from './intel';
+import { linkCompany } from './crm';
 import { searchArcgis, searchNpi, searchSocrata, searchWikidata } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
 import { BudgetError, remaining } from './budget';
@@ -155,10 +156,11 @@ async function runSearches() {
           socials: JSON.stringify(socials), rating: c.rating ?? null, reviews: c.reviews ?? null, source: c.source, source_ref: c.source_ref, search_id: s.id,
           tags: c.chain ? 'chain' : '', summary: c.summary ?? '', contact_name: c.contact_name ?? '',
           provenance: JSON.stringify({ listing: { source: c.source, ref: c.source_ref, at: db.now(), search: s.id } }),
+          details: c.details ? JSON.stringify(c.details) : '{}', client: load().currentClient ?? '',
         });
         found++;
         if (created) {
-          added++; log(s.id, `+ ${c.name}`); rescore(id); db.emit(id, 'lead_created', `${c.name} from ${c.source}`);
+          added++; log(s.id, `+ ${c.name}`); linkCompany(id); rescore(id); db.emit(id, 'lead_created', `${c.name} from ${c.source}`);
           // A watch that has run before: anything new on the map is a new business, often just opened.
           if (watchRan) {
             const fresh = (c.reviews ?? 0) <= 5;
@@ -405,10 +407,11 @@ export async function enrichOne(lead: db.Lead) {
     address: lead.address || [r.schema.street, r.schema.city, r.schema.postcode].filter(Boolean).join(', '),
     city: lead.city || r.schema.city || '', region: lead.region || r.schema.region || '',
     audit: JSON.stringify({ facts: { ...r.facts, tech: r.tech }, psi, findings: sc.findings, phones: r.phones }),
-    details: JSON.stringify({ ...JSON.parse(lead.details || '{}'), links: r.links }),
+    details: JSON.stringify({ ...JSON.parse(lead.details || '{}'), links: r.links, ...(Object.keys(r.extra).length ? { site: r.extra } : {}) }),
     provenance: JSON.stringify(prov),
   });
   snapshotAndDiff(lead.id);
+  linkCompany(lead.id);
   rescore(lead.id);
   db.emit(lead.id, 'lead_enriched', r.website);
 }

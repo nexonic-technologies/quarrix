@@ -67,3 +67,12 @@ test('multi-word titles match with synonyms, loose matches drop out', async () =
   assert.equal(placeScore('Lahore, Pakistan', 'Gujranwala', 'Pakistan'), 1);
   assert.equal(placeScore('Anywhere', 'Gujranwala', 'Pakistan'), 0.5);
 });
+
+test('job distance uses offline city coordinates', async () => {
+  const { cityPoint } = await import('../src/main/jobsearch');
+  const { distanceKm } = await import('../src/main/geo');
+  const g = cityPoint('Gujranwala', 'PK')!, l = cityPoint('Lahore', 'PK')!, k = cityPoint('Karachi', 'PK')!;
+  assert.ok(distanceKm(g, l) > 55 && distanceKm(g, l) < 80, 'Gujranwala–Lahore about 65 km');
+  assert.ok(distanceKm(g, k) > 1000);
+  assert.equal(cityPoint('Nowhereville-xyz'), null);
+});

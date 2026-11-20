@@ -18,18 +18,25 @@ export function EvidenceCard({ lead: l, onChange }: { lead: Lead; onChange: () =
   const [d, setD] = useState<Intel | null>(null);
   const [add, setAdd] = useState({ name: '', role: '', email: '', phone: '' });
   const [busy, setBusy] = useState('');
-  const load = () => call<Intel>('leads:intel', l.id).then(setD).catch(() => setD(null));
+  const [trend, setTrend] = useState<any>(null);
+  const [calc, setCalc] = useState<Record<string, unknown>>({});
+  const load = () => { call<Intel>('leads:intel', l.id).then(setD).catch(() => setD(null)); call('leads:trend', l.id).then(setTrend).catch(() => setTrend(null)); call<Record<string, unknown>>('fields:computed', 'lead', l.id).then((x) => setCalc(x ?? {})).catch(() => undefined); };
   useEffect(() => { void load(); }, [l.id, l.enriched_at, l.email_status]); // eslint-disable-line react-hooks/exhaustive-deps
   const r = json<any>(l.reasons ?? '{}', {});
   const p = json<any>(l.provenance ?? '{}', {});
   const audit = json<any>(l.audit, {});
-  const links = json<any>(l.details ?? '{}', {}).links ?? {};
+  const det = json<any>(l.details ?? '{}', {});
+  const links = det.links ?? {};
+  const site = det.site ?? {};
+  const hours = det.hours ?? site.hours, amen: string[] = [...new Set([...(det.amenities ?? []), ...(site.amenities ?? [])])] as string[], pays: string[] = [...new Set([...(det.payments ?? []), ...(site.payments ?? [])])] as string[];
+  const STATUS: Record<string, string> = { operational: 'Open for business', closed_temporarily: 'Temporarily closed', closed_permanently: 'Permanently closed' };
   const tech: { name: string; kind: string; marker: string }[] = audit.facts?.tech ?? [];
   const conflicts = Object.entries<any[]>(p.conflicts ?? {});
   const run = async (what: string, fn: () => Promise<unknown>) => { setBusy(what); try { await fn(); onChange(); await load(); } catch (e: any) { toast.push(e.message, true); } setBusy(''); };
 
   return (
     <div className="panel panel-pad evidence">
+      {site.image && /^https:/.test(site.image) && <img className="biz-img" src={site.image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />}
       <div className="panel-title"><h2><ShieldCheck size={16} /> Evidence</h2>{l.grade && <span className={`grade g${l.grade}`}>{l.grade}</span>}</div>
       {r.summary && <p className="small" style={{ margin: '0 0 6px' }}><b>{r.summary}.</b> Match {l.relevance ?? '?'}/100 · evidence {l.evidence ?? '?'}/100</p>}
       {(r.why?.length > 0 || r.against?.length > 0) && <ul className="reasons">{(r.why ?? []).map((w: string) => <li key={w} className="plus">{w}</li>)}{(r.against ?? []).map((w: string) => <li key={w} className="minus">{w}</li>)}</ul>}
@@ -42,6 +49,14 @@ export function EvidenceCard({ lead: l, onChange }: { lead: Lead; onChange: () =
           {p.emails?.[l.email] && <div className="muted small">Seen on {/^https?:/.test(p.emails[l.email]) ? <button className="link" onClick={() => open(p.emails[l.email].split(' ')[0])}>{p.emails[l.email].replace(/^https?:\/\//, '').slice(0, 60)}</button> : p.emails[l.email]}</div>}
         </dd></>}
         {Object.keys(links).length > 0 && <><dt>Links</dt><dd>{Object.entries<string>(links).map(([k, v]) => <button key={k} className="link" onClick={() => open(v)}>{k} <ExternalLink size={11} /> </button>)}</dd></>}
+        {det.status && <><dt>Status</dt><dd style={det.status !== 'operational' ? { color: '#b91c1c' } : {}}>{STATUS[det.status] ?? det.status} <span className="muted small">({det.source})</span></dd></>}
+        {hours && <><dt>Hours</dt><dd className="small">{hours} <span className="muted">({det.hours ? det.source : site.source})</span></dd></>}
+        {(det.price || site.price) && <><dt>Price</dt><dd>{det.price || site.price}</dd></>}
+        {amen.length > 0 && <><dt>Amenities</dt><dd>{amen.map((a) => <span key={a} className="tag">{a}</span>)}</dd></>}
+        {pays.length > 0 && <><dt>Payments</dt><dd className="small">{pays.join(', ')}</dd></>}
+        {(site.founded || site.employees) && <><dt>Company</dt><dd className="small">{site.founded ? `Founded ${site.founded}` : ''}{site.founded && site.employees ? ' · ' : ''}{site.employees ? `${site.employees} employees` : ''} <span className="muted">(their website)</span></dd></>}
+        {trend && <><dt>Reviews</dt><dd className="small">{trend.perMonth >= 0 ? '+' : ''}{trend.perMonth} reviews a month{trend.ratingChange != null && trend.ratingChange !== 0 ? `, rating ${trend.ratingChange > 0 ? '+' : ''}${trend.ratingChange}` : ''} <span className="muted">({trend.from} to {trend.to}, {trend.points} checks)</span></dd></>}
+        {Object.keys(calc).length > 0 && <><dt>Computed</dt><dd className="small">{Object.entries(calc).map(([k, v]) => <div key={k}>{k}: <b>{String(v ?? '—')}</b></div>)}</dd></>}
         {tech.length > 0 && <><dt>Built with</dt><dd>{tech.map((t) => <span key={t.name} className="tag" title={`${t.kind}. Found: ${t.marker}`}>{t.name}</span>)}</dd></>}
       </dl>
       <div className="row" style={{ gap: 6, marginTop: 6 }}>

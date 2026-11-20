@@ -138,7 +138,7 @@ export function updateLead(id: number, patch: Record<string, unknown>) {
 
 export const getLead = (id: number) => db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as Lead | undefined;
 
-export type LeadQuery = { shortlist?: boolean; q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[]; grade?: string; stale?: number; role?: string; emailStatus?: string };
+export type LeadQuery = { shortlist?: boolean; q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[]; grade?: string; stale?: number; role?: string; emailStatus?: string; client?: string; companyId?: number };
 
 export function queryLeads(f: LeadQuery) {
   const where: string[] = [];
@@ -160,6 +160,8 @@ export function queryLeads(f: LeadQuery) {
   if (f.stale) { where.push('(enriched_at IS NULL OR enriched_at < ?)'); args.push(new Date(Date.now() - f.stale * 864e5).toISOString()); }
   if (f.role) { where.push('(contact_role LIKE ? OR id IN (SELECT lead_id FROM contacts WHERE role LIKE ?))'); args.push(`%${f.role}%`, `%${f.role}%`); }
   if (f.emailStatus) { where.push('email_status = ?'); args.push(f.emailStatus); }
+  if (f.client !== undefined && f.client !== '*') { where.push('client = ?'); args.push(f.client); }
+  if (f.companyId) { where.push('company_id = ?'); args.push(f.companyId); }
   if (f.ids?.length) { where.push(`id IN (${f.ids.map(() => '?').join(',')})`); args.push(...f.ids); }
   const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const sorts: Record<string, string> = { newest: 'id DESC', name: 'name COLLATE NOCASE ASC', score: 'score DESC NULLS LAST, id DESC', rating: 'rating DESC NULLS LAST', fit: 'fit DESC NULLS LAST, id DESC', grade: "CASE grade WHEN 'A' THEN 0 WHEN 'B' THEN 1 WHEN 'C' THEN 2 WHEN 'D' THEN 3 ELSE 4 END, relevance DESC NULLS LAST, id DESC" };
