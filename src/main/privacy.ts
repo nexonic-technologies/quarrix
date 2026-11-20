@@ -1,0 +1,20 @@
+// What leaves this computer, feature by feature, with the current on/off state (QF-120).
+import { load } from './settings';
+
+export function privacySummary() {
+  const s = load();
+  const row = (feature: string, on: boolean, sends: string, to: string, kept: string) => ({ feature, on, sends, to, kept });
+  return [
+    row('Business searches', true, 'The business type and place you search for', 'The sources you tick (Google Maps, OpenStreetMap, web search, directories, keyed APIs, open data)', 'Results are saved only in Quarrix\'s database on this computer'),
+    row('Website checks', s.enrich.auto, 'Requests to each lead\'s own website (and Google PageSpeed if on)', 'The business\'s website; Google for PageSpeed', 'Findings saved with the lead'),
+    row('Writing with AI', s.ai.provider !== 'none', 'Lead facts and your profile, to write emails, research fit and match jobs', s.ai.provider === 'none' ? 'Off' : `${s.ai.provider}${/ollama|lmstudio/i.test(s.ai.provider) ? ' (runs on this computer)' : ''}`, 'Depends on that provider\'s policy; Quarrix keeps the drafts locally'),
+    row('Email sending and replies', !!(s.email.smtpUser || s.email.oauthUser), 'Your emails; reading your inbox for replies to them', s.email.auth === 'password' ? `${s.email.smtpHost} / ${s.email.imapHost}` : `${s.email.auth} (OAuth)`, 'Copies of sent emails and replies stay in Quarrix and your mailbox'),
+    row('Email verification', s.verify.provider !== 'none', 'The email addresses you check', s.verify.provider, '30-day local cache; the provider\'s own policy applies'),
+    row('Job search', true, 'Your keywords and location', 'The job boards and employer hiring systems you choose', 'Seen jobs and alerts saved locally'),
+    row('CV matching and documents', s.ai.provider !== 'none', 'Your CV text and the job post', s.ai.provider, 'Your CV is stored only on this computer'),
+    row('HubSpot, Notion, Google Sheets', !!(s.hubspot?.token || s.notion?.token || s.sheets?.refresh), 'Only the leads you choose to send', 'The tool you send to', 'In that tool, under your account'),
+    row('Webhooks', (s.webhooks ?? []).some((w) => w.on), 'Event details, including the lead', (s.webhooks ?? []).filter((w) => w.on).map((w) => { try { return new URL(w.url).host; } catch { return w.url; } }).join(', ') || 'None', 'At the receiving service'),
+    row('Local API', !!s.api?.on, 'Nothing leaves the computer', 'Programs on this computer that have the token', '—'),
+    row('Updates', true, 'Your app version', 'GitHub (release checks)', '—'),
+  ];
+}

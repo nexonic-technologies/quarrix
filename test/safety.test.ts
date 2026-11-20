@@ -66,3 +66,10 @@ test('due-message query keeps sequence order (real SQLite)', async () => {
   const rows = d.prepare(DUE_SQL).all('2026-02-01') as { lead_id: number; step: number }[];
   assert.deepEqual(rows.map((r) => [r.lead_id, r.step]), [[1, 0], [4, 1]]);
 });
+
+test('diagnostics redaction removes secrets and personal details', async () => {
+  const { redact } = await import('../src/main/safety');
+  const out = redact(JSON.stringify({ apiKey: 'sk-ant-abcdef1234567890', smtpPass: 'hunter2hunter2', note: 'mail ana@acme.com or call +1 (512) 555-0142', url: 'https://x.com/a?key=AIzaSyA1234567890abcdefg&b=1', auth: 'Bearer abcdefghijklmnop' }));
+  for (const bad of ['sk-ant-abcdef', 'hunter2', 'ana@', '555-0142', 'AIzaSyA', 'abcdefghijklmnop']) assert.ok(!out.includes(bad), bad);
+  assert.match(out, /\[email\]@acme\.com/);
+});

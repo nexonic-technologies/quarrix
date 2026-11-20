@@ -12,6 +12,7 @@ import { Jobs } from './screens/Jobs';
 import { Dashboard } from './screens/Dashboard';
 import { Signals } from './screens/Signals';
 import { Pipeline } from './screens/Pipeline';
+import { Onboarding } from './screens/Onboarding';
 
 export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
@@ -25,6 +26,8 @@ export function App() {
   const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0, signals: 0 });
   const [tick, setTick] = useState(0);
   const [me, setMe] = useState({ name: '', company: '' });
+  const [ws, setWs] = useState<'both' | 'business' | 'career'>('both');
+  const [onboard, setOnboard] = useState(false);
 
   toast.push = (text, err) => {
     const id = ++toastId;
@@ -39,7 +42,7 @@ export function App() {
 
   useEffect(() => {
     void refreshCounts();
-    call('settings:get').then((s) => { setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); }).catch(() => undefined);
+    call('settings:get').then((s) => { setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); setWs(s.workspace ?? 'both'); if (s.onboarded === false && !s.profile?.name) setOnboard(true); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
       if (e === 'drafts' || e === 'leads' || e === 'signals') void refreshCounts();
@@ -65,15 +68,23 @@ export function App() {
     ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['pipeline', 'Pipeline', KanbanSquare], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
+  // Workspaces (QF-116): sales and job-hunting screens can be shown apart.
+  const CAREER: Screen[] = ['jobs'];
+  const shown = nav.filter(([id]) => ws === 'both' || ['dashboard', 'settings'].includes(id) || (ws === 'career' ? CAREER.includes(id) : !CAREER.includes(id)));
+  const switchWs = async (v: typeof ws) => { setWs(v); await call('settings:save', { workspace: v }); if (v === 'career' && !['dashboard', 'jobs', 'settings'].includes(screen)) go('jobs'); if (v === 'business' && screen === 'jobs') go('dashboard'); };
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
+      <a className="skip" href="#main">Skip to content</a>
+      {onboard && <Onboarding onDone={(v) => { setOnboard(false); if (v) { setWs(v); if (v === 'career') go('jobs'); else go('find'); } }} />}
       <div className="backdrop" aria-hidden><i /><i /><i /></div>
       <aside className="side">
         <div className="brand"><Logo size={30} /> <span>Quarrix</span></div>
-        <div className="side-label">Main</div>
+        <div className="ws-switch" role="group" aria-label="Workspace">
+          {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{v}</button>)}
+        </div>
         <nav className="nav" aria-label="Main">
-          {nav.map(([id, label, Icon, n]) => (
+          {shown.map(([id, label, Icon, n]) => (
             <button key={id} aria-current={screen === id ? 'page' : undefined} onClick={() => go(id)}>
               <Icon size={16} strokeWidth={1.8} /> {label}
               {n ? <span className="count">{n}</span> : null}
@@ -93,7 +104,7 @@ export function App() {
           <span><b>{me.name || 'Your name'}</b><small>{me.company || 'Add your company'}</small></span>
         </button>
       </aside>
-      <main className="main">
+      <main className="main" id="main" tabIndex={-1}>
         <header className="topbar">
           <div className="grow">
             <RiseText as="h1" text={TITLES[screen][0]} />

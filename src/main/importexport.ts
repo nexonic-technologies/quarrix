@@ -142,10 +142,15 @@ export async function importFile(path: string) {
 
 const EXPORT_COLS: [keyof db.Lead, string][] = [['name', 'Name'], ['category', 'Category'], ['email', 'Email'], ['phone', 'Phone'], ['website', 'Website'], ['address', 'Address'], ['city', 'City'], ['region', 'Region'], ['country', 'Country'], ['postcode', 'Postcode'], ['rating', 'Rating'], ['reviews', 'Reviews'], ['status', 'Status'], ['score', 'Website score'], ['tags', 'Tags'], ['notes', 'Notes'], ['source', 'Source'], ['created_at', 'Added']];
 
-export async function exportLeads(all: db.Lead[], path: string) {
+export const EXPORT_FIELDS = [...EXPORT_COLS.map(([, l]) => l), 'Facebook', 'Instagram', 'Linkedin', 'X', 'Youtube', 'Tiktok', 'Other emails', 'Data credit', 'Grade'];
+
+/** Export with the wizard's choices (QF-118): chosen columns, do-not-contact left out unless asked, optional one row per email. */
+export async function exportLeads(all: db.Lead[], path: string, opts: { fields?: string[]; includeDnc?: boolean; dedupeEmail?: boolean } = {}) {
   const ext = extname(path).toLowerCase();
   // Sources whose terms do not allow exporting stored data (QF-017) are left out.
-  const rows = all.filter((r) => sourceInfo(r.source)?.export !== false);
+  let rows = all.filter((r) => sourceInfo(r.source)?.export !== false);
+  if (!opts.includeDnc) rows = rows.filter((r) => r.status !== 'do_not_contact' && !(r.email && db.isSuppressed(r.email, r.domain)));
+  if (opts.dedupeEmail) { const seen = new Set<string>(); rows = rows.filter((r) => !r.email || (seen.has(r.email) ? false : (seen.add(r.email), true))); }
   const labels = Object.fromEntries((db.raw().prepare("SELECT key, label FROM custom_fields WHERE entity = 'lead'").all() as { key: string; label: string }[]).map((f) => [f.key, f.label]));
   const flat = rows.map((r) => {
     const o: Record<string, unknown> = Object.fromEntries(EXPORT_COLS.map(([k, label]) => [label, r[k]]));
@@ -155,6 +160,7 @@ export async function exportLeads(all: db.Lead[], path: string) {
     o['Data credit'] = sourceInfo(r.source)?.attribution ?? '';
     o.Grade = (r as any).grade ?? '';
     for (const [k, v] of Object.entries(JSON.parse((r as any).custom || '{}'))) o[labels[k] ?? k] = v;
+    if (opts.fields?.length) for (const k of Object.keys(o)) if (!opts.fields.includes(k) && !Object.values(labels).includes(k)) delete o[k];
     return o;
   });
   if (ext === '.json') writeFileSync(path, JSON.stringify(flat, null, 2));

@@ -11,6 +11,8 @@ import * as jobstore from './jobstore';
 import * as automation from './automation';
 import * as localapi from './localapi';
 import * as integrations from './integrations';
+import { writeDiagnostics } from './diagnostics';
+import { privacySummary } from './privacy';
 import * as backup from './backup';
 import { checkDomain, dryRunPlan } from './deliverability';
 import { onMapsLoad } from './sources/gmaps';
@@ -30,7 +32,7 @@ import { citiesOf, matchJobs } from './jobsearch';
 import * as cv from './resume';
 import * as proof from './proof';
 import * as signals from './signals';
-import { exportLeads, importFile } from './importexport';
+import { EXPORT_FIELDS, exportLeads, importFile } from './importexport';
 import { closeMaps } from './sources/gmaps';
 import { load, publicSettings, save, saveFromUi } from './settings';
 import { CATEGORIES } from '../shared/categories';
@@ -168,6 +170,15 @@ function registerIpc() {
   handle('sync:notion', (ids: number[]) => integrations.toNotion((ids ?? []).map(Number)));
   handle('sync:sheets', (ids: number[]) => integrations.toSheets((ids ?? []).map(Number)));
   handle('sheets:connect', () => integrations.connectSheets());
+  handle('diag:save', async () => {
+    const r = await dialog.showSaveDialog(win!, { defaultPath: `quarrix-diagnostics-${new Date().toISOString().slice(0, 10)}.json`, filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (r.canceled || !r.filePath) return null;
+    await writeDiagnostics(r.filePath);
+    shell.showItemInFolder(r.filePath);
+    return r.filePath;
+  });
+  handle('privacy:summary', () => privacySummary());
+  handle('export:fields', () => EXPORT_FIELDS);
   handle('icp:rescore', () => jobs.rescoreAll());
   handle('leads:intel', (id: number) => {
     const l = db.getLead(Number(id));
@@ -298,11 +309,11 @@ function registerIpc() {
     void jobs.runEnrichment();
     return out;
   });
-  handle('file:export', async (q, format: 'csv' | 'xlsx' | 'json') => {
+  handle('file:export', async (q, format: 'csv' | 'xlsx' | 'json', opts?: { fields?: string[]; includeDnc?: boolean; dedupeEmail?: boolean }) => {
     const r = await dialog.showSaveDialog(win!, { defaultPath: `quarrix-leads-${new Date().toISOString().slice(0, 10)}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (r.canceled || !r.filePath) return null;
     const rows = db.queryLeads({ ...q, limit: 1_000_000, offset: 0 }).rows;
-    const n = await exportLeads(rows, r.filePath);
+    const n = await exportLeads(rows, r.filePath, opts ?? {});
     shell.showItemInFolder(r.filePath);
     return n;
   });

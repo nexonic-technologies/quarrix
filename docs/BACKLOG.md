@@ -117,17 +117,26 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-111 | Hide recruiters and company preferences | P2 | Done | ats.isRecruiter; hide/prefer companies (settings.jobs); filter | test/jobs.test.ts |
 | QF-112 | Job post provenance and age | P1 | Built | first_seen, last_seen, posted, age badge, repost badge | typecheck |
 | QF-113 | Job result exports | P2 | Built | jobstore.exportSaved CSV/JSON/Markdown; buttons in My applications | typecheck |
-| QF-114 | Guided first-launch wizard | P1 | To do |  |  |
-| QF-115 | One-click offline sample/demo data | P1 | To do |  |  |
-| QF-116 | Distinct Business and Career workspaces | P1 | To do |  |  |
-| QF-117 | Advanced search preview and estimate | P1 | Built | same as QF-013 | preview UI |
-| QF-118 | Safe export wizard with field mapping | P2 | To do |  |  |
+| QF-114 | Guided first-launch wizard | P1 | Built | Onboarding.tsx (purpose, profile, ideal customer, privacy); shown once, skippable | preview |
+| QF-115 | One-click offline sample/demo data | P1 | Not done (owner decision) | Conflicts with the owner's "real data only" rule; the browser preview keeps its demo data, the app does not | — |
+| QF-116 | Distinct Business and Career workspaces | P1 | Built | settings.workspace; Business / Career / Both switch in the sidebar | preview |
+| QF-117 | Advanced search preview and estimate | P1 | Built | jobs.previewSearch; Find → Preview (0.13.0) | preview |
+| QF-118 | Safe export wizard with field mapping | P2 | Built | ExportWizard.tsx + exportLeads options (columns, do-not-contact, one row per email) | typecheck, preview |
 | QF-119 | Encrypted database backups and recovery | P1 | Done | backupcrypto.ts (AES-256-GCM + scrypt), backup.ts (checked restore at next start, safety copy) | test/crm.test.ts |
-| QF-120 | Per-feature privacy disclosures | P1 | To do |  |  |
-| QF-121 | App signing and macOS notarization | P1 | To do |  |  |
-| QF-122 | Accessibility and keyboard support | P2 | To do |  |  |
-| QF-123 | Localized interface and regional defaults | P3 | To do |  |  |
-| QF-124 | Trusted source audit logs and diagnostics | P1 | To do |  |  |
+| QF-120 | Per-feature privacy disclosures | P1 | Built | privacy.ts summary; Settings → Privacy; onboarding notes | typecheck |
+| QF-121 | App signing and macOS notarization | P1 | Partial | Release workflow signs and notarizes when certificate secrets exist; SHA256SUMS.txt; hardened runtime. Needs the owner's Apple/Windows certificates. | — |
+| QF-122 | Accessibility and keyboard support | P2 | Partial | Skip link, focus outlines, reduced motion, aria labels and keyboard moves on new screens. No full screen-reader audit yet. | — |
+| QF-123 | Localized interface and regional defaults | P3 | Partial | Dates and numbers follow the system locale; phone formats by country; time zones. No translated interface yet. | — |
+| QF-124 | Trusted source audit logs and diagnostics | P1 | Done | diagnostics.ts with safety.redact; Settings → Privacy → Save a diagnostics file | test/safety.test.ts (redaction) |
+
+## Totals
+
+- Built: 55
+- Done: 37
+- To do: 13
+- Partial: 12
+- Blocked: 6
+- Not done: 1
 
 ## Hardening items (from the backlog's "requires improvement" list)
 
@@ -139,9 +148,9 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 4 | MX shown as "ok" | Done | intel.ts statuses, verify.ts, migration | test/intel.test.ts |
 | 5 | Time zones from longitude | Done | rules.ts zoneFor / inWindowAt | test/rules.test.ts |
 | 6 | noSolicit must block outreach | Done | safety.ts `outreachBlock` | test/safety.test.ts |
-| 7 | Report captcha / broken selectors | Partial | gmaps.ts throws captcha and bot-check errors | — |
+| 7 | Report captcha / broken selectors | Done (health checks, captcha and bot-check errors) | gmaps.ts throws captcha and bot-check errors | — |
 | 8 | Plain-text secret fallback | Done | settings.ts: session-only, never written; warning in Settings | manual |
 | 9 | Apply marked Applied | Done | Jobs.tsx | manual |
 | 10 | IPC sender check, external URL allow-list, blocked navigation | Done | index.ts | test/safety.test.ts (URL rules) |
-| 11 | Regression tests | Started | test/safety.test.ts (7 tests); CI runs typecheck, tests, npm audit, build | CI |
+| 11 | Regression tests | Done for new logic | 7 test files, 44 tests; CI and the release workflow both run typecheck and tests | CI |
 | 12 | Theme forced light | Kept on purpose | the owner asked for light only | — |

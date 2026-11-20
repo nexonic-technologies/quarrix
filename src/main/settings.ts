@@ -44,6 +44,9 @@ export type Settings = {
   hubspot: { token: string };
   notion: { token: string; databaseId: string };
   sheets: { spreadsheetId: string; refresh: string; user: string };
+  /** First-launch setup done (QF-114) and which side of the app to show (QF-116). */
+  onboarded: boolean;
+  workspace: 'both' | 'business' | 'career';
 };
 
 export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'hubspot.token', 'notion.token', 'sheets.refresh'] as const;
@@ -77,6 +80,8 @@ export const defaults: Settings = {
   hubspot: { token: '' },
   notion: { token: '', databaseId: '' },
   sheets: { spreadsheetId: '', refresh: '', user: '' },
+  onboarded: false,
+  workspace: 'both',
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');

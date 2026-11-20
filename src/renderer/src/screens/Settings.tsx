@@ -3,6 +3,7 @@ import { IcpPanel } from './IcpPanel';
 import { SendingSafety, SignIn } from './EmailExtras';
 import { DataSettings } from './CrmParts';
 import { Automations, Connections } from './Connections';
+import { Privacy } from './Privacy';
 import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
@@ -10,7 +11,7 @@ import { NEXONIC, NEXONIC_LOGO } from '../brand';
 import { Logo } from '../Art';
 import { Mail, Globe, ExternalLink } from 'lucide-react';
 
-const SECTIONS = [['profile', 'You and your offer'], ['icp', 'Ideal customer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['data', 'Pipeline and data'], ['auto', 'Automations'], ['connect', 'Connections'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
+const SECTIONS = [['profile', 'You and your offer'], ['icp', 'Ideal customer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['data', 'Pipeline and data'], ['auto', 'Automations'], ['connect', 'Connections'], ['privacy', 'Privacy'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
 
 export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   const [s, setS] = useState<any>(null);
@@ -127,6 +128,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           {sec === 'data' && <DataSettings s={s} set={set} />}
           {sec === 'auto' && <Automations s={s} set={set} />}
           {sec === 'connect' && <Connections s={s} set={set} save={save} />}
+          {sec === 'privacy' && <Privacy />}
           {sec === 'sources' && <section>
             {S('sources.googleMaps', 'Google Maps (free, runs in a hidden window at a human pace)')}
             {S('sources.osm', 'OpenStreetMap (free, open data)')}

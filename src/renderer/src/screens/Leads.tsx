@@ -1,6 +1,7 @@
 import { LeadMap } from './FindTools';
 import { EvidenceCard, EMAIL_TEXT } from './Evidence';
 import { Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
+import { ExportWizard } from './ExportWizard';
 import { useCallback, useEffect, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
@@ -25,6 +26,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [view, setView] = useState<'list' | 'map'>('list');
   const [grade, setGrade] = useState('');
   const [dupes, setDupes] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [role, setRole] = useState('');
   const [open, setOpen] = useState<number | null>(() => { const v = Number(sessionStorage.getItem('quarrix.openLead')) || null; sessionStorage.removeItem('quarrix.openLead'); return v; });
   const [searchId, setSearchId] = useState<number | undefined>(() => Number(sessionStorage.getItem('quarrix.search')) || undefined);
@@ -78,7 +80,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
         <div className="grow"><p><b className="big-n">{total.toLocaleString()}</b> businesses{searchId ? ' from one search' : ''}</p></div>
         {searchId && <button className="btn ghost" onClick={() => setSearchId(undefined)}><X size={15} /> Show all leads</button>}
         <button className="btn ghost" onClick={() => setDupes(true)}>Duplicates</button>
-        <button className="btn" onClick={async () => { const n = await call('file:export', filter, 'xlsx'); if (n) toast.push(`Exported ${n} leads`); }}><Download size={15} /> Export these</button>
+        <button className="btn" onClick={() => setExporting(true)}><Download size={15} /> Export these</button>
       </div>
       <div className="toolbar">
         <label className="search-box"><SearchIcon size={16} /><input placeholder="Search name, city, email, phone" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} /></label>
@@ -106,6 +108,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       </div>
 
       <SavedViews current={{ q, status, country, category, has, sort, grade, role }} apply={(f) => { setQ(f.q ?? ''); setStatus(f.status ?? ''); setCountry(f.country ?? ''); setCategory(f.category ?? ''); setHas(f.has ?? ''); setSort(f.sort ?? 'fit'); setGrade(f.grade ?? ''); setRole(f.role ?? ''); setPage(0); }} />
+      {exporting && <ExportWizard filter={filter} total={total} onClose={() => setExporting(false)} />}
       {dupes && <Duplicates onClose={() => { setDupes(false); void load(); }} />}
       {rows.length === 0 ? (
         <div className="panel empty"><EmptyArt /><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>

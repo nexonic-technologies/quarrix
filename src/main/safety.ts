@@ -70,3 +70,14 @@ export function stepReady(step: number, dueAt: string | null, sentSteps: number[
 export const DUE_SQL = `SELECT m.* FROM messages m WHERE m.status = 'scheduled' AND m.channel = 'email' AND m.due_at IS NOT NULL AND m.due_at <= ?
   AND NOT EXISTS (SELECT 1 FROM messages p WHERE p.lead_id = m.lead_id AND p.channel = 'email' AND p.step < m.step AND p.status <> 'sent')
   ORDER BY m.due_at, m.step LIMIT 20`;
+
+/** Remove secrets and personal details from text before it leaves the app in a diagnostics file (QF-124). */
+export function redact(text: string): string {
+  return text
+    .replace(/(["']?(?:api[_-]?key|token|secret|password|pass|refresh|authorization|cloudToken|smtpPass|imapPass)["']?\s*[:=]\s*)(["'])?[^"',\s}]+\2?/gi, '$1"[removed]"')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g, '$1 [removed]')
+    .replace(/\b(sk|pk|rk|xox[abp]|ghp|gho|pat|AIza)[A-Za-z0-9_-]{10,}\b/g, '[key removed]')
+    .replace(/([?&](?:key|api_key|token|access_token)=)[^&\s"']+/gi, '$1[removed]')
+    .replace(/[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,})/gi, '[email]@$1')
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, '[phone]');
+}
