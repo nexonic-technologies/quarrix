@@ -3,6 +3,7 @@ export type Lead = {
   id: number; created_at: string; name: string; category: string; address: string; city: string; region: string; country: string; postcode: string;
   lat: number | null; lon: number | null; phone: string; email: string; emails: string; website: string; domain: string; socials: string;
   rating: number | null; reviews: number | null; source: string; status: string; score: number | null; audit: string; tags: string; notes: string; enriched_at: string | null;
+  contact_name?: string; contact_role?: string; email_status?: string; summary?: string;
 };
 export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string };
 export type Message = { id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; error: string; lead_name?: string; lead_email?: string; lead_city?: string; lead_country?: string };
@@ -56,6 +57,9 @@ async function mock(ch: string, args: unknown[]): Promise<{ ok: boolean; data?: 
     'messages:list': () => (args[0] === 'draft' ? demoLeads.slice(0, 3).map((l, i) => ({ id: i + 1, lead_id: l.id, channel: 'email', step: 0, subject: `${l.domain} on a phone`, body: `Hi ${l.name} team,\n\nI had a look at ${l.domain} on my phone this week…`, status: 'draft', due_at: null, sent_at: null, error: '', lead_name: l.name, lead_email: l.email, lead_city: l.city, lead_country: l.country })) : []),
     'dnc:list': () => [],
     'mail:cap': () => 16,
+    'search:log': () => [{ at: new Date().toISOString(), msg: 'Google Maps: 118 places listed' }, { at: new Date().toISOString(), msg: '+ Lakeside Dental Studio' }, { at: new Date().toISOString(), msg: '+ Hill Country Smiles' }, { at: new Date().toISOString(), msg: 'Google Maps: area 3 of 42, Hyde Park' }],
+    'campaigns:list': () => [{ id: 1, name: 'Dentists, USA', category: 'Dentists', places: JSON.stringify(['Austin, Texas', 'Dallas, Texas', 'Houston, Texas']), sources: '["gmaps","osm","web"]', daily: 20, auto_send: 1, enabled: 1, cursor: 2, last_run: new Date().toISOString(), leads: 412, with_email: 233, sent: 61, replies: 4 }],
+    'messages:approveAll': () => 3,
   };
   return { ok: true, data: (data[ch] ?? (() => null))() };
 }

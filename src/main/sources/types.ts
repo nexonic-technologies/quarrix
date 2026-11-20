@@ -1,5 +1,5 @@
 export type Candidate = {
-  source: 'osm' | 'places' | 'gmaps' | 'import';
+  source: 'osm' | 'places' | 'gmaps' | 'import' | 'web' | 'yelp' | 'yellowpages' | 'yell' | 'reddit';
   source_ref: string;
   name: string;
   category: string;
@@ -17,6 +17,8 @@ export type Candidate = {
   rating?: number | null;
   reviews?: number | null;
   chain?: boolean;
+  summary?: string;
+  contact_name?: string;
 };
 
 export type Progress = (msg: string, found?: number) => void;

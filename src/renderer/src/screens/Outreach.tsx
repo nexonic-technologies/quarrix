@@ -22,10 +22,13 @@ export function Outreach({ tick, go }: { tick: number; go: (s: Screen) => void }
 
   return (
     <div className="page">
-      <div className="tabs seg" role="tablist">
+      <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
+      <div className="tabs seg" role="tablist" style={{ margin: 0 }}>
         {([['draft', 'To approve'], ['scheduled', 'Waiting to send'], ['sent', 'Sent'], ['failed', 'Failed']] as const).map(([k, v]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{v}</button>
         ))}
+      </div>
+      {tab === 'draft' && groups.length > 1 && <button className="btn primary" onClick={async () => { const n = await call('messages:approveAll'); toast.push(`Approved ${n}. They send within your daily limit.`); setMsgs(await call('messages:list', 'draft')); }}><Check size={15} /> Approve all {groups.length}</button>}
       </div>
       {tab !== 'draft' ? (
         msgs.length === 0 ? <div className="panel empty"><EmptyArt /><h3>Nothing here</h3>{tab === 'scheduled' ? 'Approved emails wait here until the recipient\'s working hours.' : 'Sent emails will be listed here.'}</div> : (

@@ -12,6 +12,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
+  contact_name: string; contact_role: string; email_status: string; summary: string;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -52,7 +53,16 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   CREATE TABLE IF NOT EXISTS suppress (value TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY, lead_id INTEGER, at TEXT NOT NULL, type TEXT NOT NULL, detail TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '',
+    places TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', daily INTEGER NOT NULL DEFAULT 20,
+    auto_send INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, cursor INTEGER NOT NULL DEFAULT 0, last_run TEXT
   );`);
+  // Columns added after 0.3: decision maker, email check result and a short summary.
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER']]) {
+    try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
+  }
   return db;
 }
 
@@ -61,7 +71,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {
@@ -113,9 +123,9 @@ export function queryLeads(f: LeadQuery) {
   const where: string[] = [];
   const args: unknown[] = [];
   if (f.q) {
-    where.push('(name LIKE ? OR city LIKE ? OR category LIKE ? OR email LIKE ? OR domain LIKE ? OR phone LIKE ? OR tags LIKE ?)');
+    where.push('(name LIKE ? OR city LIKE ? OR category LIKE ? OR email LIKE ? OR domain LIKE ? OR phone LIKE ? OR tags LIKE ? OR contact_name LIKE ?)');
     const like = `%${f.q}%`;
-    args.push(like, like, like, like, like, like, like);
+    args.push(like, like, like, like, like, like, like, like);
   }
   if (f.status) { where.push('status = ?'); args.push(f.status); }
   if (f.country) { where.push('country = ?'); args.push(f.country); }
@@ -171,11 +181,31 @@ export function facets() {
 
 /* ---------- Searches ---------- */
 
-export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null };
+export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null };
 
-export function addSearch(category: string, place: string, sources: string[]) {
-  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources) VALUES (?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources)).lastInsertRowid);
+export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null) {
+  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id) VALUES (?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId).lastInsertRowid);
 }
+
+/* ---------- Autopilot campaigns ---------- */
+
+export type Campaign = { id: number; created_at: string; name: string; category: string; places: string; sources: string; daily: number; auto_send: number; enabled: number; cursor: number; last_run: string | null };
+export function listCampaigns() {
+  return db.prepare(`SELECT c.*,
+    (SELECT COUNT(*) FROM leads l JOIN searches s ON s.id = l.search_id WHERE s.campaign_id = c.id) leads,
+    (SELECT COUNT(*) FROM leads l JOIN searches s ON s.id = l.search_id WHERE s.campaign_id = c.id AND l.email <> '') with_email,
+    (SELECT COUNT(*) FROM messages m JOIN leads l ON l.id = m.lead_id JOIN searches s ON s.id = l.search_id WHERE s.campaign_id = c.id AND m.status = 'sent') sent,
+    (SELECT COUNT(*) FROM leads l JOIN searches s ON s.id = l.search_id WHERE s.campaign_id = c.id AND l.status IN ('replied','interested','won')) replies
+    FROM campaigns c ORDER BY c.id DESC`).all();
+}
+export const getCampaign = (id: number) => db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as Campaign | undefined;
+export function saveCampaign(c: Partial<Campaign>) {
+  const cols = ['name', 'category', 'places', 'sources', 'daily', 'auto_send', 'enabled', 'cursor', 'last_run'].filter((k) => (c as Record<string, unknown>)[k] !== undefined);
+  const vals = cols.map((k) => (c as Record<string, unknown>)[k] as never);
+  if (c.id) { db.prepare(`UPDATE campaigns SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, c.id); return c.id; }
+  return Number(db.prepare(`INSERT INTO campaigns (created_at, ${cols.join(',')}) VALUES (?, ${cols.map(() => '?').join(',')})`).run(now(), ...vals).lastInsertRowid);
+}
+export const deleteCampaign = (id: number) => db.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
 export const updateSearch = (id: number, patch: Partial<Search>) => {
   const cols = Object.keys(patch);
   db.prepare(`UPDATE searches SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => (patch as Record<string, unknown>)[c] as never), id);

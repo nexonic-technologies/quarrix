@@ -3,11 +3,16 @@ import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
 import { Orbs, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
-import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight } from 'lucide-react';
+import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
+import { COUNTRIES } from '../countries';
+import { LiveSearch } from './LiveSearch';
 
 const SOURCES: [string, string, string, typeof Map][] = [
   ['gmaps', 'Google Maps', 'free, slower', Map],
   ['osm', 'OpenStreetMap', 'free, open data', Database],
+  ['web', 'Web search', 'Bing and DuckDuckGo', Globe2],
+  ['dir', 'Directories', 'Yelp, Yellow Pages, Yell', BookOpen],
+  ['posts', 'Job posts', 'people asking for help now', Megaphone],
   ['places', 'Google Places API', 'your key', KeyRound],
 ];
 const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], ['replied', 'Replied'], ['interested', 'Interested'], ['won', 'Won']];
@@ -15,7 +20,9 @@ const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], 
 export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [category, setCategory] = useState('');
   const [place, setPlace] = useState('');
-  const [sources, setSources] = useState<string[]>(['gmaps', 'osm']);
+  const [sources, setSources] = useState<string[]>(['gmaps', 'osm', 'web']);
+  const [country, setCountry] = useState('');
+  const [live, setLive] = useState<Search | null>(null);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const [searches, setSearches] = useState<Search[]>([]);
@@ -40,11 +47,14 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
 
   const start = async () => {
     if (!category.trim()) { catRef.current?.focus(); setOpen(true); toast.push('First, type or pick a kind of business.', true); return; }
-    if (!place.trim()) { placeRef.current?.focus(); toast.push('Now type a city or area, for example Austin, Texas.', true); return; }
+    const cname = COUNTRIES.find((c) => c[0] === country)?.[1] ?? '';
+    const where = [place.trim(), cname].filter(Boolean).join(', ');
+    if (!where) { placeRef.current?.focus(); toast.push('Type a city or pick a country.', true); return; }
     if (!sources.length) { toast.push('Choose at least one source.', true); return; }
-    await call('search:start', category, place, sources);
-    toast.push(`Searching for ${category.toLowerCase()} in ${place}`);
-    setSearches(await call('search:list'));
+    const id = await call<number>('search:start', category, where, sources);
+    const list = await call<Search[]>('search:list');
+    setSearches(list);
+    setLive(list.find((x) => x.id === id) ?? null);
   };
 
 
@@ -80,9 +90,16 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               </div>
             )}
           </label>
+          <label className="fbox country">
+            <Flag size={16} />
+            <select aria-label="Country" value={country} onChange={(e) => setCountry(e.target.value)}>
+              <option value="">Any country</option>
+              {COUNTRIES.map(([code, name, flag]) => <option key={code} value={code}>{flag} {name}</option>)}
+            </select>
+          </label>
           <label className="fbox">
             <MapPin size={16} />
-            <input ref={placeRef} aria-label="City or area" placeholder="City or area, e.g. Austin, Texas" value={place} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
+            <input ref={placeRef} aria-label="City or area" placeholder={country ? 'City or area (empty = whole country)' : 'City or area, e.g. Austin, Texas'} value={place} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
           </label>
           <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>
@@ -152,7 +169,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
             const run = s.status === 'running' || s.status === 'queued';
             const src = json<string[]>(s.sources, []).map((x) => SOURCES.find((y) => y[0] === x)?.[1] ?? x).join(', ');
             return (
-              <div key={s.id} className="panel search">
+              <div key={s.id} className="panel search clickable" role="button" tabIndex={0} onClick={() => setLive(s)} onKeyDown={(e) => e.key === 'Enter' && setLive(s)} title="Open to watch the search">
                 <span className={`search-icon ${run ? 'run' : ''}`}><MapPin size={18} /></span>
                 <div>
                   <h3>{s.category} in {s.place}</h3>
@@ -161,14 +178,16 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                 <div className={`bar ${run ? 'run' : ''}`}><i style={{ width: run ? '100%' : s.found ? '100%' : '0%' }} /></div>
                 <div className="muted">{s.added} new{s.found > s.added ? `, ${s.found - s.added} already saved` : ''}</div>
                 <div className="row">
-                  {run ? <button className="btn small" onClick={() => call('search:stop', s.id)}>Stop</button>
-                    : <button className="btn small" onClick={() => { sessionStorage.setItem('quarrix.search', String(s.id)); go('leads'); }}>View leads</button>}
+                  {run ? <button className="btn small" onClick={(e) => { e.stopPropagation(); void call('search:stop', s.id); }}>Stop</button>
+                    : <button className="btn small" onClick={(e) => { e.stopPropagation(); sessionStorage.setItem('quarrix.search', String(s.id)); go('leads'); }}>View leads</button>}
+                  <ChevronRight size={16} className="muted" />
                 </div>
               </div>
             );
           })}
         </div>
       )}
+      {live && <LiveSearch search={searches.find((x) => x.id === live.id) ?? live} tick={tick} onClose={() => setLive(null)} go={go} />}
     </div>
   );
 }

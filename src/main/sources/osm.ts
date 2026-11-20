@@ -71,11 +71,11 @@ export async function searchOsm(category: string, place: string, limit: number, 
 export async function subAreas(place: string | Place | null, max = 40): Promise<string[]> {
   const where = typeof place === 'string' ? await geocode(place) : place;
   if (!where?.area) return [];
-  const q = `[out:json][timeout:40];area(${where.area})->.a;node["place"~"^(suburb|neighbourhood|quarter|town|village)$"]["name"](area.a);out tags 400;`;
+  const q = `[out:json][timeout:40];area(${where.area})->.a;node["place"~"^(city|suburb|neighbourhood|quarter|town|village)$"]["name"](area.a);out tags 400;`;
   try {
     const r = await overpass(q, 60000);
     if (!r.ok) return [];
-    const rank: Record<string, number> = { suburb: 0, town: 1, quarter: 2, neighbourhood: 3, village: 4 };
+    const rank: Record<string, number> = { city: 0, suburb: 1, town: 2, quarter: 3, neighbourhood: 4, village: 5 };
     const els = ((JSON.parse(r.text).elements ?? []) as any[])
       .map((e) => ({ name: String(e.tags['name:en'] ?? e.tags.name), r: rank[e.tags.place] ?? 5 }))
       .filter((x) => /[a-z]/i.test(x.name))

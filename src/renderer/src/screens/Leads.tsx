@@ -84,16 +84,17 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <table className="leads">
             <thead><tr>
               <th style={{ width: 34 }}><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSel(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Business</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
+              <th>Business</th><th>Contact person</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
             </tr></thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.id} className={sel.has(l.id) ? 'sel' : ''}>
                   <td><input type="checkbox" aria-label={`Select ${l.name}`} checked={sel.has(l.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
                   <td className="name" onClick={() => setOpen(l.id)}><span className="who"><Avatar name={l.name} size={32} /><span><span className="t">{l.name}</span><span className="sub">{l.phone || 'no phone'}</span></span></span></td>
+                  <td className="clip">{l.contact_name ? <><span className="t2">{l.contact_name}</span><span className="sub">{l.contact_role}</span></> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'not found'}</span>}</td>
                   <td className="clip">{l.category}</td>
                   <td className="clip" title={[l.city, l.region, l.country].filter(Boolean).join(', ')}>{[l.city || l.region, l.country].filter(Boolean).join(', ') || <span className="muted">unknown</span>}</td>
-                  <td className="clip">{l.email || <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
+                  <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={l.email_status === 'ok' ? 'The domain accepts email' : l.email_status === 'no-mx' ? 'This domain has no mail server' : ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
                   <td>{l.score != null ? <span className={`score ${l.score >= 40 ? 'hot' : ''}`}>{l.score}</span> : <span className="muted">{l.website ? (l.enriched_at ? 'n/a' : 'checking') : 'no site'}</span>}</td>
@@ -164,8 +165,14 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
           </div>
         </header>
         <div className="body">
+          {(l.contact_name || l.summary) && (
+            <div className="insight">
+              {l.contact_name && <div><span className="muted small">Decision maker</span><b>{l.contact_name}</b>{l.contact_role && <span className="muted"> · {l.contact_role}</span>}</div>}
+              {l.summary && <p>{l.summary}</p>}
+            </div>
+          )}
           <dl className="kv">
-            <dt>Email</dt><dd>{l.email ? <a href={`mailto:${l.email}`}>{l.email}</a> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>
+            <dt>Email</dt><dd>{l.email ? <><a href={`mailto:${l.email}`}>{l.email}</a>{l.email_status === 'ok' && <span className="ok-pill">accepts mail</span>}{l.email_status === 'no-mx' && <span className="bad-pill">no mail server</span>}</> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>
             <dt>Phone</dt><dd>{l.phone || <span className="muted">none</span>}</dd>
             <dt>Website</dt><dd>{l.website ? <a href={l.website} target="_blank" rel="noreferrer">{l.domain || l.website}</a> : <span className="muted">none</span>}</dd>
             <dt>Address</dt><dd>{(l.address && /\d/.test(l.address) && l.address.split(',').length >= 3 ? l.address : [l.address, l.city, l.region, l.postcode, l.country].filter(Boolean).join(', ')) || <span className="muted">unknown</span>}</dd>

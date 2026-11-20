@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -7,8 +7,9 @@ import { Leads } from './screens/Leads';
 import { Outreach } from './screens/Outreach';
 import { ImportExport } from './screens/ImportExport';
 import { SettingsScreen } from './screens/Settings';
+import { Autopilot } from './screens/Autopilot';
 
-export type Screen = 'find' | 'leads' | 'outreach' | 'files' | 'settings';
+export type Screen = 'find' | 'leads' | 'outreach' | 'autopilot' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
@@ -43,8 +44,9 @@ export function App() {
   }, [refreshCounts]);
 
   const TITLES: Record<Screen, [string, string]> = {
-    find: ['Find businesses', 'Search maps and open data, then let Quarrix fill in the details.'],
+    find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
+    autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
     outreach: ['Outreach', 'Read, tweak and approve. Follow-ups stop when someone replies.'],
     files: ['Import and export', 'Bring in the lists you have, or take your leads anywhere.'],
     settings: ['Settings', 'Your details, mailbox, writing model and sources.'],
@@ -52,7 +54,7 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['outreach', 'Outreach', Send, counts.drafts],
+    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
 
@@ -94,6 +96,7 @@ export function App() {
           {screen === 'find' && <Find tick={tick} go={go} />}
           {screen === 'leads' && <Leads tick={tick} go={go} />}
           {screen === 'outreach' && <Outreach tick={tick} go={go} />}
+          {screen === 'autopilot' && <Autopilot tick={tick} go={go} />}
           {screen === 'files' && <ImportExport go={go} />}
           {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
         </div>

@@ -54,7 +54,7 @@ export type SiteFacts = {
   platform: string; copyrightYear: number; booking: boolean; form: boolean; analytics: boolean; schema: boolean; noSolicit: boolean;
 };
 
-export type EnrichResult = { ok: true; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string> } | { ok: false; error: string };
+export type EnrichResult = { ok: true; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string>; contact: { name: string; role: string }; text: string } | { ok: false; error: string };
 
 export async function enrichWebsite(website: string, country: string, pages = 3): Promise<EnrichResult> {
   let start = /^https?:\/\//i.test(website) ? website : `https://${website}`;
@@ -73,7 +73,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   $('a[href]').each((_, a) => {
     const href = String($(a).attr('href') ?? '');
     const label = ($(a).text() + ' ' + href).toLowerCase();
-    if (!/contact|about|team|our-story|get-in-touch|impressum|kontakt|reach-us|locations?/.test(label) || /^(mailto|tel|javascript):/i.test(href)) return;
+    if (!/contact|about|team|our-story|get-in-touch|impressum|kontakt|reach-us|locations?|leadership|founder|people|meet/.test(label) || /^(mailto|tel|javascript):/i.test(href)) return;
     try {
       const abs = new URL(href, home!.url).toString().split('#')[0];
       if (domainOf(abs) === domain) links.set(abs, /contact|kontakt|impressum/.test(label) ? 0 : 1);
@@ -95,6 +95,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   }
 
   const schema: Record<string, string> = {};
+  const people: { name: string; role: string }[] = [];
   $('script[type="application/ld+json"]').each((_, s) => {
     try {
       const j = JSON.parse($(s).text());
@@ -102,6 +103,9 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
         if (!node || typeof node !== 'object') continue;
         if (node.telephone && !schema.phone) schema.phone = String(node.telephone);
         if (node.email && !schema.email) schema.email = String(node.email).replace(/^mailto:/, '');
+        for (const f of [node.founder, node.employee, node.author].flat().filter(Boolean)) {
+          if (f && typeof f === 'object' && f.name) people.push({ name: String(f.name), role: String(f.jobTitle ?? (f === node.founder ? 'Founder' : '')) });
+        }
         const a = node.address;
         if (a && typeof a === 'object' && !schema.city) {
           schema.street = a.streetAddress ?? ''; schema.city = a.addressLocality ?? ''; schema.region = a.addressRegion ?? '';
@@ -110,6 +114,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
       }
     } catch { /* bad JSON-LD */ }
   });
+  if (people[0]) { schema.contactName = people[0].name; schema.contactRole = people[0].role; }
   if (schema.phone) phones.add(normalizePhone(schema.phone, country));
   if (schema.email) emails.unshift(schema.email.toLowerCase());
 
@@ -125,8 +130,31 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
     schema: /application\/ld\+json/i.test(home.text),
     noSolicit: /no solicitation|do not solicit|unsolicited (commercial )?e-?mails?|no marketing emails/.test(lower),
   };
-  const uniqueEmails = [...new Set(emails)];
-  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema };
+  const contact = findContact(htmls, schema);
+  // Prefer a personal email that matches the decision maker's name, then the ranked list.
+  let uniqueEmails = [...new Set(emails)];
+  if (contact.name) {
+    const first = contact.name.split(' ')[0].toLowerCase();
+    const mine = uniqueEmails.find((e) => e.split('@')[0].includes(first));
+    if (mine) uniqueEmails = [mine, ...uniqueEmails.filter((e) => e !== mine)];
+  }
+  const text = htmls.map((h) => cheerio.load(h)('body').text()).join('\n').replace(/\s+/g, ' ').slice(0, 6000);
+  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema, contact, text };
+}
+
+const ROLES = 'Founder|Co-Founder|Cofounder|CEO|Chief Executive Officer|Owner|Co-Owner|Managing Director|Managing Partner|Director|Principal|President|Proprietor|Head Doctor|Lead Dentist|Practice Owner|Partner';
+const NAME = "(?:Dr\\.?\\s)?[A-Z][a-z'’-]+(?:\\s[A-Z][a-z'’-]+){1,2}";
+
+/** The owner or a decision maker named on the site, from structured data or "Name, Founder" patterns. */
+export function findContact(htmls: string[], schema: Record<string, string>) {
+  if (schema.contactName) return { name: schema.contactName, role: schema.contactRole || 'Founder' };
+  const text = htmls.map((h) => cheerio.load(h)('body').text()).join(' ').replace(/\s+/g, ' ');
+  const a = text.match(new RegExp(`(${NAME})\\s*[,–—|-]\\s*(${ROLES})\\b`));
+  const tidy = (n: string) => n.replace(/^(Meet|Our|The|By|With|Contact|About|Dear|Call|Email|Ask|Hi|Hello)\s+/i, '').trim();
+  if (a && tidy(a[1]).includes(' ')) return { name: tidy(a[1]), role: a[2] };
+  const b = text.match(new RegExp(`\\b(${ROLES})\\s*[:,–—|-]?\\s*(${NAME})`));
+  if (b && tidy(b[2]).includes(' ')) return { name: tidy(b[2]), role: b[1] };
+  return { name: '', role: '' };
 }
 
 function detectPlatform(html: string) {

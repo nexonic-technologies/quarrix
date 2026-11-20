@@ -85,6 +85,8 @@ function leadFacts(l: Lead) {
   return [
     `Business: ${l.name}`, `Type: ${l.category}`, `Location: ${[l.city, l.region, l.country].filter(Boolean).join(', ')}`,
     l.website ? `Website: ${l.domain || l.website}` : 'Website: none found',
+    l.contact_name && !l.contact_name.startsWith('u/') ? `Owner or decision maker: ${l.contact_name}${l.contact_role ? ` (${l.contact_role})` : ''}` : '',
+    l.summary ? `About them: ${l.summary.slice(0, 600)}` : '',
     l.rating ? `Google rating: ${l.rating} (${l.reviews ?? 0} reviews)` : '',
     socials.length ? `Social profiles: ${socials.join(', ')}` : 'Social profiles: none found',
     ...(audit.findings ?? []).map((f: string) => `Finding: ${f}`),
@@ -124,7 +126,8 @@ export function templateDraft(settings: Settings, lead: Lead, steps: number): Dr
   const p = settings.profile;
   const finding = (safe(lead.audit).findings ?? [])[0] as string | undefined;
   const offer = (p.services || 'help businesses like yours get more customers').split(/[.\n]/)[0].trim();
-  const greet = `Hi ${lead.name} team,`;
+  const first = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.replace(/^Dr\.?\s/, '').split(' ')[0] : '';
+  const greet = first ? `Hi ${first},` : `Hi ${lead.name} team,`;
   const opener = finding
     ? `I had a look at ${lead.domain || 'your website'} and noticed one thing worth fixing: ${finding.charAt(0).toLowerCase() + finding.slice(1)}`
     : `I came across ${lead.name} while looking at ${lead.category.toLowerCase() || 'businesses'} in ${lead.city || 'your area'}.`;
@@ -139,4 +142,12 @@ export function templateDraft(settings: Settings, lead: Lead, steps: number): Dr
 export function signature(s: Settings) {
   const p = s.profile;
   return [p.name, [p.title, p.company].filter(Boolean).join(', '), p.website?.replace(/^https?:\/\//, ''), p.phone].filter(Boolean).join('\n');
+}
+
+/** With a model set up: read the website text and pick out the decision maker and a two-line summary. */
+export async function research(settings: Settings, lead: Lead, siteText: string): Promise<{ contact_name: string; contact_role: string; summary: string }> {
+  const system = 'You read a business website and return facts only. If something is not stated on the page, leave it empty. Never guess names.\n'
+    + 'Return one JSON object: {"contact_name":"owner, founder or most senior named person, full name","contact_role":"their role as written","summary":"2 sentences: what the business does and who it serves, plus one visible gap or opportunity (for example no online booking, dated site, no reviews section)"}';
+  const j = parseJson(await complete(settings.ai, system, `Business: ${lead.name} (${lead.category})\nWebsite text:\n${siteText.slice(0, 5000)}`, 500)) ?? {};
+  return { contact_name: String(j.contact_name ?? '').slice(0, 80), contact_role: String(j.contact_role ?? '').slice(0, 60), summary: String(j.summary ?? '').slice(0, 600) };
 }

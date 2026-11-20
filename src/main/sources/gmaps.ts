@@ -122,3 +122,12 @@ export function closeMaps() {
   if (win && !win.isDestroyed()) win.destroy();
   win = null;
 }
+
+/** Open any page in the hidden browser (real Chrome engine, so pages that need scripts work) and return its HTML. */
+export async function pageHtml(url: string, waitSelector = 'body', settleMs = 1200): Promise<string> {
+  await load(url);
+  await waitFor(waitSelector, 12000);
+  await sleep(settleMs);
+  if (await js<boolean>(`/unusual traffic|not a robot|verify you are human|access denied|captcha/i.test(document.title + ' ' + document.body.innerText.slice(0, 600))`)) throw new Error('The site asked for a captcha.');
+  return js<string>('document.documentElement.outerHTML');
+}

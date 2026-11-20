@@ -1,6 +1,10 @@
 // Background work: run searches one at a time, then visit websites for emails and social links.
 import * as db from './db';
-import { enrichWebsite, pagespeed, siteScore } from './enrich';
+import { enrichWebsite, pagespeed, receivesMail, siteScore } from './enrich';
+import { research } from './ai';
+import { searchWeb } from './sources/web';
+import { searchDirectories } from './sources/directories';
+import { searchPosts } from './sources/posts';
 import { load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { searchPlaces } from './sources/places';
@@ -13,6 +17,16 @@ let notify: Notify = () => undefined;
 let running = false;
 let enriching = 0;
 let cancelSearch = 0;
+const logs = new Map<number, { at: string; msg: string }[]>();
+function log(id: number, msg: string) {
+  const l = logs.get(id) ?? [];
+  if (l[l.length - 1]?.msg === msg) return;
+  l.push({ at: new Date().toISOString(), msg });
+  if (l.length > 400) l.splice(0, l.length - 400);
+  logs.set(id, l);
+}
+export const searchLog = (id: number) => logs.get(id) ?? [];
+export const isSearching = () => running;
 
 export function start(n: Notify) {
   notify = n;
@@ -20,8 +34,8 @@ export function start(n: Notify) {
   setInterval(() => { void runSearches(); void runEnrichment(); }, 4000);
 }
 
-export function queueSearch(category: string, place: string, sources: string[]) {
-  const id = db.addSearch(category.trim(), place.trim(), sources);
+export function queueSearch(category: string, place: string, sources: string[], campaignId: number | null = null) {
+  const id = db.addSearch(category.trim(), place.trim(), sources, campaignId);
   notify('searches');
   void runSearches();
   return id;
@@ -69,17 +83,17 @@ async function runSearches() {
           postcode: c.postcode, lat: c.lat, lon: c.lon, phone: normalizePhone(c.phone, country), email: c.email?.toLowerCase() ?? '',
           emails: JSON.stringify(c.email ? [c.email.toLowerCase()] : []), website, domain: website ? domainOf(website) : '',
           socials: JSON.stringify(socials), rating: c.rating ?? null, reviews: c.reviews ?? null, source: c.source, source_ref: c.source_ref, search_id: s.id,
-          tags: c.chain ? 'chain' : '',
+          tags: c.chain ? 'chain' : '', summary: c.summary ?? '', contact_name: c.contact_name ?? '',
         });
         found++;
-        if (created) added++;
+        if (created) { added++; log(s.id, `+ ${c.name}`); }
       }
     });
     tx();
     db.updateSearch(s.id, { found, added });
     notify('leads');
   };
-  const progress = (msg: string) => notify('progress', { id: s.id, msg });
+  const progress = (msg: string) => { log(s.id, msg); notify('progress', { id: s.id, msg }); };
   const limit = settings.sources.maxPerSearch > 0 ? settings.sources.maxPerSearch : Infinity; // 0 = everything available
   let areas: string[] | null = null;
   const moreAreas = async () => {
@@ -92,12 +106,12 @@ async function runSearches() {
   };
   // Google lists only about 120 places per query (Places API: 60), so after the whole-city query
   // the search repeats for each neighbourhood until the limit is reached. Duplicates are merged.
-  const byArea = async (label: string, run: (where: string, left: number) => Promise<Candidate[]>) => {
+  const byArea = async (label: string, run: (where: string, left: number) => Promise<Candidate[]>, maxAreas = Infinity) => {
     const first = await run(s.place, limit);
     await anchor(first);
     save(first);
     let got = first.length;
-    const list = await moreAreas();
+    const list = (await moreAreas()).slice(0, maxAreas);
     for (const [i, area] of list.entries()) {
       if (cancelSearch === s.id || got >= limit) break;
       progress(`${label}: area ${i + 1} of ${list.length}, ${area.split(',')[0]}`);
@@ -109,6 +123,9 @@ async function runSearches() {
     try {
       if (src === 'gmaps') { resetMaps(); const seen = new Set<string>(); await byArea('Google Maps', (w, left) => searchMaps(s.category, w, left, settings.sources.mapsDelayMs, progress, seen)); }
       if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit, where)); }
+      if (src === 'web') { await byArea('Web search', (w, left) => searchWeb(s.category, w, left, progress), 15); }
+      if (src === 'dir') { const country = where?.country ?? ''; await byArea('Directories', (w, left) => searchDirectories(s.category, w, country, left, progress), 10); }
+      if (src === 'posts') { progress('Job posts: searching…'); save(await searchPosts(s.category, limit, progress)); }
       if (src === 'places') {
         if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');
         await byArea('Google Places', (w, left) => searchPlaces(settings.sources.placesKey, s.category, w, left, progress));
@@ -153,7 +170,16 @@ export async function enrichOne(lead: db.Lead) {
   let psi;
   if (settings.enrich.audit) psi = await pagespeed(r.website, settings.sources.pagespeedKey).catch(() => undefined);
   const sc = siteScore(r.facts, psi);
+  let contact = { contact_name: r.contact.name, contact_role: r.contact.role, summary: '' };
+  if (settings.ai.provider !== 'none') {
+    const ai = await research(settings, lead, r.text).catch(() => null);
+    if (ai) contact = { contact_name: ai.contact_name || contact.contact_name, contact_role: ai.contact_role || contact.contact_role, summary: ai.summary };
+  }
+  const email = lead.email || r.email;
+  const emailStatus = email ? ((await receivesMail(email.split('@')[1]).catch(() => false)) ? 'ok' : 'no-mx') : '';
   db.updateLead(lead.id, {
+    contact_name: lead.contact_name || contact.contact_name, contact_role: lead.contact_role || contact.contact_role,
+    summary: lead.summary || contact.summary, email_status: emailStatus,
     website: r.website, domain: r.domain, email: lead.email || r.email, emails: JSON.stringify(emails), socials: JSON.stringify(socials),
     phone: lead.phone || r.phones[0] || '', score: sc.score,
     address: lead.address || [r.schema.street, r.schema.city, r.schema.postcode].filter(Boolean).join(', '),

@@ -42,6 +42,15 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'writing' && <section>
+            <div className="ai-compare">
+              <div className="ai-col"><b>No model</b><small>Free, works offline</small>
+                <ul><li>Emails from clean templates</li><li>Owner names from simple page patterns</li><li>PDF import picks out emails and phones</li></ul></div>
+              <div className="ai-col mid"><b>Free model</b><small>OpenRouter free models, Groq, or Ollama on this computer</small>
+                <ul><li>A personal email for every business, using its website, rating and gaps</li><li>Reads each website to find the owner and write a 2-line summary</li><li>Reads whole business lists from PDFs</li><li>Slower; free models have daily limits</li></ul></div>
+              <div className="ai-col top"><b>Paid key</b><small>Anthropic, OpenAI or Gemini</small>
+                <ul><li>Everything in Free, with better writing and fewer rewrites</li><li>More accurate owner names and summaries</li><li>Fast enough for autopilot at full volume</li><li>Costs about 1 cent or less per lead</li></ul></div>
+            </div>
+            <p className="muted small">The model never finds the businesses. Searching uses the maps, web and directories either way. It changes how well Quarrix understands each business and how personal the emails are, and that is what gets replies.</p>
             <label className="field"><span>Writing model</span>
               <select className="select" value={s.ai.provider} onChange={(e) => { set('ai.provider', e.target.value); set('ai.model', ''); setModels([]); }}>
                 <option value="none">None: use built-in templates</option>
