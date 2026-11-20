@@ -47,3 +47,19 @@ export const csvSafe = (v: unknown) => {
   const s = v === null || v === undefined ? '' : String(v);
   return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s; // stop spreadsheet formula injection
 };
+
+/** "United States" → "US". Uses the built-in country names, plus a few common short forms. */
+let countryMap: Map<string, string> | null = null;
+export function countryCode(name: string) {
+  const n = name.trim().toLowerCase().replace(/\.$/, '');
+  if (!n) return '';
+  if (!countryMap) {
+    countryMap = new Map([['usa', 'US'], ['u.s.a', 'US'], ['uk', 'GB'], ['england', 'GB'], ['scotland', 'GB'], ['wales', 'GB'], ['uae', 'AE']]);
+    const dn = new Intl.DisplayNames(['en'], { type: 'region' });
+    for (let a = 65; a <= 90; a++) for (let b = 65; b <= 90; b++) {
+      const code = String.fromCharCode(a, b);
+      try { const label = dn.of(code); if (label && label !== code) countryMap.set(label.toLowerCase(), code); } catch { /* not a region */ }
+    }
+  }
+  return countryMap.get(n) ?? (/^[a-z]{2}$/.test(n) ? n.toUpperCase() : '');
+}

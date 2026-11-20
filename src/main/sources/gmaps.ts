@@ -1,7 +1,7 @@
 // Google Maps through a hidden browser window on this computer, at a human pace.
 // Google changes its page often; every selector here has a fallback, and failures are reported, not hidden.
 import { BrowserWindow } from 'electron';
-import { sleep } from '../util';
+import { countryCode, sleep } from '../util';
 import type { Candidate, Progress } from './types';
 
 let win: BrowserWindow | null = null;
@@ -106,10 +106,13 @@ async function readPlace(category: string, href = ''): Promise<Candidate | null>
   const url = href || d.url;
   const m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   const id = url.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i)?.[1] ?? url.split('/maps/place/')[1]?.split('/')[0] ?? d.name;
-  const parts = String(d.address).split(',').map((s: string) => s.trim());
+  let parts = String(d.address).split(',').map((s: string) => s.trim()).filter(Boolean);
+  const country = parts.length > 1 ? countryCode(parts[parts.length - 1]) : '';
+  if (country) parts = parts.slice(0, -1); // the remaining parts end with "City, Region Postcode"
+  parts.push('');
   return {
     source: 'gmaps', source_ref: id, name: d.name, category: d.category || category, address: d.address,
-    city: parts.length >= 3 ? parts[parts.length - 3] : '', region: (parts[parts.length - 2] ?? '').replace(/\s*\d.*$/, ''), country: '',
+    city: parts.length >= 3 ? parts[parts.length - 3] : '', region: (parts[parts.length - 2] ?? '').replace(/\s*\d.*$/, ''), country,
     postcode: (parts[parts.length - 2] ?? '').match(/\b[A-Z0-9]{2,4}\s?[A-Z0-9]{2,4}\b|\b\d{4,6}\b/)?.[0] ?? '',
     lat: m ? +m[1] : null, lon: m ? +m[2] : null, phone: d.phone, email: '', website: d.website, rating: d.rating, reviews: d.reviews,
   };

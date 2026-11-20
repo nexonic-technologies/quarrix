@@ -2,11 +2,11 @@
 import * as db from './db';
 import { enrichWebsite, pagespeed, siteScore } from './enrich';
 import { load } from './settings';
-import { geocode, searchOsm, subAreas } from './sources/osm';
+import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { searchPlaces } from './sources/places';
 import { resetMaps, searchMaps, stopMaps } from './sources/gmaps';
 import type { Candidate } from './sources/types';
-import { domainOf, isPlatformHost, normalizePhone, sleep } from './util';
+import { countryCode, domainOf, isPlatformHost, normalizePhone, sleep } from './util';
 
 type Notify = (event: string, data?: unknown) => void;
 let notify: Notify = () => undefined;
@@ -16,6 +16,7 @@ let cancelSearch = 0;
 
 export function start(n: Notify) {
   notify = n;
+  repairCountries();
   setInterval(() => { void runSearches(); void runEnrichment(); }, 4000);
 }
 
@@ -44,7 +45,18 @@ async function runSearches() {
   notify('searches');
   let found = 0, added = 0;
   const errors: string[] = [];
-  const where = await geocode(s.place).catch(() => null);
+  let where: Place | null = await geocode(s.place).catch(() => null);
+  let anchored = false;
+  // Trust the real results over the typed place name: find the city around the first results' location.
+  const anchor = async (list: Candidate[]) => {
+    if (anchored) return;
+    const pts = list.filter((c) => c.lat != null && c.lon != null);
+    if (!pts.length) return;
+    anchored = true;
+    const mid = (k: 'lat' | 'lon') => pts.map((c) => c[k] as number).sort((a, b) => a - b)[Math.floor(pts.length / 2)];
+    const city = await cityAt(mid('lat'), mid('lon')).catch(() => null);
+    if (city) where = city;
+  };
   const save = (list: Candidate[]) => {
     const tx = db.raw().transaction(() => {
       for (const c of list) {
@@ -71,25 +83,32 @@ async function runSearches() {
   const limit = settings.sources.maxPerSearch > 0 ? settings.sources.maxPerSearch : Infinity; // 0 = everything available
   let areas: string[] | null = null;
   const moreAreas = async () => {
-    if (!areas) { progress('Splitting the area into neighbourhoods…'); areas = (await subAreas(s.place, limit === Infinity ? 200 : 40).catch(() => [])).map((a) => `${a}, ${s.place}`); }
+    if (!areas) {
+      progress('Splitting the area into neighbourhoods…');
+      const town = where?.city || s.place;
+      areas = (await subAreas(where ?? s.place, limit === Infinity ? 200 : 40).catch(() => [])).filter((a) => a.toLowerCase() !== town.toLowerCase()).map((a) => `${a}, ${town}`);
+    }
     return areas;
   };
   // Google lists only about 120 places per query (Places API: 60), so after the whole-city query
   // the search repeats for each neighbourhood until the limit is reached. Duplicates are merged.
   const byArea = async (label: string, run: (where: string, left: number) => Promise<Candidate[]>) => {
-    let got = 0;
-    const list = [s.place, ...(await moreAreas())];
-    for (const [i, where] of list.entries()) {
+    const first = await run(s.place, limit);
+    await anchor(first);
+    save(first);
+    let got = first.length;
+    const list = await moreAreas();
+    for (const [i, area] of list.entries()) {
       if (cancelSearch === s.id || got >= limit) break;
-      if (i > 0) progress(`${label}: area ${i} of ${list.length - 1}, ${where.split(',')[0]}`);
-      try { const c = await run(where, limit - got); got += c.length; save(c); } catch (e) { if (i === 0) throw e; }
+      progress(`${label}: area ${i + 1} of ${list.length}, ${area.split(',')[0]}`);
+      try { const c = await run(area, limit - got); got += c.length; save(c); } catch { /* skip this area */ }
     }
   };
   for (const src of sources) {
     if (cancelSearch === s.id) break;
     try {
       if (src === 'gmaps') { resetMaps(); const seen = new Set<string>(); await byArea('Google Maps', (w, left) => searchMaps(s.category, w, left, settings.sources.mapsDelayMs, progress, seen)); }
-      if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit)); }
+      if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit, where)); }
       if (src === 'places') {
         if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');
         await byArea('Google Places', (w, left) => searchPlaces(settings.sources.placesKey, s.category, w, left, progress));
@@ -111,7 +130,7 @@ export async function runEnrichment(ids?: number[]) {
   const pick = () => (ids
     ? (ids.length ? db.getLead(ids.shift()!) : undefined)
     : (db.raw().prepare("SELECT * FROM leads WHERE website <> '' AND enriched_at IS NULL ORDER BY id LIMIT 1").get() as db.Lead | undefined));
-  while (enriching < 3) {
+  while (enriching < 6) {
     const lead = pick();
     if (!lead) break;
     enriching++;
@@ -141,4 +160,14 @@ export async function enrichOne(lead: db.Lead) {
     city: lead.city || r.schema.city || '', region: lead.region || r.schema.region || '',
     audit: JSON.stringify({ facts: r.facts, psi, findings: sc.findings, phones: r.phones }),
   });
+}
+
+/** Earlier versions could store the wrong country for Google Maps leads (for example JP for New York). */
+function repairCountries() {
+  const rows = db.raw().prepare("SELECT id, address, country FROM leads WHERE source = 'gmaps' AND address <> ''").all() as { id: number; address: string; country: string }[];
+  const fix = db.raw().prepare('UPDATE leads SET country = ? WHERE id = ?');
+  for (const r of rows) {
+    const code = countryCode(r.address.split(',').pop() ?? '');
+    if (code && code !== r.country) fix.run(code, r.id);
+  }
 }

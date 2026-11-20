@@ -168,7 +168,7 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
             <dt>Email</dt><dd>{l.email ? <a href={`mailto:${l.email}`}>{l.email}</a> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>
             <dt>Phone</dt><dd>{l.phone || <span className="muted">none</span>}</dd>
             <dt>Website</dt><dd>{l.website ? <a href={l.website} target="_blank" rel="noreferrer">{l.domain || l.website}</a> : <span className="muted">none</span>}</dd>
-            <dt>Address</dt><dd>{[l.address, l.city, l.region, l.postcode, l.country].filter(Boolean).join(', ') || <span className="muted">unknown</span>}</dd>
+            <dt>Address</dt><dd>{(l.address && /\d/.test(l.address) && l.address.split(',').length >= 3 ? l.address : [l.address, l.city, l.region, l.postcode, l.country].filter(Boolean).join(', ')) || <span className="muted">unknown</span>}</dd>
             {l.rating ? <><dt>Rating</dt><dd>{l.rating} from {l.reviews ?? 0} reviews</dd></> : null}
             <dt>Found with</dt><dd>{{ gmaps: 'Google Maps', osm: 'OpenStreetMap', places: 'Google Places API', import: 'Import', manual: 'Added by you' }[l.source] ?? l.source}</dd>
           </dl>
