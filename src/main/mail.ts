@@ -5,6 +5,7 @@ import { ImapFlow } from 'imapflow';
 import { randomBytes } from 'node:crypto';
 import * as db from './db';
 import { signature } from './ai';
+import { hasReport, reportPath } from './proof';
 import { load, save, type Settings } from './settings';
 
 export const PRESETS = {
@@ -16,13 +17,29 @@ function transport(e: Settings['email']) {
   return nodemailer.createTransport({ host: e.smtpHost, port: e.smtpPort, secure: e.smtpSecure, auth: { user: e.smtpUser, pass: e.smtpPass }, connectionTimeout: 20000 });
 }
 
+export const reportName = (lead: string, company: string) => `${lead.replace(/[^\w &-]+/g, '').slice(0, 50)} - website review${company ? ` by ${company.replace(/[^\w &-]+/g, '')}` : ''}.pdf`;
+
+/** Send the proof report to a lead, in the same thread as the first email when there is one. */
+export async function sendReport(leadId: number) {
+  const s = load();
+  const lead = db.getLead(leadId);
+  if (!lead?.email) throw new Error('This lead has no email address.');
+  if (!hasReport(leadId)) throw new Error('Make the report first.');
+  const first = db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(leadId) as { subject: string; message_id: string } | undefined;
+  const firstName = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.split(' ')[0] : '';
+  const body = `Hi ${firstName || `${lead.name} team`},\n\nAs promised, here is the one-page review of ${lead.domain || lead.name}. The first two fixes on it are the quickest wins.\n\nHappy to talk it through if useful.\n\nBest,`;
+  const id = await sendRaw(lead.email, first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, `${body}\n\n${footer(s)}`, first?.message_id ?? '', [{ filename: reportName(lead.name, s.profile.company), path: reportPath(leadId) }]);
+  db.logEvent(leadId, 'sent', 'Proof report sent');
+  return id;
+}
+
 export function footer(s: Settings) {
   const lines = [signature(s)];
   if (s.email.unsubscribeLine) lines.push('', `${s.profile.address ? s.profile.address + '\n' : ''}If you'd rather not hear from me, reply "unsubscribe" and I won't email again.`);
   return lines.join('\n');
 }
 
-export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '') {
+export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = []) {
   const s = load();
   const e = s.email;
   if (!e.smtpUser || !e.smtpPass) throw new Error('Connect your mailbox first: Settings → Email.');
@@ -30,7 +47,7 @@ export async function sendRaw(to: string, subject: string, text: string, inReply
   const host = from.split('@')[1] || 'localhost';
   const messageId = `<${randomBytes(9).toString('hex')}@${host}>`;
   await transport(e).sendMail({
-    from: { name: e.fromName || s.profile.name || from, address: from }, to, subject, text, messageId,
+    from: { name: e.fromName || s.profile.name || from, address: from }, to, subject, text, messageId, attachments,
     headers: { 'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`, ...(inReplyTo ? { 'In-Reply-To': inReplyTo, References: inReplyTo } : {}) },
   });
   return messageId;
@@ -83,7 +100,8 @@ export async function tick(notify: (m: string) => void) {
       const first = m.step > 0 ? (db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(lead.id) as { subject: string; message_id: string } | undefined) : undefined;
       try {
         const subject = m.step > 0 && first ? `Re: ${first.subject}` : m.subject;
-        const id = await sendRaw(lead.email, subject, `${m.body}\n\n${footer(s)}`, first?.message_id ?? '');
+        const attach = m.step === 0 && s.email.attachReport && hasReport(lead.id) ? [{ filename: reportName(lead.name, s.profile.company), path: reportPath(lead.id) }] : [];
+        const id = await sendRaw(lead.email, subject, `${m.body}\n\n${footer(s)}`, first?.message_id ?? '', attach);
         db.updateMessage(m.id, { status: 'sent', sent_at: db.now(), message_id: id, subject });
         if (lead.status === 'new') db.updateLead(lead.id, { status: 'contacted' });
         db.logEvent(lead.id, 'sent', `${m.step === 0 ? 'Email' : `Follow-up ${m.step}`}: ${subject}`);

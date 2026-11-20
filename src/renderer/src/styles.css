@@ -592,3 +592,28 @@ h1, h2, h3, .brand, .topbar h1, .stat b, .big-n, .live-stats b, .camp-stats b, .
 .combo-menu button svg { color: var(--violet); }
 .combo-menu em { font-style: normal; font-size: 11px; color: var(--ink-3); }
 .combo-menu::-webkit-scrollbar { width: 8px; }
+
+/* ---------- 0.9: proof-first pitch ---------- */
+.proof { display: grid; gap: 10px; padding: 14px; border-radius: 14px; border: 1px solid #e6ddff; background: linear-gradient(180deg, #fbfaff, #fff); }
+.proof.empty-proof { display: flex; align-items: center; gap: 12px; }
+.proof b { font-weight: 650; display: block; }
+.proof .small { display: block; }
+.proof-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #a78bfa, #6d28d9); color: #fff; flex: none; }
+.proof-top { display: flex; align-items: center; gap: 12px; }
+.proof-score { display: flex; align-items: baseline; gap: 2px; padding: 6px 10px; border-radius: 10px; background: var(--panel-2); }
+.proof-score b { font-family: var(--display); font-size: 22px; }
+.proof-score span { color: var(--ink-3); font-size: 11px; }
+.proof-score.hi b { color: #16a34a; } .proof-score.mid b { color: #d97706; } .proof-score.lo b { color: #dc2626; }
+.proof-shots { display: flex; gap: 8px; align-items: flex-start; }
+.proof-shots img { width: 74%; border-radius: 8px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+.proof-shots img.mob { width: 22%; }
+.proof-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.proof-cards div { position: relative; padding: 7px 8px 9px; border-radius: 9px; background: var(--panel-2); overflow: hidden; }
+.proof-cards span { display: block; font-size: 10.5px; color: var(--ink-3); line-height: 1.2; min-height: 2.4em; }
+.proof-cards b { font-size: 15px; font-family: var(--display); }
+.proof-cards i { position: absolute; left: 0; bottom: 0; height: 3px; }
+.proof-cards .hi b { color: #16a34a; } .proof-cards .hi i { background: #16a34a; }
+.proof-cards .mid b { color: #d97706; } .proof-cards .mid i { background: #d97706; }
+.proof-cards .lo b { color: #dc2626; } .proof-cards .lo i { background: #dc2626; }
+.proof-steps { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 12.5px; display: grid; gap: 3px; }
+.spinner.sm { width: 12px; height: 12px; border-width: 2px; display: inline-block; vertical-align: -2px; }

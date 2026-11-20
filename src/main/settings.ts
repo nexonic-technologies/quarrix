@@ -16,7 +16,7 @@ export type Settings = {
     smtpHost: string; smtpPort: number; smtpSecure: boolean; smtpUser: string; smtpPass: string;
     imapOn: boolean; imapHost: string; imapPort: number; imapUser: string; imapPass: string;
     dailyLimit: number; warmStart: number; warmStep: number; gapMinutes: number;
-    windowStart: number; windowEnd: number; weekdaysOnly: boolean; followups: number[]; unsubscribeLine: boolean;
+    windowStart: number; windowEnd: number; weekdaysOnly: boolean; followups: number[]; unsubscribeLine: boolean; attachReport: boolean;
   };
   whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
 };
@@ -32,7 +32,7 @@ export const defaults: Settings = {
   email: {
     preset: 'gmail', fromName: '', fromEmail: '', smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '',
     imapOn: false, imapHost: 'imap.gmail.com', imapPort: 993, imapUser: '', imapPass: '',
-    dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true,
+    dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
 };

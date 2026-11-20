@@ -61,7 +61,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -191,7 +191,7 @@ export function addSearch(category: string, place: string, sources: string[], ca
 
 /* ---------- Autopilot campaigns ---------- */
 
-export type Campaign = { id: number; created_at: string; name: string; category: string; places: string; sources: string; daily: number; auto_send: number; enabled: number; cursor: number; last_run: string | null };
+export type Campaign = { id: number; created_at: string; name: string; category: string; places: string; sources: string; daily: number; auto_send: number; enabled: number; cursor: number; last_run: string | null; proof: number };
 export function listCampaigns() {
   return db.prepare(`SELECT c.*,
     (SELECT COUNT(*) FROM leads l JOIN searches s ON s.id = l.search_id WHERE s.campaign_id = c.id) leads,
@@ -202,7 +202,7 @@ export function listCampaigns() {
 }
 export const getCampaign = (id: number) => db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as Campaign | undefined;
 export function saveCampaign(c: Partial<Campaign>) {
-  const cols = ['name', 'category', 'places', 'sources', 'daily', 'auto_send', 'enabled', 'cursor', 'last_run'].filter((k) => (c as Record<string, unknown>)[k] !== undefined);
+  const cols = ['name', 'category', 'places', 'sources', 'daily', 'auto_send', 'enabled', 'cursor', 'last_run', 'proof'].filter((k) => (c as Record<string, unknown>)[k] !== undefined);
   const vals = cols.map((k) => (c as Record<string, unknown>)[k] as never);
   if (c.id) { db.prepare(`UPDATE campaigns SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, c.id); return c.id; }
   return Number(db.prepare(`INSERT INTO campaigns (created_at, ${cols.join(',')}) VALUES (?, ${cols.map(() => '?').join(',')})`).run(now(), ...vals).lastInsertRowid);

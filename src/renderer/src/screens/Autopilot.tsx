@@ -4,9 +4,9 @@ import { call } from '../api';
 import { toast, type Screen } from '../App';
 import { EmptyArt } from '../Art';
 
-type Campaign = { id?: number; name: string; category: string; places: string; sources: string; daily: number; auto_send: number; enabled: number; cursor?: number; last_run?: string | null; leads?: number; with_email?: number; sent?: number; replies?: number };
+type Campaign = { proof?: number; id?: number; name: string; category: string; places: string; sources: string; daily: number; auto_send: number; enabled: number; cursor?: number; last_run?: string | null; leads?: number; with_email?: number; sent?: number; replies?: number };
 const SRC: [string, string][] = [['gmaps', 'Google Maps'], ['osm', 'OpenStreetMap'], ['web', 'Web search'], ['dir', 'Directories'], ['places', 'Places API']];
-const blank: Campaign = { name: '', category: '', places: '[]', sources: '["gmaps","osm","web"]', daily: 20, auto_send: 1, enabled: 1 };
+const blank: Campaign = { name: '', category: '', places: '[]', sources: '["gmaps","osm","web"]', daily: 20, auto_send: 1, enabled: 1, proof: 1 };
 
 export function Autopilot({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [list, setList] = useState<Campaign[]>([]);
@@ -52,6 +52,7 @@ export function Autopilot({ tick, go }: { tick: number; go: (s: Screen) => void 
             <label className="field"><span>New emails per day</span><input className="input" type="number" min={1} max={200} value={edit.daily} onChange={(e) => setEdit({ ...edit, daily: Number(e.target.value) })} /><small>Your mailbox limit in Settings still applies and wins.</small></label>
             <div className="field"><span>Sending</span>
               <label className="switch"><input type="checkbox" checked={!!edit.auto_send} onChange={(e) => setEdit({ ...edit, auto_send: e.target.checked ? 1 : 0 })} /> Send automatically, no approval</label>
+              <label className="switch"><input type="checkbox" checked={edit.proof !== 0} onChange={(e) => setEdit({ ...edit, proof: e.target.checked ? 1 : 0 })} /> Make a proof report for each lead first</label>
               <small>{edit.auto_send ? 'Only leads with a working email address are sent to. Follow-ups stop when they reply.' : 'Drafts wait in Outreach for you to approve.'}</small>
             </div>
           </div>

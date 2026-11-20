@@ -5,6 +5,7 @@ import * as db from './db';
 import * as jobs from './jobs';
 import { approve, createDrafts } from './outreach';
 import { load } from './settings';
+import { makeReport } from './proof';
 
 type Notify = (event: string, data?: unknown) => void;
 let busy = false;
@@ -40,6 +41,7 @@ export async function run(notify: Notify, force?: number) {
         AND (l.fit IS NULL OR l.fit >= ?)
         ORDER BY l.fit DESC, (l.contact_name <> '') DESC, l.score DESC, l.id LIMIT ?`).all(c.id, load().ai.provider !== 'none' ? 55 : 0, room) as { id: number }[]).map((r) => r.id);
       if (!ids.length) continue;
+      if (c.proof) for (const id of ids) await makeReport(id).catch(() => undefined);
       await createDrafts(ids, () => notify('drafts'));
       for (const id of ids) {
         const has = db.raw().prepare("SELECT 1 FROM messages WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").get(id);

@@ -10,6 +10,7 @@ import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
 import { citiesOf, matchJobs, searchJobs } from './jobsearch';
 import * as cv from './resume';
+import * as proof from './proof';
 import { exportLeads, importFile } from './importexport';
 import { closeMaps } from './sources/gmaps';
 import { load, publicSettings, saveFromUi } from './settings';
@@ -76,6 +77,17 @@ function registerIpc() {
     return r.canceled || !r.filePaths[0] ? null : cv.loadCv(r.filePaths[0]);
   });
   handle('cv:profile', (p) => cv.saveProfile(p));
+  handle('proof:make', (id: number) => proof.makeReport(id));
+  handle('proof:info', (id: number) => proof.reportInfo(id));
+  handle('proof:open', (id: number) => shell.openPath(proof.reportPath(id)));
+  handle('proof:send', (id: number) => mail.sendReport(id));
+  handle('proof:save', async (id: number) => {
+    const l = db.getLead(id)!;
+    const r = await dialog.showSaveDialog(win!, { defaultPath: mail.reportName(l.name, load().profile.company), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (r.canceled || !r.filePath) return null;
+    (await import('node:fs')).copyFileSync(proof.reportPath(id), r.filePath);
+    return r.filePath;
+  });
   handle('jobs:detail', (job) => cv.jobDetail(job));
   handle('jobs:letter', (job) => cv.coverLetter(job));
   handle('jobs:tailor', (job) => cv.tailorCv(job));

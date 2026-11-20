@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin } from 'lucide-react';
+import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
 import { call, json, type Lead, type Message } from '../api';
 import { toast, type Screen } from '../App';
@@ -40,6 +40,12 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       const r = await call<{ made: number; errors: string[] }>('draft:create', ids);
       toast.push(`${r.made} drafts ready in Outreach${r.errors.length ? `. ${r.errors.length} skipped: ${r.errors[0]}` : ''}`, r.errors.length > 0 && !r.made);
       if (r.made) go('outreach');
+    }
+    if (what === 'proof') {
+      toast.push(`Making ${ids.length} reports. This takes about 15 seconds each.`);
+      let ok = 0;
+      for (const id of ids) { try { await call('proof:make', id); ok++; } catch { /* skip */ } }
+      toast.push(`${ok} proof reports ready`);
     }
     if (what === 'enrich') { await call('leads:enrich', ids); toast.push('Checking websites for emails and social links'); }
     if (what === 'delete') { if (!confirm(`Delete ${ids.length} leads? This cannot be undone.`)) return; await call('leads:delete', ids); toast.push('Deleted'); }
@@ -117,6 +123,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <span>{sel.size} selected</span>
           <button className="btn small" onClick={() => bulk('draft')}>Write emails</button>
           <button className="btn small" onClick={() => bulk('enrich')}>Check websites</button>
+          <button className="btn small" onClick={() => bulk('proof')}>Make reports</button>
           <button className="btn small" onClick={() => bulk('export:xlsx')}>Export</button>
           <select className="btn small" value="" onChange={(e) => e.target.value && bulk('status:' + e.target.value)} aria-label="Set status">
             <option value="">Set status</option>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -172,6 +179,7 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
               {l.fit != null && <div className="needs"><span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`}>{l.fit}% fit</span>{(l.needs || '').split(',').filter(Boolean).map((n) => <span key={n} className="need">needs {n.trim().toLowerCase()}</span>)}</div>}
             </div>
           )}
+          <ProofCard id={id} hasEmail={!!l.email} onChange={reload} />
           <dl className="kv">
             <dt>Email</dt><dd>{l.email ? <><a href={`mailto:${l.email}`}>{l.email}</a>{l.email_status === 'ok' && <span className="ok-pill">accepts mail</span>}{l.email_status === 'no-mx' && <span className="bad-pill">no mail server</span>}</> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>
             <dt>Phone</dt><dd>{l.phone || <span className="muted">none</span>}</dd>
@@ -207,5 +215,44 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
         </div>
       </aside>
     </>
+  );
+}
+
+type Proof = { overall: number; cards: { label: string; score: number; note: string }[]; rank: number; total: number; steps: string[]; desk: string; mob: string; at: string } | null;
+function ProofCard({ id, hasEmail, onChange }: { id: number; hasEmail: boolean; onChange: () => void }) {
+  const [p, setP] = useState<Proof>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { call<Proof>('proof:info', id).then(setP).catch(() => setP(null)); }, [id]);
+  const make = async () => {
+    setBusy(true);
+    try { setP(await call<Proof>('proof:make', id)); onChange(); toast.push('Proof report ready'); } catch (e: any) { toast.push(e.message, true); } finally { setBusy(false); }
+  };
+  const tone = (n: number) => (n >= 75 ? 'hi' : n >= 50 ? 'mid' : 'lo');
+  if (!p) return (
+    <div className="proof empty-proof">
+      <span className="proof-icon"><FileBarChart size={18} /></span>
+      <div className="grow"><b>Proof-first pitch</b><span className="muted small">Screenshots of their site, a scorecard, where they rank against nearby competitors, and a short plan, as a 1-page PDF you can send.</span></div>
+      <button className="btn primary small" disabled={busy} onClick={make}>{busy ? <><span className="spinner sm" /> Checking their site…</> : 'Make report'}</button>
+    </div>
+  );
+  return (
+    <div className="proof">
+      <div className="proof-top">
+        <div className={`proof-score ${tone(p.overall)}`}><b>{p.overall || '—'}</b><span>/100</span></div>
+        <div className="grow">
+          <b>Proof report</b>
+          <span className="muted small">{p.total > 1 ? `#${p.rank} of ${p.total} nearby by Google reviews · ` : ''}made {new Date(p.at).toLocaleDateString()}</span>
+        </div>
+        <button className="btn ghost small" onClick={make} disabled={busy} title="Check the site again">{busy ? <span className="spinner sm" /> : <RefreshCw size={13} />}</button>
+      </div>
+      {(p.desk || p.mob) && <div className="proof-shots">{p.desk && <img src={p.desk} alt="Desktop screenshot" />}{p.mob && <img className="mob" src={p.mob} alt="Phone screenshot" />}</div>}
+      <div className="proof-cards">{p.cards.map((c) => <div key={c.label} className={tone(c.score)} title={c.note}><span>{c.label}</span><b>{c.score}</b><i style={{ width: `${c.score}%` }} /></div>)}</div>
+      {p.steps.length > 0 && <ol className="proof-steps">{p.steps.map((x) => <li key={x}>{x}</li>)}</ol>}
+      <div className="row">
+        <button className="btn small" onClick={() => call('proof:open', id)}><ExternalLink size={13} /> Open PDF</button>
+        <button className="btn small" onClick={async () => { const f = await call('proof:save', id); if (f) toast.push('Saved'); }}><Download size={13} /> Save</button>
+        <button className="btn primary small" disabled={!hasEmail} onClick={async () => { try { await call('proof:send', id); toast.push('Report sent'); onChange(); } catch (e: any) { toast.push(e.message, true); } }}><Send size={13} /> Email it to them</button>
+      </div>
+    </div>
   );
 }

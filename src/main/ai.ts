@@ -2,6 +2,7 @@
 // With no model set, built-in templates are used.
 import type { Lead } from './db';
 import type { Settings } from './settings';
+import { reportFact } from './proof';
 import { fetchText } from './util';
 
 export const PROVIDERS: Record<string, { label: string; base: string; keyed: boolean; local?: boolean; suggest: string }> = {
@@ -87,6 +88,7 @@ function leadFacts(l: Lead) {
     l.website ? `Website: ${l.domain || l.website}` : 'Website: none found',
     l.contact_name && !l.contact_name.startsWith('u/') ? `Owner or decision maker: ${l.contact_name}${l.contact_role ? ` (${l.contact_role})` : ''}` : '',
     l.summary ? `About them: ${l.summary.slice(0, 600)}` : '',
+    reportFact(l.id),
     l.rating ? `Google rating: ${l.rating} (${l.reviews ?? 0} reviews)` : '',
     socials.length ? `Social profiles: ${socials.join(', ')}` : 'Social profiles: none found',
     ...(audit.findings ?? []).map((f: string) => `Finding: ${f}`),
