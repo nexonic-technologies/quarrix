@@ -24,12 +24,14 @@ jobs:
           if git rev-parse "$TAG" >/dev/null 2>&1; then echo "new=false" >> "$GITHUB_OUTPUT"; else echo "new=true" >> "$GITHUB_OUTPUT"; fi
   build:
     needs: version
-    if: needs.version.outputs.new == 'true'
+    if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
         os: [macos-15, windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
+    env:
+      HAS_MAC_CERT: ${{ secrets.CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -39,11 +41,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npx electron-builder --publish always
+      # Unsigned build (no certificates yet). Signing variables must be absent, not empty:
+      # an empty CSC_LINK is read as the project folder ("not a file").
+      - name: Build installers (unsigned)
+        if: env.HAS_MAC_CERT != 'true'
+        run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing turns on only when the certificates are added as repository secrets (see docs/RELEASING.md).
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      # Signed and notarized build, used once the certificate secrets are added (see docs/RELEASING.md).
+      - name: Build installers (signed)
+        if: env.HAS_MAC_CERT == 'true'
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
