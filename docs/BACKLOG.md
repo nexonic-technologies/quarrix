@@ -1,6 +1,6 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test. **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end.
+Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test. **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end. **Blocked** = cannot be done with authorised access today (reason given).
 
 | ID | Feature | Pri | Status | Where | Verified by |
 |---|---|---|---|---|---|
@@ -94,29 +94,29 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-088 | n8n/Zapier adapters | P3 | To do |  |  |
 | QF-089 | Structured export adapters | P3 | To do |  |  |
 | QF-090 | Approved-source browser extension | P3 | To do |  |  |
-| QF-091 | Greenhouse company jobs connector | P1 | To do |  |  |
-| QF-092 | Lever jobs connector | P1 | To do |  |  |
-| QF-093 | Ashby jobs connector | P1 | To do |  |  |
-| QF-094 | SmartRecruiters connector | P2 | To do |  |  |
-| QF-095 | Workday careers connector | P2 | To do |  |  |
-| QF-096 | Personio/Pinpoint connectors | P2 | To do |  |  |
-| QF-097 | Hacker News hiring posts | P2 | To do |  |  |
-| QF-098 | Glassdoor search connector | P2 | To do |  |  |
-| QF-099 | ZipRecruiter connector | P2 | To do |  |  |
-| QF-100 | SEEK, JobStreet and JobsDB connectors | P2 | To do |  |  |
-| QF-101 | Naukri India connector | P2 | To do |  |  |
-| QF-102 | Bayt Middle East connector | P2 | To do |  |  |
-| QF-103 | BDJobs and HelloWork connectors | P3 | To do |  |  |
-| QF-104 | Applicant tracking system detection | P1 | To do |  |  |
-| QF-105 | Application URL validation | P1 | To do |  |  |
-| QF-106 | Fresh-jobs-since-last-run mode | P1 | To do |  |  |
-| QF-107 | Scheduled job alerts | P1 | To do |  |  |
+| QF-091 | Greenhouse company jobs connector | P1 | Done | ats.ts employerJobs (Greenhouse board API) | test/jobs.test.ts (recorded shape) |
+| QF-092 | Lever jobs connector | P1 | Done | ats.ts (Lever postings API, US and EU) | test/jobs.test.ts (recorded shape) |
+| QF-093 | Ashby jobs connector | P1 | Built | ats.ts (Ashby posting API) | typecheck; needs live run |
+| QF-094 | SmartRecruiters connector | P2 | Built | ats.ts (SmartRecruiters postings API) | typecheck; needs live run |
+| QF-095 | Workday careers connector | P2 | Built | ats.ts (Workday public jobs endpoint) | typecheck; needs live run |
+| QF-096 | Personio/Pinpoint connectors | P2 | Built | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run |
+| QF-097 | Hacker News hiring posts | P2 | Built | ats.hnHiring (HN Algolia API, latest thread) | typecheck; needs live run |
+| QF-098 | Glassdoor search connector | P2 | Blocked | Glassdoor has no public jobs API; its terms forbid scraping | — |
+| QF-099 | ZipRecruiter connector | P2 | Blocked | ZipRecruiter API is partner-only; needs a partner account | — |
+| QF-100 | SEEK, JobStreet and JobsDB connectors | P2 | Blocked | SEEK/JobStreet/JobsDB: no public API without partner approval | — |
+| QF-101 | Naukri India connector | P2 | Blocked | Naukri: no public API | — |
+| QF-102 | Bayt Middle East connector | P2 | Blocked | Bayt: no public API | — |
+| QF-103 | BDJobs and HelloWork connectors | P3 | Blocked | BDJobs and HelloWork: no public API | — |
+| QF-104 | Applicant tracking system detection | P1 | Done | ats.detectAts (9 systems); Job search → Employers | test/jobs.test.ts |
+| QF-105 | Application URL validation | P1 | Done | ats.postingState + jobstore.checkPosting; "Is it still open?" in job details | test/jobs.test.ts |
+| QF-106 | Fresh-jobs-since-last-run mode | P1 | Built | job_seen first/last seen; "Only new since last search" filter; New badge | typecheck |
+| QF-107 | Scheduled job alerts | P1 | Built | job_alerts + job_alert_hits; runs every 15 min while open; notifications | typecheck |
 | QF-108 | Job application state accuracy | P1 | Done | Jobs.tsx: Apply sets "Opened", never "Applied" | manual |
-| QF-109 | Country-specific regional salary normalization | P2 | To do |  |  |
-| QF-110 | Salary floor and radius filters | P2 | To do |  |  |
-| QF-111 | Hide recruiters and company preferences | P2 | To do |  |  |
-| QF-112 | Job post provenance and age | P1 | To do |  |  |
-| QF-113 | Job result exports | P2 | To do |  |  |
+| QF-109 | Country-specific regional salary normalization | P2 | Done | ats.parseSalary (currency, period, yearly) | test/jobs.test.ts |
+| QF-110 | Salary floor and radius filters | P2 | Partial | Yearly salary floor filter; distance radius not built (job locations are free text) | test/jobs.test.ts (parsing) |
+| QF-111 | Hide recruiters and company preferences | P2 | Done | ats.isRecruiter; hide/prefer companies (settings.jobs); filter | test/jobs.test.ts |
+| QF-112 | Job post provenance and age | P1 | Built | first_seen, last_seen, posted, age badge, repost badge | typecheck |
+| QF-113 | Job result exports | P2 | Built | jobstore.exportSaved CSV/JSON/Markdown; buttons in My applications | typecheck |
 | QF-114 | Guided first-launch wizard | P1 | To do |  |  |
 | QF-115 | One-click offline sample/demo data | P1 | To do |  |  |
 | QF-116 | Distinct Business and Career workspaces | P1 | To do |  |  |

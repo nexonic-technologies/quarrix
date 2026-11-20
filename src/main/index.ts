@@ -7,6 +7,7 @@ import { EMAIL_STATUS, listingUrl, PRESETS } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
 import * as oauth from './oauth';
 import * as crm from './crm';
+import * as jobstore from './jobstore';
 import * as backup from './backup';
 import { checkDomain, dryRunPlan } from './deliverability';
 import { onMapsLoad } from './sources/gmaps';
@@ -22,7 +23,7 @@ import * as wa from './whatsapp';
 import { listModels, PROVIDERS } from './ai';
 import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
-import { citiesOf, matchJobs, searchJobs } from './jobsearch';
+import { citiesOf, matchJobs } from './jobsearch';
 import * as cv from './resume';
 import * as proof from './proof';
 import * as signals from './signals';
@@ -188,7 +189,24 @@ function registerIpc() {
   handle('messages:delete', (id: number) => db.deleteMessage(id));
   handle('messages:approve', (leadId: number) => approve(leadId));
   handle('messages:approveAll', () => approveAll());
-  handle('jobs:search', (q) => searchJobs(q));
+  handle('jobs:search', (q) => jobstore.searchAll(q ?? {}));
+  handle('employers:list', () => jobstore.listEmployers());
+  handle('employers:add', (link: string) => jobstore.addEmployer(String(link ?? '')));
+  handle('employers:remove', (id: number) => jobstore.removeEmployer(Number(id)));
+  handle('jobs:check', (url: string) => jobstore.checkPosting(String(url ?? '')));
+  handle('alerts:list', () => jobstore.listAlerts());
+  handle('alerts:save', (a) => jobstore.saveAlert(a));
+  handle('alerts:delete', (id: number) => jobstore.deleteAlert(Number(id)));
+  handle('alerts:hits', (id: number) => { const h = jobstore.alertHits(Number(id)); jobstore.markAlertSeen(Number(id)); return h; });
+  handle('alerts:run', () => jobstore.runAlerts(true));
+  handle('jobs:export', async (format: string) => {
+    const ext = ['csv', 'json', 'md'].includes(format) ? format : 'csv';
+    const r = await dialog.showSaveDialog(win!, { defaultPath: `my-applications-${new Date().toISOString().slice(0, 10)}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+    if (r.canceled || !r.filePath) return null;
+    const n = jobstore.exportSaved(r.filePath);
+    shell.showItemInFolder(r.filePath);
+    return n;
+  });
   handle('jobs:match', (jobs) => {
     const s = load(); const c = cv.getCv();
     if (!c) throw new Error('Upload your CV first.');
@@ -284,6 +302,7 @@ app.whenReady().then(() => {
   db.openDb();
   db.migrateData();
   crm.migrate();
+  jobstore.migrate();
   if (restored) setTimeout(() => send('toast', 'Backup restored. Your previous data was kept as a safety copy in the app folder.'), 3000);
   registerIpc();
   createWindow();
@@ -293,6 +312,8 @@ app.whenReady().then(() => {
   autopilot.start(send);
   signals.start(send);
   setInterval(() => void mail.tick((m) => send('toast', m)), 60_000);
+  // Job alerts (QF-107): saved searches run on their schedule while Quarrix is open.
+  setInterval(() => void jobstore.runAlerts().then((hits) => { for (const [name, n] of hits) { new Notification({ title: `${n} new job${n > 1 ? 's' : ''}: ${name}`, body: 'Open Job search → Alerts to see them.' }).show(); send('alerts'); } }).catch(() => undefined), 15 * 60_000);
   // Task reminders (QF-049): a desktop notification when a task falls due.
   setInterval(() => {
     for (const t of crm.dueReminders() as any[]) {

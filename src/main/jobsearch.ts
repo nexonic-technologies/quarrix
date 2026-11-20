@@ -232,8 +232,11 @@ Object.assign(SOURCES, {
       type: typeOf(x.type ?? ''), level: levelOf(x.title), salary: x.salary ?? '', url: x.link, posted: iso(x.updated), tags: [], snippet: strip(x.snippet).slice(0, 400) }));
   },
 });
+// Direct-from-employer sources (phase 6). Imported lazily to avoid a circular import with jobstore.
+SOURCES.employers = async (q) => (await import('./jobstore')).followedJobs(q.keywords);
+SOURCES.hn = async (q) => (await import('./ats')).hnHiring(q.keywords);
 export const JOB_SOURCES = Object.keys(SOURCES);
-const DEFAULT_SOURCES = JOB_SOURCES.filter((x) => !['adzuna', 'jooble'].includes(x));
+const DEFAULT_SOURCES = JOB_SOURCES.filter((x) => !['adzuna', 'jooble', 'hn'].includes(x));
 
 /** Runs the chosen boards in parallel, merges duplicates and applies the filters. */
 export async function searchJobs(q: JobQuery): Promise<{ jobs: Job[]; errors: string[] }> {
@@ -252,7 +255,7 @@ export async function searchJobs(q: JobQuery): Promise<{ jobs: Job[]; errors: st
     if (q.workplace?.length && j.workplace && !q.workplace.includes(j.workplace)) return false;
     if (q.type?.length && j.type && !q.type.includes(j.type)) return false;
     if (q.level?.length && !q.level.includes(j.level)) return false;
-    if (place.length && !/^(LinkedIn|Indeed|Google|Rozee|Adzuna|Jooble)/.test(j.source)) {
+    if (place.length && !/^(LinkedIn|Indeed|Google|Rozee|Adzuna|Jooble)/.test(j.source) && !(j.tags.includes('direct') && !j.location)) {
       const loc = j.location.toLowerCase();
       const open = /worldwide|anywhere|global|^remote$|^$/.test(loc);
       if (!open && !place.some((p) => loc.includes(p)) && !(q.country === 'US' && /\busa?\b|united states|america/.test(loc)) && !(q.country === 'GB' && /\buk\b|united kingdom|england|europe/.test(loc))) return false;

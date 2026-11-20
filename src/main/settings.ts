@@ -36,6 +36,7 @@ export type Settings = {
   verify: { provider: 'none' | 'hunter' | 'zerobounce'; hunterKey: string; zerobounceKey: string; auto: boolean; maxPerDay: number; findWithHunter: boolean };
   /** Re-check leads whose data is older than this many days (QF-030). */
   freshDays: number;
+  jobs: { hideCompanies: string[]; preferCompanies: string[]; hideRecruiters: boolean };
   crm: { stages: { key: string; label: string; probability: number }[]; currency: string };
 };
 
@@ -62,6 +63,7 @@ export const defaults: Settings = {
   icp: DEFAULT_ICP,
   verify: { provider: 'none', hunterKey: '', zerobounceKey: '', auto: false, maxPerDay: 50, findWithHunter: false },
   freshDays: 90,
+  jobs: { hideCompanies: [], preferCompanies: [], hideRecruiters: false },
   crm: { stages: [], currency: 'USD' },
 };
 

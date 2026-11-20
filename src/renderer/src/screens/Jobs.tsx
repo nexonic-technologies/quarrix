@@ -5,16 +5,19 @@ import { toast } from '../App';
 import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord } from '../Art';
 import { CityInput, CountryInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
+import { AlertsPanel, CheckLink, EmployersPanel } from './JobsParts';
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
-type Job = { status?: string; id: string; source: string; title: string; company: string; location: string; workplace: string; type: string; level: string; salary: string; url: string; posted: string; tags: string[]; snippet: string; match?: number; why?: string };
+type Job = { firstSeen?: string; isNew?: boolean; repost?: boolean; ageDays?: number | null; recruiter?: boolean; salaryYearly?: { min: number; max: number; currency: string; period: string } | null; status?: string; id: string; source: string; title: string; company: string; location: string; workplace: string; type: string; level: string; salary: string; url: string; posted: string; tags: string[]; snippet: string; match?: number; why?: string };
 
 const OPT = {
+  extra: [['onlyNew', 'Only new since last search'], ['hideReposts', 'Hide reposted jobs'], ['hideRecruiters', 'Hide recruiters and agencies'], ['fresh', 'Posted in the last 30 days']],
+  salary: [['', 'Any salary'], ['30000', '30,000+ a year'], ['50000', '50,000+ a year'], ['75000', '75,000+ a year'], ['100000', '100,000+ a year'], ['150000', '150,000+ a year']],
   posted: [['', 'Any time'], ['1', 'Past 24 hours'], ['7', 'Past week'], ['30', 'Past month']],
   workplace: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']],
   level: [['Internship', 'Internship'], ['Entry level', 'Entry level'], ['Mid level', 'Mid level'], ['Senior', 'Senior'], ['Director', 'Director']],
   type: [['Full-time', 'Full-time'], ['Part-time', 'Part-time'], ['Contract', 'Contract'], ['Internship', 'Internship']],
-  sources: [['linkedin', 'LinkedIn'], ['indeed', 'Indeed'], ['google', 'Google Jobs'], ['rozee', 'Rozee.pk'], ['remotive', 'Remotive'], ['remoteok', 'RemoteOK'], ['weworkremotely', 'We Work Remotely'], ['workingnomads', 'Working Nomads'], ['jobicy', 'Jobicy'], ['himalayas', 'Himalayas'], ['arbeitnow', 'Arbeitnow'], ['reddit', 'Reddit'], ['adzuna', 'Adzuna (free key)'], ['jooble', 'Jooble (free key)']],
+  sources: [['employers', 'Followed employers (direct)'], ['hn', 'Hacker News: Who is hiring'], ['linkedin', 'LinkedIn'], ['indeed', 'Indeed'], ['google', 'Google Jobs'], ['rozee', 'Rozee.pk'], ['remotive', 'Remotive'], ['remoteok', 'RemoteOK'], ['weworkremotely', 'We Work Remotely'], ['workingnomads', 'Working Nomads'], ['jobicy', 'Jobicy'], ['himalayas', 'Himalayas'], ['arbeitnow', 'Arbeitnow'], ['reddit', 'Reddit'], ['adzuna', 'Adzuna (free key)'], ['jooble', 'Jooble (free key)']],
 } as const;
 
 function Pill({ label, options, value, multi, onChange }: { label: string; options: readonly (readonly [string, string])[]; value: string[]; multi?: boolean; onChange: (v: string[]) => void }) {
@@ -54,6 +57,9 @@ export function Jobs() {
   const [level, setLevel] = useState<string[]>([]);
   const [type, setType] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
+  const [extra, setExtra] = useState<string[]>([]);
+  const [salary, setSalary] = useState<string[]>(['']);
+  const [panel, setPanel] = useState<'' | 'employers' | 'alerts'>('');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -74,7 +80,7 @@ export function Jobs() {
   }, []);
   useEffect(() => { setCity(''); }, [country]);
 
-  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources });
+  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources, onlyNew: extra.includes('onlyNew'), hideReposts: extra.includes('hideReposts'), hideRecruiters: extra.includes('hideRecruiters') || undefined, maxAgeDays: extra.includes('fresh') ? 30 : undefined, salaryMin: Number(salary[0]) || undefined });
   const rank = async (list: Job[], quiet = false) => {
     if (!cv) { if (!quiet) toast.push('Upload your CV first, so jobs can be matched to you.', true); return list; }
     setRanking(true);
@@ -152,6 +158,10 @@ export function Jobs() {
         <Pill label="Experience level" options={OPT.level} value={level} multi onChange={setLevel} />
         <Pill label="Employment type" options={OPT.type} value={type} multi onChange={setType} />
         <Pill label="Job boards" options={OPT.sources} value={sources} multi onChange={setSources} />
+        <Pill label="Salary" options={OPT.salary} value={salary} onChange={setSalary} />
+        <Pill label="More filters" options={OPT.extra} value={extra} multi onChange={setExtra} />
+        <button className="pill-btn" onClick={() => setPanel(panel === 'employers' ? '' : 'employers')}>Employers</button>
+        <button className="pill-btn" onClick={() => setPanel(panel === 'alerts' ? '' : 'alerts')}>Alerts</button>
         <button className={`pill-btn ${workplace.length === 1 && workplace[0] === 'remote' ? 'on' : ''}`} onClick={() => setWorkplace(workplace[0] === 'remote' && workplace.length === 1 ? [] : ['remote'])}>Remote only</button>
         <span className="grow" />
         <div className="tabs seg" style={{ margin: 0 }}>
@@ -160,6 +170,9 @@ export function Jobs() {
         </div>
       </div>
 
+      {panel === 'employers' && <EmployersPanel />}
+      {panel === 'alerts' && <AlertsPanel current={{ ...query(kw.trim()), name: kw.trim() }} onOpen={(list) => { setJobs(list as Job[]); setTab('results'); }} />}
+      {tab === 'saved' && saved.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 8 }}><span className="muted small">Export my applications:</span>{(['csv', 'json', 'md'] as const).map((f) => <button key={f} className="btn small ghost" onClick={async () => { const n = await call('jobs:export', f); if (n) toast.push(`Exported ${n} jobs`); }}>{f === 'md' ? 'Markdown' : f.toUpperCase()}</button>)}</div>}
       {cv ? (
         <div className="panel cv-card">
           <span className="cv-icon"><FileText size={18} /></span>
@@ -197,7 +210,12 @@ export function Jobs() {
                   {j.workplace && <span className="tag">{j.workplace === 'onsite' ? 'On-site' : j.workplace[0].toUpperCase() + j.workplace.slice(1)}</span>}
                   {j.type && <span className="tag">{j.type}</span>}
                   {j.level && <span className="tag">{j.level}</span>}
-                  {j.salary && <span className="tag ok">{j.salary}</span>}
+                  {j.salary && <span className="tag ok" title={j.salaryYearly ? `About ${j.salaryYearly.currency} ${j.salaryYearly.min.toLocaleString()}–${j.salaryYearly.max.toLocaleString()} a year (shown ${j.salaryYearly.period === 'year' ? 'yearly' : `per ${j.salaryYearly.period}`})` : ''}>{j.salary}</span>}
+                  {j.tags?.includes('direct') && <span className="tag direct" title="From the employer's own hiring system">Direct</span>}
+                  {j.isNew && j.firstSeen && <span className="tag new">New</span>}
+                  {j.repost && <span className="tag warn" title="The same title at the same company was seen before under a different posting">Reposted</span>}
+                  {j.recruiter && <span className="tag" title="Looks like a recruiter or agency">Agency</span>}
+                  {j.ageDays != null && j.ageDays > 45 && <span className="tag warn" title="Old postings are often filled already">{j.ageDays} days old</span>}
                   <span className="muted small">{j.source}{j.posted ? ` · ${ago(j.posted)}` : ''}</span>
                 </div>
                 {j.why && <div className="why">{j.why}</div>}
@@ -265,6 +283,7 @@ function JobDetail({ job, onClose, onApply, onLetter, onTailor, saved, onSave }:
           {job.match != null && <div className="why" style={{ marginTop: 6 }}><span className={`match ${job.match >= 70 ? 'hi' : job.match >= 45 ? 'mid' : ''}`}>{job.match}% match</span> {job.why}</div>}
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn primary" onClick={onApply}>Apply <ExternalLink size={13} /></button>
+            <CheckLink url={job.url} />
             <button className="btn" onClick={onLetter}><PenLine size={14} /> Cover letter</button>
             <button className="btn" onClick={onTailor}><FileText size={14} /> Tailor CV</button>
           </div>
