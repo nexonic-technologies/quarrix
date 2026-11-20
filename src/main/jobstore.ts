@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import Papa from 'papaparse';
 import * as db from './db';
-import { detectAts, employerJobs, isRecruiter, parseSalary, postingState, type Employer } from './ats';
+import { detectAts, employerJobs, isRecruiter, parseSalary, placeScore, postingState, titleScore, type Employer } from './ats';
 import { searchJobs, type Job, type JobQuery } from './jobsearch';
 import { load } from './settings';
 import { csvSafe, fetchText, UA } from './util';
@@ -17,6 +17,7 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS job_seen (id TEXT PRIMARY KEY, key TEXT NOT NULL, source TEXT NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, posted TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT '', checked_at TEXT);
     CREATE INDEX IF NOT EXISTS job_seen_key ON job_seen(key);
     CREATE TABLE IF NOT EXISTS employers (id INTEGER PRIMARY KEY, ats TEXT NOT NULL, slug TEXT NOT NULL, name TEXT NOT NULL, host TEXT NOT NULL DEFAULT '', site TEXT NOT NULL DEFAULT '', added_at TEXT NOT NULL, last_run TEXT, last_count INTEGER, error TEXT NOT NULL DEFAULT '', UNIQUE (ats, slug));
+    CREATE TABLE IF NOT EXISTS job_search_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, query TEXT NOT NULL, results INTEGER NOT NULL, errors TEXT NOT NULL, ms INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS job_alerts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL, every_hours INTEGER NOT NULL DEFAULT 12, enabled INTEGER NOT NULL DEFAULT 1, last_run TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS job_alert_hits (alert_id INTEGER NOT NULL REFERENCES job_alerts(id) ON DELETE CASCADE, job_id TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (alert_id, job_id));
   `);
@@ -66,14 +67,28 @@ export function annotate(jobs: Job[]): Annotated[] {
   }))();
 }
 
-export type JobFilters = { onlyNew?: boolean; salaryMin?: number; hideRecruiters?: boolean; hideCompanies?: string[]; preferCompanies?: string[]; hideReposts?: boolean; maxAgeDays?: number };
+/** Light annotation for streaming batches (no database writes). */
+const annotateLight = (jobs: Job[]): Annotated[] => jobs.map((j) => ({ ...j, firstSeen: '', lastSeen: '', isNew: false, repost: false, ageDays: j.posted ? Math.floor((Date.now() - Date.parse(j.posted)) / 864e5) : null, salaryYearly: null, recruiter: isRecruiter(j.company) }));
+
+// ── Recent job searches ──
+function logSearch(q: Record<string, any>, results: number, errors: string[], ms: number) {
+  raw().prepare('INSERT INTO job_search_log (at, query, results, errors, ms) VALUES (?, ?, ?, ?, ?)').run(now(), JSON.stringify(q), results, JSON.stringify(errors), ms);
+  raw().prepare('DELETE FROM job_search_log WHERE id NOT IN (SELECT id FROM job_search_log ORDER BY id DESC LIMIT 50)').run();
+}
+export const recentSearches = () => (raw().prepare('SELECT * FROM job_search_log ORDER BY id DESC LIMIT 20').all() as any[]).map((r) => ({ ...r, query: JSON.parse(r.query), errors: JSON.parse(r.errors) }));
+export const clearSearches = () => raw().prepare('DELETE FROM job_search_log').run();
+
+export type JobFilters = { strict?: boolean; onlyNew?: boolean; salaryMin?: number; hideRecruiters?: boolean; hideCompanies?: string[]; preferCompanies?: string[]; hideReposts?: boolean; maxAgeDays?: number };
 /** Search every board plus followed employers and HN, then mark new, reposted and old postings, and apply the extra filters. */
-export async function searchAll(q: JobQuery & JobFilters) {
-  const { jobs, errors } = await searchJobs(q);
+export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source: string; jobs: Annotated[]; error: string; ms: number }) => void = () => undefined) {
+  const started = Date.now();
+  const strictOk = (j: Job) => q.strict === false || titleScore(j.title, q.keywords) >= 0.66; // two words: both; three: two of three
+  const { jobs, errors } = await searchJobs(q, (source, list, error, ms) => onBatch({ source, jobs: annotateLight(list.filter(strictOk)), error, ms }));
   const s = load();
   const hide = [...(q.hideCompanies ?? []), ...(s.jobs?.hideCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
   const prefer = [...(q.preferCompanies ?? []), ...(s.jobs?.preferCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
   const list = annotate(jobs).filter((j) => {
+    if (!strictOk(j)) return false;
     if (q.onlyNew && !j.isNew) return false;
     if (q.hideReposts && j.repost) return false;
     if ((q.hideRecruiters ?? s.jobs?.hideRecruiters) && j.recruiter) return false;
@@ -83,7 +98,10 @@ export async function searchAll(q: JobQuery & JobFilters) {
     return true;
   });
   const pref = (j: Job) => (prefer.some((p) => j.company.toLowerCase().includes(p)) ? 1 : 0);
-  list.sort((a, b) => pref(b) - pref(a) || Number(b.tags.includes('direct')) - Number(a.tags.includes('direct')) || (b.posted || b.firstSeen).localeCompare(a.posted || a.firstSeen));
+  // Best title match first, then local before remote, then preferred employers, direct postings and newest.
+  const rank = (j: Job) => titleScore(j.title, q.keywords) * 10 + placeScore(j.location, q.city, q.countryName) * 2 + pref(j) * 3 + Number(j.tags.includes('direct'));
+  list.sort((a, b) => rank(b) - rank(a) || (b.posted || b.firstSeen).localeCompare(a.posted || a.firstSeen));
+  logSearch(q, list.length, errors, Date.now() - started);
   return { jobs: list, errors };
 }
 

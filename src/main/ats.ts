@@ -138,3 +138,34 @@ export function postingState(status: number, text: string): { state: 'open' | 'c
 
 /** Likely recruiter or staffing agency rather than the employer (QF-111). Pure. */
 export const isRecruiter = (company: string) => /\b(recruit\w*|staffing|talent (acquisition|solutions|partners)|search partners|headhunt\w*|personnel|manpower|resourcing|employment agency|jobs? (agency|consult\w*))\b/i.test(company);
+
+// ── Title relevance (multi-word searches) ──
+const SYN: Record<string, string[]> = {
+  admin: ['admin', 'administrator', 'administration', 'sysadmin', 'sys admin'], administrator: ['admin', 'administrator', 'sysadmin'],
+  system: ['system', 'systems', 'sysadmin', 'infrastructure'], systems: ['system', 'systems', 'sysadmin'],
+  dev: ['dev', 'developer', 'development', 'engineer'], developer: ['developer', 'dev', 'engineer', 'programmer'], engineer: ['engineer', 'engineering', 'developer'],
+  manager: ['manager', 'mgr', 'management', 'lead', 'head'], mgr: ['manager', 'mgr'], sr: ['sr', 'senior'], senior: ['senior', 'sr'], jr: ['jr', 'junior'], junior: ['junior', 'jr'],
+  frontend: ['frontend', 'front end', 'front-end'], backend: ['backend', 'back end', 'back-end'], fullstack: ['fullstack', 'full stack', 'full-stack'],
+  it: ['it', 'information technology'], hr: ['hr', 'human resources', 'people'], qa: ['qa', 'quality assurance', 'tester', 'test'],
+  devops: ['devops', 'dev ops', 'sre', 'site reliability', 'platform'], network: ['network', 'networking', 'noc'], support: ['support', 'helpdesk', 'help desk', 'service desk'],
+  marketing: ['marketing', 'marketer', 'growth'], designer: ['designer', 'design'], accountant: ['accountant', 'accounting', 'accounts'],
+};
+const STOPWORDS = new Set(['and', 'or', 'the', 'a', 'an', 'of', 'for', 'in', 'at', 'to', 'with', 'job', 'jobs', 'remote']);
+const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9+#.\s-]/g, ' ').split(/[\s/,-]+/).filter(Boolean);
+/** How well a job title matches the searched words: 1 = every word (or a synonym) is in the title. Pure. */
+export function titleScore(title: string, keywords: string) {
+  const t = ` ${words(title).join(' ')} `;
+  const want = words(keywords).filter((w) => !STOPWORDS.has(w));
+  if (!want.length) return 1;
+  let hit = 0;
+  for (const w of want) if ((SYN[w] ?? [w]).some((v) => t.includes(` ${v} `) || t.includes(` ${v}s `) || (v.length > 4 && t.includes(v)))) hit++;
+  return hit / want.length;
+}
+/** Local first: 2 = in the chosen city, 1 = in the country, 0.5 = remote, 0 = elsewhere. Pure. */
+export function placeScore(location: string, city = '', country = '') {
+  const l = location.toLowerCase();
+  if (city && l.includes(city.toLowerCase())) return 2;
+  if (country && l.includes(country.toLowerCase())) return 1;
+  if (/remote|anywhere|worldwide|global/.test(l) || !l) return 0.5;
+  return 0;
+}

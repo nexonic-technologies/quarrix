@@ -238,19 +238,49 @@ SOURCES.hn = async (q) => (await import('./ats')).hnHiring(q.keywords);
 export const JOB_SOURCES = Object.keys(SOURCES);
 const DEFAULT_SOURCES = JOB_SOURCES.filter((x) => !['adzuna', 'jooble', 'hn'].includes(x));
 
-/** Runs the chosen boards in parallel, merges duplicates and applies the filters. */
-export async function searchJobs(q: JobQuery): Promise<{ jobs: Job[]; errors: string[] }> {
+const SLOW = new Set(['google', 'indeed', 'rozee', 'employers', 'linkedin']);
+const withTimeout = <T>(p: Promise<T>, ms: number, name: string) => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`no answer after ${Math.round(ms / 1000)} s`)), ms))]);
+
+/**
+ * Runs the chosen boards in parallel, each with a time limit, and reports each board's jobs as soon as it answers
+ * (onBatch), so the screen fills in while slower boards are still working. Then merges duplicates and applies the filters.
+ */
+export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Job[], error: string, ms: number) => void = () => undefined): Promise<{ jobs: Job[]; errors: string[] }> {
   const keyed = (load().sources as any);
   const pick = q.sources?.length ? q.sources : [...DEFAULT_SOURCES, ...(keyed.adzunaKey ? ['adzuna'] : []), ...(keyed.joobleKey ? ['jooble'] : [])];
   const errors: string[] = [];
-  const all = (await Promise.all(pick.map((s) => SOURCES[s]?.(q).catch((e) => { errors.push(`${s}: ${e.message ?? e}`); return [] as Job[]; }) ?? []))).flat();
+  const all = (await Promise.all(pick.map(async (s) => {
+    const t = Date.now();
+    if (!SOURCES[s]) return [] as Job[];
+    try {
+      const list = filterJobs(await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000, s), q);
+      onBatch(s, list, '', Date.now() - t);
+      return list;
+    } catch (e: any) {
+      const msg = String(e?.message ?? e).replace(/^Error:\s*/, '').slice(0, 140);
+      errors.push(`${s}: ${msg}`);
+      onBatch(s, [], msg, Date.now() - t);
+      return [] as Job[];
+    }
+  }))).flat();
+  return { jobs: dedupe(all).sort((a, b) => (b.posted || '').localeCompare(a.posted || '')), errors };
+}
+
+export function dedupe(list: Job[]) {
   const seen = new Set<string>();
-  const since = q.posted ? Date.now() - Number(q.posted) * 86400000 : 0;
-  const place = [q.city, q.countryName, q.country].filter(Boolean).map((x) => x!.toLowerCase());
-  const jobs = all.filter((j) => {
+  return list.filter((j) => {
     const key = `${j.title}|${j.company}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
     if (!j.title || seen.has(key)) return false;
     seen.add(key);
+    return true;
+  });
+}
+
+export function filterJobs(list: Job[], q: JobQuery) {
+  const since = q.posted ? Date.now() - Number(q.posted) * 86400000 : 0;
+  const place = [q.city, q.countryName, q.country].filter(Boolean).map((x) => x!.toLowerCase());
+  return list.filter((j) => {
+    if (!j.title) return false;
     if (since && j.posted && +new Date(j.posted) < since) return false;
     if (q.workplace?.length && j.workplace && !q.workplace.includes(j.workplace)) return false;
     if (q.type?.length && j.type && !q.type.includes(j.type)) return false;
@@ -261,8 +291,7 @@ export async function searchJobs(q: JobQuery): Promise<{ jobs: Job[]; errors: st
       if (!open && !place.some((p) => loc.includes(p)) && !(q.country === 'US' && /\busa?\b|united states|america/.test(loc)) && !(q.country === 'GB' && /\buk\b|united kingdom|england|europe/.test(loc))) return false;
     }
     return true;
-  }).sort((a, b) => (b.posted || '').localeCompare(a.posted || ''));
-  return { jobs, errors };
+  });
 }
 
 /** With a model: score how well each job fits the person's skills (0-100) with a short reason. */

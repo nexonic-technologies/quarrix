@@ -179,7 +179,6 @@ export const spotlight = (e: React.MouseEvent<HTMLElement>) => {
   el.classList.add('tracking');
   // Gentle parallax: a small turn and tilt toward the pointer, never a full spin.
   const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
-  el.style.setProperty('--spin', `${clamp(dx / 30, 12)}deg`);
   el.style.setProperty('--tx', `${clamp(-dy / 40, 8)}deg`);
   el.style.setProperty('--ty', `${clamp(dx / 60, 8)}deg`);
 };

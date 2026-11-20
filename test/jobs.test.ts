@@ -53,3 +53,17 @@ test('Greenhouse and Lever connectors (recorded shapes)', async () => {
     assert.deepEqual([l[0].title, l[0].workplace, l[0].type, l[0].salary.startsWith('GBP 50000')], ['Designer', 'hybrid', 'Full-time', true]);
   } finally { globalThis.fetch = real; }
 });
+
+test('multi-word titles match with synonyms, loose matches drop out', async () => {
+  const { titleScore, placeScore } = await import('../src/main/ats');
+  assert.equal(titleScore('Senior Systems Administrator', 'System Admin'), 1);
+  assert.equal(titleScore('Linux Sysadmin', 'system admin'), 1);
+  assert.equal(titleScore('IT System Admin (Windows)', 'system admin'), 1);
+  assert.ok(titleScore('Atlassian Administrator', 'System Admin') === 0.5);
+  assert.equal(titleScore('Staff Software Engineer (SRE)', 'System Admin'), 0);
+  assert.equal(titleScore('Remote Office Assistant', 'System Admin'), 0);
+  assert.equal(titleScore('Full-Stack Developer', 'fullstack dev'), 1);
+  assert.equal(placeScore('Gujranwala, Punjab, Pakistan', 'Gujranwala', 'Pakistan'), 2);
+  assert.equal(placeScore('Lahore, Pakistan', 'Gujranwala', 'Pakistan'), 1);
+  assert.equal(placeScore('Anywhere', 'Gujranwala', 'Pakistan'), 0.5);
+});

@@ -213,7 +213,9 @@ function registerIpc() {
   handle('messages:delete', (id: number) => db.deleteMessage(id));
   handle('messages:approve', (leadId: number) => approve(leadId));
   handle('messages:approveAll', () => approveAll());
-  handle('jobs:search', (q) => jobstore.searchAll(q ?? {}));
+  handle('jobs:search', (q, runId?: number) => jobstore.searchAll(q ?? {}, (b) => send('jobs-batch', { runId, ...b })));
+  handle('jobs:recent', () => jobstore.recentSearches());
+  handle('jobs:clearRecent', () => jobstore.clearSearches());
   handle('employers:list', () => jobstore.listEmployers());
   handle('employers:add', (link: string) => jobstore.addEmployer(String(link ?? '')));
   handle('employers:remove', (id: number) => jobstore.removeEmployer(Number(id)));

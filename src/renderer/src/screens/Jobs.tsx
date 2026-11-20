@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search as SearchIcon, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
 import { call } from '../api';
 import { toast } from '../App';
-import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord } from '../Art';
+import { Avatar, EmptyArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord } from '../Art';
+import { RadarToy } from '../Toy';
 import { CityInput, CountryInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
 import { AlertsPanel, CheckLink, EmployersPanel } from './JobsParts';
@@ -11,7 +12,7 @@ type Cv = { file: string; analysedWith: string; profile: { name: string; title: 
 type Job = { firstSeen?: string; isNew?: boolean; repost?: boolean; ageDays?: number | null; recruiter?: boolean; salaryYearly?: { min: number; max: number; currency: string; period: string } | null; status?: string; id: string; source: string; title: string; company: string; location: string; workplace: string; type: string; level: string; salary: string; url: string; posted: string; tags: string[]; snippet: string; match?: number; why?: string };
 
 const OPT = {
-  extra: [['onlyNew', 'Only new since last search'], ['hideReposts', 'Hide reposted jobs'], ['hideRecruiters', 'Hide recruiters and agencies'], ['fresh', 'Posted in the last 30 days']],
+  extra: [['loose', 'Show loosely matching titles too'], ['onlyNew', 'Only new since last search'], ['hideReposts', 'Hide reposted jobs'], ['hideRecruiters', 'Hide recruiters and agencies'], ['fresh', 'Posted in the last 30 days']],
   salary: [['', 'Any salary'], ['30000', '30,000+ a year'], ['50000', '50,000+ a year'], ['75000', '75,000+ a year'], ['100000', '100,000+ a year'], ['150000', '150,000+ a year']],
   posted: [['', 'Any time'], ['1', 'Past 24 hours'], ['7', 'Past week'], ['30', 'Past month']],
   workplace: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']],
@@ -58,11 +59,24 @@ export function Jobs() {
   const [type, setType] = useState<string[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [extra, setExtra] = useState<string[]>([]);
+  const [boards, setBoards] = useState<{ source: string; count: number; error: string; ms: number }[]>([]);
+  const [recent, setRecent] = useState<any[]>([]);
+  const runSeq = useRef(0);
+  // Each board's jobs appear as soon as that board answers; the final list replaces them with the ranked, merged one.
+  useEffect(() => {
+    const off = (window as any).quarrix?.on((e: string, d: any) => {
+      if (e !== 'jobs-batch' || d.runId !== runSeq.current) return;
+      setBoards((b) => [...b.filter((x) => x.source !== d.source), { source: d.source, count: d.jobs.length, error: d.error, ms: d.ms }]);
+      if (d.jobs.length) setJobs((list) => [...list, ...d.jobs.filter((j: Job) => !list.some((x) => x.id === j.id))]);
+    });
+    return off;
+  }, []);
   const [salary, setSalary] = useState<string[]>(['']);
   const [panel, setPanel] = useState<'' | 'employers' | 'alerts'>('');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!busy) call<any[]>('jobs:recent').then((x) => setRecent(x ?? [])); }, [busy]);
   const [tab, setTab] = useState<'results' | 'saved'>('results');
   const [saved, setSaved] = useState<Job[]>([]);
   const [open, setOpen] = useState<string | null>(null);
@@ -80,7 +94,7 @@ export function Jobs() {
   }, []);
   useEffect(() => { setCity(''); }, [country]);
 
-  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources, onlyNew: extra.includes('onlyNew'), hideReposts: extra.includes('hideReposts'), hideRecruiters: extra.includes('hideRecruiters') || undefined, maxAgeDays: extra.includes('fresh') ? 30 : undefined, salaryMin: Number(salary[0]) || undefined });
+  const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources, strict: !extra.includes('loose'), onlyNew: extra.includes('onlyNew'), hideReposts: extra.includes('hideReposts'), hideRecruiters: extra.includes('hideRecruiters') || undefined, maxAgeDays: extra.includes('fresh') ? 30 : undefined, salaryMin: Number(salary[0]) || undefined });
   const rank = async (list: Job[], quiet = false) => {
     if (!cv) { if (!quiet) toast.push('Upload your CV first, so jobs can be matched to you.', true); return list; }
     setRanking(true);
@@ -97,8 +111,10 @@ export function Jobs() {
     setBusy(true); setTab('results');
     try {
       const all: Job[] = []; const errs: string[] = [];
+      setJobs([]); setBoards([]);
       for (const w of words) {
-        const r = await call<{ jobs: Job[]; errors: string[] }>('jobs:search', query(w));
+        const runId = ++runSeq.current;
+        const r = await call<{ jobs: Job[]; errors: string[] }>('jobs:search', query(w), runId);
         for (const j of r.jobs) if (!all.some((x) => x.id === j.id)) all.push(j);
         errs.push(...r.errors);
       }
@@ -138,7 +154,7 @@ export function Jobs() {
     <div className="page">
       <div className="finder jobs-hero" data-mode={mode} data-kind="jobs" onMouseMove={spotlight} onMouseLeave={spotlightReset} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
         <HeroBg kind="jobs" mode={mode} />
-        <div className="finder-art"><HeroArt kind="jobs" /></div>
+        <RadarToy kind="jobs" />
         <div className="finder-text">
           <span className="eyebrow" key={mode}><Briefcase size={13} /> {busy ? 'Searching every board…' : ranking ? 'Matching jobs to your CV…' : mode === 'done' ? 'Jobs found' : 'Job search'}</span>
           <h2 className="hero-title"><RiseText text="Your next" /> <RotatingWord words={['developer', 'designer', 'marketing', 'remote', 'data', 'teaching', 'sales']} /> <RiseText text="job, from every board." /></h2>
@@ -196,6 +212,24 @@ export function Jobs() {
       {tab === 'results' && (ranking || (cv && jobs.some((j) => j.match != null))) && <p className="muted small rank-note"><Sparkles size={12} /> {ranking ? 'Ranking jobs against your CV…' : `Ranked against your CV ${ai === 'none' ? 'by matching skills (add a model for smarter ranking)' : `with ${ai}`}.`}</p>}
       {tab === 'results' && jobs.length > 0 && <p className="muted small" style={{ margin: '0 0 8px' }}>{jobs.length} jobs, {remoteCount} remote{errors.length ? ` · not available right now: ${errors.map((e) => e.split(':')[0]).join(', ')}` : ''}</p>}
 
+      {tab === 'results' && boards.length > 0 && (
+        <div className="boards" aria-live="polite">
+          {boards.sort((a, b) => a.source.localeCompare(b.source)).map((b) => <span key={b.source} className={`board ${b.error ? 'err' : 'ok'}`} title={b.error ? `${b.source}: ${b.error}` : `${b.count} matching jobs in ${(b.ms / 1000).toFixed(1)} s`}>{b.source} {b.error ? '✕' : b.count}</span>)}
+          {busy && <span className="muted small">waiting for the slower boards…</span>}
+          {boards.some((b) => b.error) && <details className="small"><summary>Why some boards did not answer</summary>{boards.filter((b) => b.error).map((b) => <div key={b.source}><b>{b.source}</b>: {b.error}</div>)}</details>}
+        </div>
+      )}
+      {tab === 'results' && !busy && jobs.length === 0 && recent.length > 0 && (
+        <div className="panel panel-pad" style={{ marginBottom: 10 }}>
+          <div className="panel-title"><h2>Recent job searches</h2><button className="btn small ghost" onClick={async () => { await call('jobs:clearRecent'); setRecent([]); }}>Clear</button></div>
+          <div className="contacts">{recent.map((r) => (
+            <div key={r.id} className="contact-row">
+              <button className="link" onClick={() => { setKw(r.query.keywords ?? ''); setCountry(r.query.country ?? ''); setTimeout(() => setCity(r.query.city ?? ''), 50); void run([r.query.keywords]); }}><b>{r.query.keywords}</b> {[r.query.city, r.query.countryName].filter(Boolean).join(', ') || 'anywhere'}</button>
+              <span className="muted small">{r.results} jobs · {(r.ms / 1000).toFixed(0)} s · {new Date(r.at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+              <span />
+            </div>))}</div>
+        </div>
+      )}
       {list.length === 0 ? (
         <div className="panel empty"><EmptyArt /><h3>{tab === 'saved' ? 'No saved jobs yet' : busy ? 'Searching every board…' : 'Search for a job'}</h3>{tab === 'saved' ? 'Save jobs with the bookmark to keep them here.' : 'Try "web developer" with Remote only, or pick a country and a city.'}</div>
       ) : (

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
-import { HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { RadarToy } from '../Toy';
 import { CityInput, CountryInput } from '../CityInput';
 import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, ChevronRight, Stethoscope, Library, Landmark, Crosshair, Eye, Layers, Pause, Play } from 'lucide-react';
 import { COUNTRIES } from '../countries';
@@ -79,7 +80,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
     <div className="page">
       <div className="finder" data-mode={mode} data-kind="leads" onMouseMove={spotlight} onMouseLeave={spotlightReset} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
         <HeroBg kind="leads" mode={mode} />
-        <div className="finder-art"><HeroArt kind="leads" /></div>
+        <RadarToy kind="leads" />
         <div className="finder-text">
           <span className="eyebrow" key={mode}><Sparkles size={13} /> {mode === 'busy' ? 'Finding businesses…' : mode === 'done' ? 'Search finished' : 'New search'}</span>
           <h2 className="hero-title"><RiseText text="Find" /> <RotatingWord words={['dentists', 'restaurants', 'law firms', 'clinics', 'salons', 'real estate agents', 'startups']} /> <RiseText text="that need you." /></h2>
