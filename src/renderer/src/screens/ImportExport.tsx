@@ -1,4 +1,4 @@
-import { FileUp, FileDown } from 'lucide-react';
+import { FileUp, FileDown, FileSpreadsheet, FileText, Braces, FileType2 } from 'lucide-react';
 import { call } from '../api';
 import { toast, type Screen } from '../App';
 
@@ -15,17 +15,18 @@ export function ImportExport({ go }: { go: (s: Screen) => void }) {
   };
   return (
     <div className="page">
-      <div className="page-head"><div className="grow"><h1>Import and export</h1><p>Bring in the lists you already have, or take your leads anywhere.</p></div></div>
-      <div className="grid2">
-        <div className="panel panel-pad">
-          <h2><FileUp size={18} style={{ verticalAlign: -3 }} /> Import</h2>
-          <p className="muted">CSV, Excel (.xlsx), JSON or PDF. Columns such as Name, Email, Phone, Website, City and Country are matched automatically, and duplicates are merged instead of added twice. From a PDF, Quarrix picks out emails, phones and websites; with a writing model set up it reads whole business entries.</p>
-          <button className="btn primary" onClick={doImport}>Choose a file</button>
-        </div>
-        <div className="panel panel-pad">
-          <h2><FileDown size={18} style={{ verticalAlign: -3 }} /> Export everything</h2>
-          <p className="muted">All your leads with every detail, including social profiles. To export part of the list, filter or select leads on the Leads screen first.</p>
-          <div className="row">
+      <div className="grid2 io">
+        <button className="panel io-card drop" onClick={doImport}>
+          <span className="io-art"><span className="tile t1"><FileSpreadsheet size={22} /></span><span className="tile t2"><FileText size={22} /></span><span className="tile t3"><Braces size={22} /></span><span className="tile main"><FileUp size={30} /></span></span>
+          <h2>Import a list</h2>
+          <p className="muted">CSV, Excel, JSON or PDF. Columns like Name, Email, Phone, Website, City and Country are matched for you, and duplicates are merged instead of added twice.</p>
+          <span className="btn primary">Choose a file</span>
+        </button>
+        <div className="panel io-card">
+          <span className="io-art"><span className="tile t1 c"><FileType2 size={22} /></span><span className="tile t2 c"><FileSpreadsheet size={22} /></span><span className="tile t3 c"><Braces size={22} /></span><span className="tile main c"><FileDown size={30} /></span></span>
+          <h2>Export everything</h2>
+          <p className="muted">All your leads with every detail, social profiles included. To export part of the list, filter or select on the Leads screen first.</p>
+          <div className="row" style={{ justifyContent: 'center' }}>
             <button className="btn" onClick={() => doExport('xlsx')}>Excel</button>
             <button className="btn" onClick={() => doExport('csv')}>CSV</button>
             <button className="btn" onClick={() => doExport('json')}>JSON</button>

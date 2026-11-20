@@ -138,6 +138,8 @@ export function deleteLeads(ids: number[]) {
   return db.prepare(`DELETE FROM leads WHERE id IN (${ids.map(() => '?').join(',')})`).run(...ids).changes;
 }
 
+const days = (n: number) => Array.from({ length: n }, (_, i) => new Date(Date.now() - (n - 1 - i) * 864e5).toISOString().slice(0, 10));
+
 export function stats() {
   const one = (sql: string, ...a: unknown[]) => (db.prepare(sql).get(...(a as never[])) as { n: number }).n;
   const byStatus = Object.fromEntries((db.prepare('SELECT status, COUNT(*) n FROM leads GROUP BY status').all() as { status: string; n: number }[]).map((r) => [r.status, r.n]));
@@ -152,6 +154,11 @@ export function stats() {
     drafts: one("SELECT COUNT(*) n FROM messages WHERE status = 'draft'"),
     scheduled: one("SELECT COUNT(*) n FROM messages WHERE status = 'scheduled'"),
     byStatus, countries, categories,
+    perDay: days(14).map((d) => ({
+      d,
+      leads: one('SELECT COUNT(*) n FROM leads WHERE substr(created_at, 1, 10) = ?', d),
+      sent: one("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND substr(sent_at, 1, 10) = ?", d),
+    })),
   };
 }
 

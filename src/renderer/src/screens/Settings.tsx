@@ -30,7 +30,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
 
   return (
     <div className="page">
-      <div className="page-head"><div className="grow"><h1>Settings</h1><p>Everything is stored on this computer. Passwords and keys are encrypted with your system keychain.</p></div><button className="btn primary" onClick={save}>Save settings</button></div>
+      <div className="page-head"><div className="grow"><p>Everything is stored on this computer. Passwords and keys are encrypted with your system keychain.</p></div><button className="btn primary" onClick={save}>Save settings</button></div>
       <div className="settings">
         <nav>{SECTIONS.map(([k, v]) => <button key={k} aria-current={sec === k} onClick={() => setSec(k)}>{v}</button>)}</nav>
         <div className="panel panel-pad">

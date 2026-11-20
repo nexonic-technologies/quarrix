@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Mail, Phone, Globe, Star, X } from 'lucide-react';
+import { Mail, Phone, Globe, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin } from 'lucide-react';
+import { Avatar, EmptyArt } from '../Art';
 import { call, json, type Lead, type Message } from '../api';
 import { toast, type Screen } from '../App';
 
@@ -52,12 +53,12 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   return (
     <div className="page">
       <div className="page-head">
-        <div className="grow"><h1>Leads</h1><p>{total.toLocaleString()} businesses{searchId ? ' from one search' : ''}</p></div>
+        <div className="grow"><p><b className="big-n">{total.toLocaleString()}</b> businesses{searchId ? ' from one search' : ''}</p></div>
         {searchId && <button className="btn ghost" onClick={() => setSearchId(undefined)}><X size={15} /> Show all leads</button>}
-        <button className="btn" onClick={async () => { const n = await call('file:export', filter, 'xlsx'); if (n) toast.push(`Exported ${n} leads`); }}>Export these</button>
+        <button className="btn" onClick={async () => { const n = await call('file:export', filter, 'xlsx'); if (n) toast.push(`Exported ${n} leads`); }}><Download size={15} /> Export these</button>
       </div>
       <div className="toolbar">
-        <input className="input" placeholder="Search name, city, email, phone" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} />
+        <label className="search-box"><SearchIcon size={16} /><input placeholder="Search name, city, email, phone" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} /></label>
         <select className="select" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} aria-label="Status">
           <option value="">Any status</option>
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -77,20 +78,21 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       </div>
 
       {rows.length === 0 ? (
-        <div className="panel empty"><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>
+        <div className="panel empty"><EmptyArt /><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>
       ) : (
         <div className="panel table-wrap">
           <table className="leads">
             <thead><tr>
               <th style={{ width: 34 }}><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSel(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Business</th><th>Location</th><th>Contact</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
+              <th>Business</th><th>Location</th><th>Website</th><th>Contact</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
             </tr></thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.id} className={sel.has(l.id) ? 'sel' : ''}>
                   <td><input type="checkbox" aria-label={`Select ${l.name}`} checked={sel.has(l.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
-                  <td className="name" onClick={() => setOpen(l.id)}>{l.name}<span className="sub">{l.category}{l.domain ? `, ${l.domain}` : ''}</span></td>
+                  <td className="name" onClick={() => setOpen(l.id)}><span className="who"><Avatar name={l.name} size={36} /><span>{l.name}<span className="sub">{l.category}</span></span></span></td>
                   <td>{[l.city, l.region].filter(Boolean).join(', ')}<span className="sub">{l.country}</span></td>
+                  <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td><div className="contact-icons">
                     <Mail size={15} className={l.email ? 'has' : ''} aria-label={l.email ? 'Has email' : 'No email'} />
                     <Phone size={15} className={l.phone ? 'has' : ''} aria-label={l.phone ? 'Has phone' : 'No phone'} />
@@ -148,11 +150,17 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
       <div className="scrim" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-label={l.name}>
         <header>
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <h2>{l.name}</h2><button className="btn ghost" onClick={onClose} aria-label="Close"><X size={18} /></button>
+          <div className="drawer-banner"><button className="btn ghost close" onClick={onClose} aria-label="Close"><X size={18} /></button></div>
+          <div className="drawer-id">
+            <Avatar name={l.name} size={76} />
+            <div className="drawer-quick">
+              {l.phone && <button className="round" title="Open in WhatsApp" onClick={async () => { try { await call('wa:open', id, wa?.body ?? ''); } catch (e: any) { toast.push(e.message, true); } }}><MessageCircle size={17} /></button>}
+              {l.email && <a className="round" title={`Email ${l.email}`} href={`mailto:${l.email}`}><Mail size={17} /></a>}
+            </div>
           </div>
+          <h2>{l.name}</h2>
           <div className="row">
-            <span className="muted">{l.category}</span>
+            <span className="muted"><MapPin size={13} style={{ verticalAlign: -2 }} /> {l.category}{l.city ? ` in ${l.city}` : ''}</span>
             <select className="select" style={{ width: 'auto', marginLeft: 'auto' }} value={l.status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
               {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
@@ -175,9 +183,9 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
             </div>
           )}
           <div className="row">
-            <button className="btn primary" disabled={!l.email} onClick={async () => { const r = await call('draft:create', [id]); toast.push(r.made ? 'Draft ready in Outreach' : r.errors[0], !r.made); if (r.made) go('outreach'); }}>Write an email</button>
-            <button className="btn" disabled={!l.phone} onClick={async () => { try { await call('wa:open', id, wa?.body ?? ''); } catch (e: any) { toast.push(e.message, true); } }}>Open in WhatsApp</button>
-            <button className="btn" disabled={!l.website} onClick={async () => { await call('leads:enrich', [id]); toast.push('Checking the website'); setTimeout(reload, 4000); }}>Check website again</button>
+            <button className="btn primary" disabled={!l.email} onClick={async () => { const r = await call('draft:create', [id]); toast.push(r.made ? 'Draft ready in Outreach' : r.errors[0], !r.made); if (r.made) go('outreach'); }}><PenLine size={15} /> Write an email</button>
+            <button className="btn" disabled={!l.phone} onClick={async () => { try { await call('wa:open', id, wa?.body ?? ''); } catch (e: any) { toast.push(e.message, true); } }}><MessageCircle size={15} /> WhatsApp</button>
+            <button className="btn" disabled={!l.website} onClick={async () => { await call('leads:enrich', [id]); toast.push('Checking the website'); setTimeout(reload, 4000); }}><RefreshCw size={15} /> Check website</button>
           </div>
           <label className="field"><span>Notes</span><textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== l.notes && call('leads:update', id, { notes })} /></label>
           {d.messages.filter((m) => m.channel === 'email').length > 0 && (
@@ -190,7 +198,7 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
               <div className="timeline">{d.events.map((e) => <div key={e.id}><span>{new Date(e.at).toLocaleDateString()}</span><span>{e.detail || e.type}</span></div>)}</div>
             </div>
           )}
-          <button className="btn danger" style={{ justifySelf: 'start' }} onClick={() => setStatus('do_not_contact')}>Never contact this business</button>
+          <button className="btn danger" style={{ justifySelf: 'start' }} onClick={() => setStatus('do_not_contact')}><Ban size={15} /> Never contact this business</button>
         </div>
       </aside>
     </>

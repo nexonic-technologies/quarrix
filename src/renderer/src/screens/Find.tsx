@@ -2,12 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
+import { Orbs, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight } from 'lucide-react';
 
-const SOURCES: [string, string, string][] = [
-  ['gmaps', 'Google Maps', 'free, slower'],
-  ['osm', 'OpenStreetMap', 'free, open data'],
-  ['places', 'Google Places API', 'your key'],
+const SOURCES: [string, string, string, typeof Map][] = [
+  ['gmaps', 'Google Maps', 'free, slower', Map],
+  ['osm', 'OpenStreetMap', 'free, open data', Database],
+  ['places', 'Google Places API', 'your key', KeyRound],
 ];
+const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], ['replied', 'Replied'], ['interested', 'Interested'], ['won', 'Won']];
 
 export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [category, setCategory] = useState('');
@@ -49,11 +52,13 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   return (
     <div className="page">
       <div className="finder">
+        <div className="finder-art"><Orbs size={230} /></div>
+        <div className="eyebrow"><Sparkles size={14} /> New search</div>
         <div className="sentence">
           <span className="word">Find</span>
           <span className="slot">
             <input
-              ref={catRef} aria-label="Type of business" placeholder="type of business" value={category} style={{ width: width(category, 15) }}
+              ref={catRef} aria-label="Type of business" placeholder="type of business" value={category} style={{ width: width(category, 14) }}
               onChange={(e) => { setCategory(e.target.value); setOpen(true); setHi(0); }}
               onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
               onKeyDown={(e) => {
@@ -74,34 +79,69 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           </span>
           <span className="word">in</span>
           <span className="slot">
-            <input ref={placeRef} aria-label="City or area" placeholder="city or area" value={place} style={{ width: width(place, 11) }} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
+            <input ref={placeRef} aria-label="City or area" placeholder="city or area" value={place} style={{ width: width(place, 10) }} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
           </span>
         </div>
         <div className="finder-foot">
-          {SOURCES.map(([id, label, hint]) => (
+          {SOURCES.map(([id, label, hint, Icon]) => (
             <span key={id} className="chip" role="button" tabIndex={0} aria-pressed={sources.includes(id)}
               onClick={() => setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
               onKeyDown={(e) => e.key === ' ' && setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}>
-              {label} <small>{hint}</small>
+              <Icon size={15} /> {label} <small>{hint}</small>
             </span>
           ))}
           {!category && !place && <button className="btn link-light" onClick={() => { setCategory('Dentists'); setPlace('Austin, Texas'); }}>Try an example</button>}
-          <button className="btn go" onClick={start}>Start search</button>
+          <button className="btn go" onClick={start}>Start search <ArrowRight size={17} /></button>
         </div>
       </div>
 
-      {stats && (
-        <div className="stats">
-          <div className="panel stat"><b>{stats.total.toLocaleString()}</b><span>businesses saved</span></div>
-          <div className="panel stat"><b>{stats.withEmail.toLocaleString()}</b><span>with an email address</span></div>
-          <div className="panel stat"><b>{stats.withPhone.toLocaleString()}</b><span>with a phone number</span></div>
-          <div className="panel stat"><b>{(stats.byStatus.replied ?? 0) + (stats.byStatus.interested ?? 0)}</b><span>replied to you</span></div>
-        </div>
-      )}
+      {stats && (() => {
+        const per: { d: string; leads: number; sent: number }[] = stats.perDay ?? [];
+        const replied = (stats.byStatus.replied ?? 0) + (stats.byStatus.interested ?? 0);
+        const cards: [string, number, string, typeof Mail, string, number[]][] = [
+          ['b1', stats.total, 'businesses saved', Building2, 'var(--violet)', per.map((x) => x.leads)],
+          ['b2', stats.withEmail, 'with an email address', Mail, '#06b6d4', []],
+          ['b3', stats.withPhone, 'with a phone number', Phone, '#ec4899', []],
+          ['b4', replied, 'replied to you', MessageCircleReply, '#f59e0b', per.map((x) => x.sent)],
+        ];
+        const stageMax = Math.max(1, ...STAGES.map(([k]) => stats.byStatus[k] ?? 0));
+        return (
+          <>
+            <div className="stats">
+              {cards.map(([k, n, label, Icon, color, line], i) => (
+                <div key={k} className="panel stat" style={{ animationDelay: `${i * 60}ms` }}>
+                  <span className="stat-icon" style={{ ['--c' as string]: color }}><Icon size={18} /></span>
+                  <b><CountUp to={n} /></b><span>{label}</span>
+                  {k === 'b2' || k === 'b3' ? <div className="mini-meter" style={{ ['--c' as string]: color }}><i style={{ width: `${stats.total ? (n / stats.total) * 100 : 0}%` }} /><em>{stats.total ? Math.round((n / stats.total) * 100) : 0}%</em></div>
+                    : line.some(Boolean) ? <Sparkline data={line} color={color} w={110} h={34} /> : null}
+                </div>
+              ))}
+            </div>
+            <div className="bento">
+              <div className="panel panel-pad">
+                <div className="panel-title"><h2>Leads added</h2><span className="pill">Last 14 days</span></div>
+                <Bars data={per.map((x) => x.leads)} labels={per.map((x, i) => (x.d ? new Date(x.d + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric' }) : String(i + 1)))} />
+              </div>
+              <div className="panel panel-pad">
+                <div className="panel-title"><h2>Pipeline</h2><button className="btn small ghost" onClick={() => go('leads')}>Open <ArrowRight size={14} /></button></div>
+                <div className="pipeline">
+                  {STAGES.map(([k, v]) => (
+                    <div key={k} className={`stage ${k}`}>
+                      <span>{v}</span>
+                      <div className="stage-bar"><i style={{ width: `${((stats.byStatus[k] ?? 0) / stageMax) * 100}%` }} /></div>
+                      <b>{(stats.byStatus[k] ?? 0).toLocaleString()}</b>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
-      <div className="page-head"><div className="grow"><h1 style={{ fontSize: 20 }}>Searches</h1></div></div>
+      <div className="section-head"><h2>Recent searches</h2></div>
       {searches.length === 0 ? (
-        <div className="panel empty"><h3>No searches yet</h3>Type a kind of business and a place above, for example plumbers in Manchester.</div>
+        <div className="panel empty"><EmptyArt /><h3>No searches yet</h3>Type a kind of business and a place above, for example plumbers in Manchester.</div>
       ) : (
         <div className="searches">
           {searches.map((s) => {
@@ -109,6 +149,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
             const src = json<string[]>(s.sources, []).map((x) => SOURCES.find((y) => y[0] === x)?.[1] ?? x).join(', ');
             return (
               <div key={s.id} className="panel search">
+                <span className={`search-icon ${run ? 'run' : ''}`}><MapPin size={18} /></span>
                 <div>
                   <h3>{s.category} in {s.place}</h3>
                   <p>{run ? progress[s.id] ?? (s.status === 'queued' ? 'Waiting to start' : 'Starting') : s.error ? s.error : `${src}, ${new Date(s.created_at).toLocaleDateString()}`}</p>
