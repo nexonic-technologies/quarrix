@@ -12,6 +12,7 @@ import * as jobstore from './jobstore';
 import * as automation from './automation';
 import * as localapi from './localapi';
 import * as cli from './cli';
+import * as exporters from './exporters';
 import * as mb from './mailboxes';
 import { abResult } from './rules';
 import * as integrations from './integrations';
@@ -205,6 +206,8 @@ function registerIpc() {
   handle('api:newToken', () => { save({ api: { ...load().api, token: '' } }); const t = localapi.ensureToken(); localapi.start(); return t; });
   handle('sync:hubspot', (ids: number[]) => integrations.toHubspot((ids ?? []).map(Number)));
   handle('sync:notion', (ids: number[]) => integrations.toNotion((ids ?? []).map(Number)));
+  handle('sync:postgres', (ids: number[]) => exporters.toPostgres((ids ?? []).map(Number)));
+  handle('sync:s3', (ids: number[]) => exporters.toS3((ids ?? []).map(Number)));
   handle('sync:sheets', (ids: number[]) => integrations.toSheets((ids ?? []).map(Number)));
   handle('sheets:connect', () => integrations.connectSheets());
   handle('diag:save', async () => {

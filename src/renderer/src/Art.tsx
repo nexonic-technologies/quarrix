@@ -301,7 +301,8 @@ export function HeroScene({ kind, mode }: { kind: 'leads' | 'jobs'; mode: SceneM
 /* Animated type: words rise in one after another; a rotating word swaps with a slide. */
 export function RiseText({ text, as: Tag = 'span', className = '' }: { text: string; as?: 'span' | 'h1' | 'h2' | 'p'; className?: string }) {
   return (
-    <Tag className={`rise ${className}`} key={text} aria-label={text}>
+    <Tag className={`rise ${className}`} key={text}>
+      <span className="sr-only">{text}</span>
       {text.split(' ').map((w, i) => <span key={i} aria-hidden style={{ animationDelay: `${i * 45}ms` }}>{w}&nbsp;</span>)}
     </Tag>
   );

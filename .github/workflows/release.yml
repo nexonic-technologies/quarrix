@@ -66,10 +66,16 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+      - name: Package the browser extension
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
+        run: |
+          cd extension && zip -r "../Quarrix-${TAG#v}-browser-extension.zip" . && cd ..
+          gh release upload "$TAG" "Quarrix-${TAG#v}-browser-extension.zip" -R "$REPO" --clobber
       - name: Publish SHA-256 checksums for every installer
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
-          mkdir a && cd a
-          gh release download "$TAG" -R "$REPO" --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' --pattern '*.AppImage' --pattern '*.deb'
+          mkdir -p a && cd a
+          gh release download "$TAG" -R "$REPO" --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' --pattern '*.AppImage' --pattern '*.deb' --pattern '*-browser-extension.zip'
           sha256sum * > SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt -R "$REPO" --clobber

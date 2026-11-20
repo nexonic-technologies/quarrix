@@ -60,13 +60,15 @@ export type Settings = {
   /** Email-finding order (QF-031). */
   waterfall: { order: ('website' | 'hunter')[]; stopOnFirst: boolean };
   /** Client workspaces (QF-056): new leads are filed under the current client. */
+  language: string;
   clients: string[];
+  exports: { postgres: { url: string; table: string; allowSelfSigned: boolean }; s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; secretKey: string } };
   currentClient: string;
   onboarded: boolean;
   workspace: 'both' | 'business' | 'career';
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh', 'exports.postgres.url', 'exports.s3.secretKey'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -99,7 +101,9 @@ export const defaults: Settings = {
   sheets: { spreadsheetId: '', refresh: '', user: '' },
   mailboxes: [],
   waterfall: { order: ['website', 'hunter'], stopOnFirst: true },
+  language: 'en',
   clients: [],
+  exports: { postgres: { url: '', table: 'quarrix_leads', allowSelfSigned: false }, s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'quarrix/', accessKey: '', secretKey: '' } },
   currentClient: '',
   onboarded: false,
   workspace: 'both',

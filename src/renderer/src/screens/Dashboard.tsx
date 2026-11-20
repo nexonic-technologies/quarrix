@@ -130,7 +130,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
         <div className="panel panel-pad perf-card">
           <div className="panel-title">
             <h2><Activity size={16} /> Performance</h2>
-            <div className="tabs seg" style={{ margin: 0 }}>{[7, 14, 30].map((r) => <button key={r} aria-selected={range === r} onClick={() => setRange(r)}>{r} days</button>)}</div>
+            <div className="tabs seg" role="tablist" aria-label="Range" style={{ margin: 0 }}>{[7, 14, 30].map((r) => <button key={r} role="tab" aria-selected={range === r} onClick={() => setRange(r)}>{r} days</button>)}</div>
           </div>
           <div className="series-toggles">
             {SERIES.map((s) => <button key={s.key} className={on.has(s.key) ? 'on' : ''} style={{ ['--c' as string]: s.color }} onClick={() => setOn((o) => { const n = new Set(o); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n.size ? n : o; })}><i />{s.label}<b>{d.series[s.key].reduce((a, b) => a + b, 0)}</b></button>)}
@@ -181,7 +181,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
         </div>
         <div className="panel panel-pad">
           <div className="panel-title"><h2>Activity</h2><span className="pill live-pill"><i key={pulse} />live</span></div>
-          <div className="feed">
+          <div className="feed" tabIndex={0} role="log" aria-label="Recent activity">
             {d.activity.length === 0 && <p className="muted small">Your activity shows up here as it happens.</p>}
             {d.activity.map((a) => (
               <div key={a.id} className={`feed-item ${a.type}`}>

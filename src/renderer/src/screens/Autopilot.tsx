@@ -81,7 +81,7 @@ export function Autopilot({ tick, go }: { tick: number; go: (s: Screen) => void 
                   <button className="btn small" onClick={async () => { await call('campaigns:run', c.id); toast.push('Running now'); go('find'); }}><Play size={13} /> Run now</button>
                   <button className="btn small" onClick={async () => { await call('campaigns:save', { id: c.id, enabled: c.enabled ? 0 : 1 }); void load(); }}>{c.enabled ? <><Pause size={13} /> Pause</> : <><Play size={13} /> Resume</>}</button>
                   <button className="btn small" onClick={() => setEdit({ ...c })}>Edit</button>
-                  <button className="btn small ghost danger" onClick={async () => { if (!confirm('Delete this campaign? Its leads stay.')) return; await call('campaigns:delete', c.id); void load(); }}><Trash2 size={13} /></button>
+                  <button className="btn small ghost danger" aria-label="Delete campaign" onClick={async () => { if (!confirm('Delete this campaign? Its leads stay.')) return; await call('campaigns:delete', c.id); void load(); }}><Trash2 size={13} /></button>
                 </div>
               </div>
             );

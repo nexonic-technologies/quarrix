@@ -9,7 +9,7 @@ import { isBlockedHost, isPrivateAddress } from './safety';
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type FetchOpts = { timeout?: number; ua?: string; method?: string; body?: string; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number };
+type FetchOpts = { timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number };
 
 /** Throws when the URL points at this computer or the local network (protects against SSRF from scraped links). */
 export async function assertPublicUrl(url: string) {
@@ -43,7 +43,7 @@ export async function fetchText(url: string, opts: FetchOpts = {}) {
       if (!opts.allowLocal) await assertPublicUrl(cur);
       requestHook(new URL(cur).hostname);
       const r = await fetch(cur, {
-        method, body, signal: ctrl.signal, redirect: 'manual',
+        method, body: body as BodyInit | undefined, signal: ctrl.signal, redirect: 'manual',
         headers: { 'User-Agent': opts.ua ?? UA, Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', ...(opts.headers ?? {}) },
       });
       const loc = r.headers.get('location');

@@ -38,7 +38,8 @@
     "mammoth": "^1.13.0",
     "nodemailer": "^10.6.0",
     "papaparse": "^5.7.1",
-    "pdfjs-dist": "^6.5.438"
+    "pdfjs-dist": "^6.5.438",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
@@ -47,9 +48,11 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.2",
     "@types/papaparse": "^5.5.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "axe-core": "^4.14.1",
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",

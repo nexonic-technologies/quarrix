@@ -78,7 +78,7 @@ export function EvidenceCard({ lead: l, onChange }: { lead: Lead; onChange: () =
         {!d?.contacts.length && <span className="muted small">No named contacts yet.</span>}
         <div className="row contact-add">
           {(['name', 'role', 'email', 'phone'] as const).map((k) => <input key={k} className="input" placeholder={k[0].toUpperCase() + k.slice(1)} value={add[k]} onChange={(e) => setAdd({ ...add, [k]: e.target.value })} />)}
-          <button className="btn small" onClick={() => run('add', async () => { await call('contacts:add', { lead_id: l.id, ...add }); setAdd({ name: '', role: '', email: '', phone: '' }); })} disabled={!add.name && !add.email}><Plus size={13} /></button>
+          <button className="btn small" onClick={() => run('add', async () => { await call('contacts:add', { lead_id: l.id, ...add }); setAdd({ name: '', role: '', email: '', phone: '' }); })} disabled={!add.name && !add.email} aria-label="Add contact"><Plus size={13} /></button>
         </div>
       </div>
 

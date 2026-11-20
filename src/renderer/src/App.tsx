@@ -13,6 +13,7 @@ import { Dashboard } from './screens/Dashboard';
 import { Signals } from './screens/Signals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
+import { setLang, t } from './i18n';
 
 export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
@@ -28,6 +29,7 @@ export function App() {
   const [me, setMe] = useState({ name: '', company: '' });
   const [ws, setWs] = useState<'both' | 'business' | 'career'>('both');
   const [onboard, setOnboard] = useState(false);
+  const [, setLangTick] = useState(0);
 
   toast.push = (text, err) => {
     const id = ++toastId;
@@ -42,7 +44,7 @@ export function App() {
 
   useEffect(() => {
     void refreshCounts();
-    call('settings:get').then((s) => { setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); setWs(s.workspace ?? 'both'); if (s.onboarded === false && !s.profile?.name) setOnboard(true); }).catch(() => undefined);
+    call('settings:get').then((s) => { setLang(s.language ?? 'en'); setLangTick((n) => n + 1); setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); setWs(s.workspace ?? 'both'); if (s.onboarded === false && !s.profile?.name) setOnboard(true); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
       if (e === 'drafts' || e === 'leads' || e === 'signals') void refreshCounts();
@@ -81,12 +83,12 @@ export function App() {
       <aside className="side">
         <div className="brand"><Logo size={30} /> <span>Quarrix</span></div>
         <div className="ws-switch" role="group" aria-label="Workspace">
-          {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{v}</button>)}
+          {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{t(v)}</button>)}
         </div>
         <nav className="nav" aria-label="Main">
           {shown.map(([id, label, Icon, n]) => (
             <button key={id} aria-current={screen === id ? 'page' : undefined} onClick={() => go(id)}>
-              <Icon size={16} strokeWidth={1.8} /> {label}
+              <Icon size={16} strokeWidth={1.8} /> {t(label)}
               {n ? <span className="count">{n}</span> : null}
             </button>
           ))}
@@ -107,7 +109,7 @@ export function App() {
       <main className="main" id="main" tabIndex={-1}>
         <header className="topbar">
           <div className="grow">
-            <RiseText as="h1" text={TITLES[screen][0]} />
+            <RiseText as="h1" text={t(TITLES[screen][0])} />
             <p className="fade-in" key={screen}>{TITLES[screen][1]}</p>
           </div>
         </header>

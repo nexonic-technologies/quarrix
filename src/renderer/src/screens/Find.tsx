@@ -181,10 +181,10 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
             const run = s.status === 'running' || s.status === 'queued';
             const src = json<string[]>(s.sources, []).map((x) => SOURCES.find((y) => y[0] === x)?.[1] ?? x).join(', ');
             return (
-              <div key={s.id} className="panel search clickable" role="button" tabIndex={0} onClick={() => setLive(s)} onKeyDown={(e) => e.key === 'Enter' && setLive(s)} title="Open to watch the search">
+              <div key={s.id} className="panel search clickable" onClick={() => setLive(s)} title="Open to watch the search">
                 <span className={`search-icon ${run ? 'run' : ''}`}><MapPin size={18} /></span>
                 <div>
-                  <h3>{s.category} in {s.place}</h3>
+                  <h3><button className="link" style={{ font: 'inherit', color: 'inherit' }} onClick={(e) => { e.stopPropagation(); setLive(s); }}>{s.category} in {s.place}</button></h3>
                   <p>{run ? progress[s.id] ?? (s.status === 'queued' ? 'Waiting to start' : 'Starting') : s.status === 'paused' ? 'Paused. Resume to continue where it stopped.' : s.error ? s.error : `${src}, ${new Date(s.created_at).toLocaleDateString()}`}</p>
                 </div>
                 <div className={`bar ${run ? 'run' : ''}`}><i style={{ width: run ? '100%' : s.found ? '100%' : '0%' }} /></div>

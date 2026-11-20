@@ -183,9 +183,9 @@ export function Jobs() {
         <button className="pill-btn" onClick={() => setPanel(panel === 'alerts' ? '' : 'alerts')}>Alerts</button>
         <button className={`pill-btn ${workplace.length === 1 && workplace[0] === 'remote' ? 'on' : ''}`} onClick={() => setWorkplace(workplace[0] === 'remote' && workplace.length === 1 ? [] : ['remote'])}>Remote only</button>
         <span className="grow" />
-        <div className="tabs seg" style={{ margin: 0 }}>
-          <button aria-selected={tab === 'results'} onClick={() => setTab('results')}>Results {jobs.length ? `(${jobs.length})` : ''}</button>
-          <button aria-selected={tab === 'saved'} onClick={() => setTab('saved')}>My applications {saved.length ? `(${saved.length})` : ''}</button>
+        <div className="tabs seg" role="tablist" aria-label="Results" style={{ margin: 0 }}>
+          <button role="tab" aria-selected={tab === 'results'} onClick={() => setTab('results')}>Results {jobs.length ? `(${jobs.length})` : ''}</button>
+          <button role="tab" aria-selected={tab === 'saved'} onClick={() => setTab('saved')}>My applications {saved.length ? `(${saved.length})` : ''}</button>
         </div>
       </div>
 

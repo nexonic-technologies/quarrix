@@ -69,7 +69,7 @@ export function Signals({ tick, go, openLead }: { tick: number; go: (s: Screen) 
               <div className="sig-actions">
                 <button className="btn primary small" onClick={() => write(sg)}><PenLine size={13} /> Write email</button>
                 <button className="btn small" onClick={() => openLead(sg.lead_id)}><Eye size={13} /> Open</button>
-                <button className="btn ghost small" title="Dismiss" onClick={async () => { await call('signals:update', sg.id, { dismissed: 1 }); load(); }}><X size={14} /></button>
+                <button className="btn ghost small" title="Dismiss" aria-label="Dismiss signal" onClick={async () => { await call('signals:update', sg.id, { dismissed: 1 }); load(); }}><X size={14} /></button>
               </div>
             </div>
           ); })}
@@ -91,7 +91,7 @@ export function Signals({ tick, go, openLead }: { tick: number; go: (s: Screen) 
             <div key={x.id} className="watch">
               <div className="grow"><b>{x.category} in {x.place}</b><span className="muted small">every {x.every_days === 1 ? 'day' : `${x.every_days} days`} · {x.runs ? `${x.runs} runs, ${x.found} new found` : 'first run sets the baseline'}</span></div>
               <button className="btn ghost small" title="Run now" onClick={async () => { await call('watches:save', { id: x.id, last_run: '2000-01-01T00:00:00Z' }); await call('signals:run'); toast.push('Searching now'); load(); }}><Play size={13} /></button>
-              <button className="btn ghost small" title="Remove" onClick={async () => { await call('watches:delete', x.id); load(); }}><Trash2 size={13} /></button>
+              <button className="btn ghost small" title="Remove" aria-label="Delete watch" onClick={async () => { await call('watches:delete', x.id); load(); }}><Trash2 size={13} /></button>
             </div>
           ))}
           <div className="sig-legend">

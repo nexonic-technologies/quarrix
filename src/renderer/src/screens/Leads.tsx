@@ -159,7 +159,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <button className="btn small" onClick={() => bulk('verify')} title="Syntax and mail server for free; mailbox check if you added a verifier key">Check emails</button>
           <button className="btn small" onClick={() => bulk('proof')}>Make reports</button>
           <button className="btn small" onClick={() => bulk('export:xlsx')}>Export</button>
-          <select className="select" value="" onChange={(e) => e.target.value && bulk(e.target.value)} aria-label="Send to another tool"><option value="">Send to…</option><option value="sync:hubspot">HubSpot</option><option value="sync:notion">Notion</option><option value="sync:sheets">Google Sheets</option></select>
+          <select className="select" value="" onChange={(e) => e.target.value && bulk(e.target.value)} aria-label="Send to another tool"><option value="">Send to…</option><option value="sync:hubspot">HubSpot</option><option value="sync:notion">Notion</option><option value="sync:sheets">Google Sheets</option><option value="sync:postgres">PostgreSQL</option><option value="sync:s3">S3 storage</option></select>
           <select className="btn small" value="" onChange={(e) => e.target.value && bulk('status:' + e.target.value)} aria-label="Set status">
             <option value="">Set status</option>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
