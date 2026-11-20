@@ -313,14 +313,14 @@ let allCities: { name: string; country: string; population: number }[] | null = 
 let byName: Map<string, any[]> | null = null;
 const cityCache = new Map<string, string[]>();
 /** Coordinates of a city by name (largest match, preferring the given country), from the offline GeoNames list (QF-110). */
-export function cityPoint(name: string, cc = ''): { lat: number; lon: number } | null {
+export function cityPoint(name: string, cc = '', strict = false): { lat: number; lon: number } | null {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   allCities ??= require('all-the-cities');
   const n = name.toLowerCase().trim();
   if (!n) return null;
   if (!byName) { byName = new Map(); for (const c of allCities as any[]) { const k = c.name.toLowerCase(); const l = byName.get(k); l ? l.push(c) : byName.set(k, [c]); } }
   const hits = byName.get(n) ?? [];
-  const best = hits.filter((c) => !cc || c.country === cc).sort((a, b) => b.population - a.population)[0] ?? hits.sort((a, b) => b.population - a.population)[0];
+  const best = hits.filter((c) => !cc || c.country === cc).sort((a, b) => b.population - a.population)[0] ?? (strict && cc ? undefined : hits.sort((a, b) => b.population - a.population)[0]);
   return best ? { lat: best.loc.coordinates[1], lon: best.loc.coordinates[0] } : null;
 }
 

@@ -80,7 +80,7 @@ async function route(req: IncomingMessage, res: ServerResponse, token: string) {
     let url = '';
     try { const p = new URL(String(b.url)); if (/^https?:$/.test(p.protocol)) url = `${p.protocol}//${p.host}`; } catch { /* bad */ }
     if (!url || isPlatformHost(domainOf(url))) return send(res, 400, { error: 'Open the business\'s own website, then capture.' }, true);
-    const [id, created] = db.upsertLead({ name: String(b.title || domainOf(url)).split(/\s[|–—-]\s/)[0].slice(0, 120), website: url, domain: domainOf(url), source: 'capture', source_ref: url, status: 'new', provenance: JSON.stringify({ listing: { source: 'capture', ref: String(b.url).slice(0, 500), at: db.now() } }) });
+    const [id, created] = db.upsertLead({ name: String(b.title || domainOf(url)).split(/\s[|–—-]\s/)[0].slice(0, 120), website: url, domain: domainOf(url), source: 'capture', source_ref: url, status: 'new', client: load().currentClient ?? '', provenance: JSON.stringify({ listing: { source: 'capture', ref: String(b.url).slice(0, 500), at: db.now() } }) });
     if (created) void jobs.runEnrichment([id]);
     return send(res, created ? 201 : 200, { id, created }, true);
   }

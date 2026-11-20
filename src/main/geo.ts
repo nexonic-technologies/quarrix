@@ -66,3 +66,17 @@ export function polygonCircle(poly: [number, number][]): Geo {
   const lat = poly.reduce((a, p) => a + p[0], 0) / poly.length, lon = poly.reduce((a, p) => a + p[1], 0) / poly.length;
   return { lat, lon, km: Math.max(0.5, ...poly.map((p) => distanceKm({ lat, lon }, { lat: p[0], lon: p[1] }))) };
 }
+
+/**
+ * Results with no map position (QF geographic accuracy): keep them unless their own country or city clearly
+ * says they are somewhere else. Country searches only compare the country. Pure.
+ */
+export function placeMatches(c: { country?: string; city?: string; address?: string }, where: { country?: string; city?: string; bbox?: number[] } | null) {
+  if (!where) return true;
+  const wc = (where.country ?? '').toUpperCase(), cc = (c.country ?? '').toUpperCase();
+  if (wc && cc && wc !== cc) return false;
+  const cityLevel = where.bbox?.length === 4 && Math.abs(where.bbox[1] - where.bbox[0]) < 1.5 && Math.abs(where.bbox[3] - where.bbox[2]) < 1.5;
+  const norm = (x = '') => x.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (cityLevel && where.city && c.city && norm(c.city) !== norm(where.city) && !norm(c.address).includes(norm(where.city))) return false;
+  return true;
+}

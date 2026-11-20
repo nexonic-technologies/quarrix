@@ -149,7 +149,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
           </div>
           <div className="mini-stats">
             <span><FileBarChart size={13} /> {t.reports} proof reports</span>
-            <span><MailCheck size={13} /> {t.verified} verified emails</span>
+            <span title="Confirmed by a verifier; the second number also counts addresses whose domain accepts mail"><MailCheck size={13} /> {t.verified} confirmed emails · {t.mailDomainOk ?? 0} deliverable domains</span>
             <span><Sparkles size={13} /> {t.drafts} drafts to approve</span>
           </div>
         </div>

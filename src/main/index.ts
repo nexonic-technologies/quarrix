@@ -1,6 +1,6 @@
 import { Notification } from 'electron';
 import { isSafeExternalUrl } from './safety';
-import { lockAll, lockContents } from './guard';
+import { devOrigin, lockAll, lockContents } from './guard';
 import * as budget from './budget';
 import { checkSources } from './health';
 import { SOURCES } from './sources/catalog';
@@ -57,7 +57,7 @@ function createWindow() {
   });
   win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternalUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:') && !url.startsWith('http://localhost')) { e.preventDefault(); if (isSafeExternalUrl(url)) void shell.openExternal(url); } });
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:') && !(devOrigin() && url.startsWith(devOrigin() + '/'))) { e.preventDefault(); if (isSafeExternalUrl(url)) void shell.openExternal(url); } });
   if (process.env.QUARRIX_DEV_URL) void win.loadURL(process.env.QUARRIX_DEV_URL);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
@@ -76,12 +76,15 @@ const validGeo = (g: any): Geo | null => {
   return poly && poly.length >= 3 ? { lat, lon, km, poly } : { lat, lon, km };
 };
 
+let testSends: number[] = [];
 /** WhatsApp: never to do-not-contact leads; Cloud API sends also need your approval and the lead's recorded opt-in. */
 function waGuard(l: db.Lead, cloud: boolean) {
   const digits = l.phone.replace(/\D/g, '');
   if (l.status === 'do_not_contact' || (digits && db.isSuppressed(`tel:${digits}`)) || (l.email && db.isSuppressed(l.email, l.domain))) throw new Error('This lead is on your do-not-contact list.');
   if (cloud) {
     if (!load().whatsapp.authorizedAt) throw new Error('Approve WhatsApp sending in Settings → WhatsApp first.');
+    const today = (db.raw().prepare("SELECT COUNT(*) n FROM events WHERE type = 'whatsapp' AND detail LIKE 'Sent%' AND at >= ?").get(new Date().toISOString().slice(0, 10)) as { n: number }).n;
+    if (today >= (load().whatsapp.dailyLimit || 50)) throw new Error(`Today's WhatsApp limit (${load().whatsapp.dailyLimit || 50}) is reached.`);
     if (!(l as any).wa_consent) throw new Error('WhatsApp requires the person\'s opt-in before a business sends to them. Tick "They agreed to WhatsApp messages" on the lead first.');
   }
 }
@@ -90,7 +93,7 @@ const handle = (ch: string, fn: (...a: any[]) => unknown) =>
   ipcMain.handle(ch, async (e, ...args) => {
     // Only the app's own page may call the main process.
     const from = e.senderFrame?.url ?? '';
-    if (!from.startsWith('file:') && !from.startsWith('http://localhost:')) return { ok: false, error: 'Blocked a call from an unknown page.' };
+    if (!from.startsWith('file:') && !(devOrigin() && from.startsWith(devOrigin() + '/'))) return { ok: false, error: 'Blocked a call from an unknown page.' };
     try { if (JSON.stringify(args ?? []).length > 5_000_000) return { ok: false, error: 'Request too large.' }; } catch { return { ok: false, error: 'Request not readable.' }; }
     try { return { ok: true, data: await fn(...args) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   });
@@ -154,6 +157,7 @@ function registerIpc() {
     const a = String(address ?? '').trim();
     if (!/^[^@\s]+@[a-z0-9.-]*mail-tester\.com$/i.test(a)) throw new Error('Paste the address shown on mail-tester.com (it ends with @srv1.mail-tester.com or similar).');
     const box = mb.boxById(String(boxId || 'main'));
+    if (!mb.ready(box)) throw new Error('Approve sending from this mailbox first.');
     const sample = db.raw().prepare("SELECT subject, body FROM messages WHERE channel = 'email' AND step = 0 ORDER BY id DESC LIMIT 1").get() as { subject: string; body: string } | undefined;
     await mail.sendRaw(a, sample?.subject ?? 'Quick question', `${sample?.body ?? 'Hello, this is a deliverability test from Quarrix.'}\n\n${mail.footer(load())}`, '', [], box.id);
     return `https://www.mail-tester.com/${a.split('@')[0]}`;
@@ -331,7 +335,15 @@ function registerIpc() {
   handle('messages:cancel', (leadId: number) => db.cancelPending(leadId, 'Stopped by you'));
 
   handle('mail:test', (boxId?: string) => mail.testMailbox(boxId ? String(boxId) : 'main'));
-  handle('mail:testSend', (to: string) => mail.sendRaw(to, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`));
+  handle('mail:testSend', (to: string) => {
+    // A connection test, so approval is not needed, but it is capped and never goes to a do-not-contact address.
+    const addr = String(to ?? '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(addr)) throw new Error('Type a valid email address.');
+    if (db.isSuppressed(addr)) throw new Error('That address is on your do-not-contact list.');
+    if ((testSends = testSends.filter((t) => Date.now() - t < 864e5)).length >= 5) throw new Error('Five test emails a day is the limit.');
+    testSends.push(Date.now());
+    return mail.sendRaw(addr, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`);
+  });
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
   handle('ai:models', () => listModels(load().ai));

@@ -40,8 +40,10 @@ export function approve(leadId: number, by = 'you') {
   const block = outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain));
   if (block) throw new Error(`Not approved: ${block}.`);
   // The whole sequence goes out from one mailbox: the approved one with the most room today (QF-061).
+  // No approved mailbox means no approval: emails never wait for an account that was never approved.
   const box = pick();
-  db.raw().prepare("UPDATE messages SET status = 'scheduled', mailbox = ?, due_at = CASE WHEN step = 0 THEN ? ELSE NULL END WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").run(box?.id ?? 'main', db.now(), leadId);
+  if (!box) throw new Error('Connect a mailbox and approve sending in Settings → Email first.');
+  db.raw().prepare("UPDATE messages SET status = 'scheduled', mailbox = ?, due_at = CASE WHEN step = 0 THEN ? ELSE NULL END WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").run(box.id, db.now(), leadId);
   db.logEvent(leadId, 'approved', by === 'you' ? 'Email sequence approved' : `Email sequence approved by ${by}`);
   return true;
 }

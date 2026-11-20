@@ -7,6 +7,7 @@ import * as db from './db';
 import { detectAts, employerJobs, isRecruiter, parseSalary, placeScore, postingState, titleScore, type Employer } from './ats';
 import { cityPoint, searchJobs, type Job, type JobQuery } from './jobsearch';
 import { distanceKm } from './geo';
+import { countryCode } from './util';
 import { load } from './settings';
 import { csvSafe, fetchText, UA } from './util';
 
@@ -92,8 +93,7 @@ export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source:
   const centre = q.radiusKm && q.city ? cityPoint(q.city, q.country) : null;
   const near = (j: Job) => {
     if (!centre || j.workplace === 'remote' || /remote|anywhere|worldwide/i.test(j.location)) return true;
-    const p = j.location.split(/[,·|/-]/).map((x) => x.trim()).filter(Boolean).map((x) => cityPoint(x, q.country)).find(Boolean);
-    return !p || distanceKm(centre, p) <= q.radiusKm!;
+    return jobDistanceOk(j.location, centre, q.radiusKm!, q.country ?? '');
   };
   const list = annotate(jobs).filter((j) => {
     if (!strictOk(j)) return false;
@@ -163,4 +163,20 @@ export function exportSaved(path: string) {
   else if (ext === '.md') writeFileSync(path, ['# My applications', '', '| Title | Company | Location | Status | Salary | Link |', '|---|---|---|---|---|---|', ...rows.map((r) => `| ${[r.Title, r.Company, r.Location, r.Status, r.Salary, r.Link].map((v) => String(v ?? '').replace(/\|/g, '/')).join(' | ')} |`)].join('\n'));
   else writeFileSync(path, '﻿' + Papa.unparse(rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, csvSafe(v)])))));
   return rows.length;
+}
+
+/**
+ * Distance check for a free-text job location (QF-110). Country names are skipped, a country named in the text
+ * overrides the searched country, and the first part that is a known city decides. Unknown places are kept.
+ */
+export function jobDistanceOk(location: string, centre: { lat: number; lon: number }, km: number, searchCountry: string) {
+  const parts = location.split(/[,·|/]|\s-\s/).map((x) => x.replace(/\b(district|division|city|metropolitan area|area|tehsil)\b/gi, '').trim()).filter(Boolean);
+  const named = parts.map((p) => countryCode(p)).find(Boolean);
+  if (named && searchCountry && named !== searchCountry) return false;
+  for (const part of parts) {
+    if (countryCode(part)) continue;
+    const p = cityPoint(part, named || searchCountry, !!(named || searchCountry));
+    if (p) return distanceKm(centre, p) <= km;
+  }
+  return true;
 }

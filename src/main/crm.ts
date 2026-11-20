@@ -2,6 +2,7 @@
 // duplicate review with undo, and forecast numbers. Uses the same SQLite file as the leads.
 import * as db from './db';
 import { load } from './settings';
+import { isPlatformHost } from './util';
 import { compile, evaluate } from './formula';
 
 const raw = () => db.raw();
@@ -29,7 +30,12 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS merges (id INTEGER PRIMARY KEY, at TEXT NOT NULL, kept_id INTEGER NOT NULL, removed TEXT NOT NULL, kept_before TEXT NOT NULL, moved TEXT NOT NULL, undone INTEGER NOT NULL DEFAULT 0);
   `);
   for (const [t, c] of [['leads', "custom TEXT NOT NULL DEFAULT '{}'"], ['leads', 'company_id INTEGER']]) { try { raw().exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* exists */ } }
-  raw().exec("CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, domain TEXT NOT NULL UNIQUE, notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)");
+  raw().exec("CREATE TABLE IF NOT EXISTS companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE (domain, client))");
+  // 0.20 created companies with a domain-only unique key; rebuild once so each client workspace has its own companies.
+  if (!(raw().prepare("SELECT 1 FROM pragma_table_info('companies') WHERE name = 'client'").get())) {
+    raw().exec("ALTER TABLE companies RENAME TO companies_old; CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT NOT NULL, domain TEXT NOT NULL, client TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE (domain, client)); INSERT INTO companies (id, name, domain, notes, created_at) SELECT id, name, domain, notes, created_at FROM companies_old; DROP TABLE companies_old;");
+    raw().exec("UPDATE leads SET company_id = NULL WHERE client <> ''");
+  }
   // Existing data: one company per website domain, with its locations linked (QF-018, QF-052).
   const missing = raw().prepare("SELECT id FROM leads WHERE company_id IS NULL AND domain <> '' LIMIT 100000").all() as { id: number }[];
   if (missing.length) raw().transaction(() => { for (const m of missing) linkCompany(m.id); })();
@@ -176,14 +182,15 @@ export const deleteView = (id: number) => raw().prepare('DELETE FROM saved_views
 // ── Duplicate review with undo (QF-053) ──
 const norm = (s = '') => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function duplicateGroups(limit = 100) {
-  const rows = raw().prepare('SELECT id, name, phone, email, domain, city, address, source, created_at FROM leads').all() as any[];
+  const rows = raw().prepare('SELECT id, name, phone, email, domain, city, address, source, created_at, client FROM leads').all() as any[];
   const groups = new Map<string, any[]>();
   const add = (k: string, r: any) => { if (!k) return; const g = groups.get(k) ?? []; g.push(r); groups.set(k, g); };
   for (const r of rows) {
     const digits = (r.phone ?? '').replace(/\D/g, '').slice(-9);
-    if (digits.length >= 7) add(`p:${digits}`, r);
-    if (r.email) add(`e:${r.email.toLowerCase()}`, r);
-    if (r.name && r.city) add(`n:${norm(r.name)}|${norm(r.city)}`, r);
+    const c = `${r.client ?? ''}#`;
+    if (digits.length >= 7) add(`${c}p:${digits}`, r);
+    if (r.email) add(`${c}e:${r.email.toLowerCase()}`, r);
+    if (r.name && r.city) add(`${c}n:${norm(r.name)}|${norm(r.city)}`, r);
   }
   const seen = new Set<string>();
   const out: { reason: string; leads: any[] }[] = [];
@@ -192,7 +199,7 @@ export function duplicateGroups(limit = 100) {
     const sig = g.map((x) => x.id).sort().join(',');
     if (seen.has(sig) || raw().prepare('SELECT 1 FROM merges WHERE removed LIKE ? AND undone = 0').get(`%"keep_apart":"${sig}"%`)) continue;
     seen.add(sig);
-    out.push({ reason: k.startsWith('p:') ? 'Same phone number' : k.startsWith('e:') ? 'Same email' : 'Same name in the same city', leads: g.slice(0, 6) });
+    out.push({ reason: k.includes('#p:') ? 'Same phone number' : k.includes('#e:') ? 'Same email' : 'Same name in the same city', leads: g.slice(0, 6) });
     if (out.length >= limit) break;
   }
   return out;
@@ -203,6 +210,7 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
   const keep = db.getLead(keepId);
   if (!keep) throw new Error('Lead not found.');
   const removed = removeIds.filter((x) => x !== keepId).map((id) => db.getLead(id)).filter(Boolean) as db.Lead[];
+  if (removed.some((r) => (r.client ?? '') !== (keep.client ?? ''))) throw new Error('Leads from different client workspaces cannot be merged.');
   if (!removed.length) throw new Error('Choose at least two leads.');
   const moved: Record<string, [number, number][]> = {};
   raw().transaction(() => {
@@ -254,17 +262,17 @@ export const keepApart = (ids: number[]) => raw().prepare('INSERT INTO merges (a
 // ── Companies and their locations (QF-018, QF-052) ──
 /** Link a lead (a location) to the company that owns its website domain, creating the company once. */
 export function linkCompany(leadId: number) {
-  const l = raw().prepare('SELECT id, name, domain, company_id FROM leads WHERE id = ?').get(leadId) as { id: number; name: string; domain: string; company_id: number | null } | undefined;
-  if (!l?.domain || l.company_id) return;
-  raw().prepare('INSERT OR IGNORE INTO companies (name, domain, created_at) VALUES (?, ?, ?)').run(l.name.split(/\s[-–|,]\s/)[0].slice(0, 120), l.domain, now());
-  const c = raw().prepare('SELECT id FROM companies WHERE domain = ?').get(l.domain) as { id: number };
+  const l = raw().prepare('SELECT id, name, domain, client, company_id FROM leads WHERE id = ?').get(leadId) as { id: number; name: string; domain: string; client: string; company_id: number | null } | undefined;
+  if (!l?.domain || l.company_id || isPlatformHost(l.domain)) return;
+  raw().prepare('INSERT OR IGNORE INTO companies (name, domain, client, created_at) VALUES (?, ?, ?, ?)').run(l.name.split(/\s[-–|,]\s/)[0].slice(0, 120), l.domain, l.client ?? '', now());
+  const c = raw().prepare('SELECT id FROM companies WHERE domain = ? AND client = ?').get(l.domain, l.client ?? '') as { id: number };
   raw().prepare('UPDATE leads SET company_id = ? WHERE id = ?').run(c.id, l.id);
 }
-export function listCompanies(q = '', limit = 200) {
+export function listCompanies(q = '', limit = 200, client = load().currentClient ?? '') {
   return raw().prepare(`SELECT c.*, COUNT(l.id) locations, ROUND(AVG(l.rating), 1) rating, SUM(COALESCE(l.reviews, 0)) reviews, GROUP_CONCAT(DISTINCT l.city) cities,
     (SELECT COUNT(*) FROM contacts ct JOIN leads x ON x.id = ct.lead_id WHERE x.company_id = c.id) contacts,
     (SELECT COALESCE(SUM(d.value), 0) FROM deals d JOIN leads x ON x.id = d.lead_id WHERE x.company_id = c.id AND d.stage NOT IN ('lost')) pipeline
-    FROM companies c JOIN leads l ON l.company_id = c.id ${q ? 'WHERE c.name LIKE ? OR c.domain LIKE ?' : ''} GROUP BY c.id ORDER BY locations DESC, c.name LIMIT ?`).all(...(q ? [`%${q}%`, `%${q}%`] : []), limit);
+    FROM companies c JOIN leads l ON l.company_id = c.id WHERE (? = '*' OR c.client = ?) ${q ? 'AND (c.name LIKE ? OR c.domain LIKE ?)' : ''} GROUP BY c.id ORDER BY locations DESC, c.name LIMIT ?`).all(client || '*', client, ...(q ? [`%${q}%`, `%${q}%`] : []), limit);
 }
 export const companyLocations = (id: number) => raw().prepare('SELECT id, name, address, city, country, phone, rating, reviews, status, grade FROM leads WHERE company_id = ? ORDER BY city, name').all(id);
 export const renameCompany = (id: number, name: string) => raw().prepare('UPDATE companies SET name = ? WHERE id = ?').run(name.trim().slice(0, 120), id);

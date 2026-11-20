@@ -14,7 +14,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
-  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string; relevance: number | null; evidence: number | null; grade: string; reasons: string; details: string; email_checked_at: string | null; wa_consent: number; enrich_tries: number; client: string;
+  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string; relevance: number | null; evidence: number | null; grade: string; reasons: string; details: string; email_checked_at: string | null; wa_consent: number; enrich_tries: number; client: string; company_id?: number | null;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -93,18 +93,20 @@ export const raw = () => db;
 const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance', 'relevance', 'evidence', 'grade', 'reasons', 'details', 'email_checked_at', 'wa_consent', 'enrich_tries', 'client'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
+  // Duplicates are only looked for inside the same client workspace, so two clients' lists never merge.
+  const client = l.client ?? '';
   if (l.source && l.source_ref) {
-    const hit = db.prepare('SELECT * FROM leads WHERE source = ? AND source_ref = ?').get(l.source, l.source_ref) as Lead | undefined;
+    const hit = db.prepare('SELECT * FROM leads WHERE source = ? AND source_ref = ? AND client = ?').get(l.source, l.source_ref, client) as Lead | undefined;
     if (hit) return hit;
   }
   if (l.domain) {
     // Chains share one website across branches, so a domain match must also agree on place (see safety.sameBusiness).
-    const hits = db.prepare('SELECT * FROM leads WHERE domain = ? LIMIT 50').all(l.domain) as Lead[];
+    const hits = db.prepare('SELECT * FROM leads WHERE domain = ? AND client = ? LIMIT 50').all(l.domain, client) as Lead[];
     const hit = hits.find((h) => sameBusiness(l, h));
     if (hit) return hit;
   }
   if (l.phone && l.name) {
-    return db.prepare('SELECT * FROM leads WHERE phone = ? AND lower(name) = lower(?) LIMIT 1').get(l.phone, l.name) as Lead | undefined;
+    return db.prepare('SELECT * FROM leads WHERE phone = ? AND lower(name) = lower(?) AND client = ? LIMIT 1').get(l.phone, l.name, client) as Lead | undefined;
   }
   return undefined;
 }
@@ -283,7 +285,7 @@ export const addSnapshot = (leadId: number, data: unknown) => db.prepare('INSERT
 export const lastSnapshot = (leadId: number) => db.prepare('SELECT * FROM lead_snapshots WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(leadId) as { id: number; at: string; data: string } | undefined;
 export const listSnapshots = (leadId: number) => db.prepare('SELECT * FROM lead_snapshots WHERE lead_id = ? ORDER BY id DESC LIMIT 30').all(leadId);
 /** Other locations that share the website domain (QF-018). */
-export const branchesOf = (lead: Lead) => (lead.domain ? db.prepare('SELECT id, name, address, city, phone FROM leads WHERE domain = ? AND id <> ? LIMIT 50').all(lead.domain, lead.id) : []);
+export const branchesOf = (lead: Lead) => (lead.domain ? db.prepare('SELECT id, name, address, city, phone FROM leads WHERE domain = ? AND client = ? AND id <> ? LIMIT 50').all(lead.domain, lead.client ?? '', lead.id) : []);
 
 export const addReply = (r: { lead_id: number; from_addr: string; subject: string; body: string; intent: string; reason: string; review: boolean; mailbox?: string }) =>
   db.prepare('INSERT INTO replies (lead_id, at, from_addr, subject, body, intent, reason, review, mailbox) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(r.lead_id, now(), r.from_addr, r.subject, r.body, r.intent, r.reason, r.review ? 1 : 0, r.mailbox ?? 'main');
@@ -413,7 +415,8 @@ export function dashboard(days = 30) {
       leadsWeek: week('SELECT COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < ?', 6, -1),
       leadsPrevWeek: week('SELECT COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < ?', 13, 6),
       withEmail: one("SELECT COUNT(*) n FROM leads WHERE email <> ''"),
-      verified: one("SELECT COUNT(*) n FROM leads WHERE email_status = 'ok'"),
+      verified: one("SELECT COUNT(*) n FROM leads WHERE email_status = 'verified'"),
+      mailDomainOk: one("SELECT COUNT(*) n FROM leads WHERE email_status IN ('verified', 'mx-ok')"),
       shortlisted: one('SELECT COUNT(*) n FROM leads WHERE fit >= 60'),
       reports: one("SELECT COUNT(*) n FROM events WHERE type = 'report'"),
       drafts: one("SELECT COUNT(DISTINCT lead_id) n FROM messages WHERE status = 'draft' AND channel = 'email'"),

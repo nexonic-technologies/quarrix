@@ -15,7 +15,7 @@ import { linkCompany } from './crm';
 import { searchArcgis, searchNpi, searchSocrata, searchWikidata } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
 import { BudgetError, remaining } from './budget';
-import { bboxOf, gridCells, inside, insideBox, zoomFor, type Geo } from './geo';
+import { bboxOf, gridCells, inside, insideBox, placeMatches, zoomFor, type Geo } from './geo';
 import { searchPlaces } from './sources/places';
 import { resetMaps, searchMaps, stopMaps } from './sources/gmaps';
 import type { Candidate, Progress } from './sources/types';
@@ -142,7 +142,7 @@ async function runSearches() {
   const save = (list: Candidate[]) => {
     if (geo) list = list.filter((c) => inside(geo, c));
     // Typed place: drop results whose map position is clearly outside it (the bounding box plus a 25% margin).
-    else if (where?.bbox?.length === 4) list = list.filter((c) => insideBox(where!.bbox!, c));
+    else if (where?.bbox?.length === 4) list = list.filter((c) => (c.lat != null && c.lon != null ? insideBox(where!.bbox!, c) : placeMatches(c, where)));
     const tx = db.raw().transaction(() => {
       for (const c of list) {
         const country = c.country || where?.country || '';

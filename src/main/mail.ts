@@ -30,13 +30,17 @@ export async function sendReport(leadId: number) {
   if (!hasReport(leadId)) throw new Error('Make the report first.');
   const used = (db.raw().prepare("SELECT mailbox FROM messages WHERE lead_id = ? AND status = 'sent' ORDER BY id LIMIT 1").get(leadId) as { mailbox: string } | undefined)?.mailbox;
   const box = used ? mb.boxById(used, s) : mb.pick(s);
-  if (!box || !mb.approved(box, s)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : 'Approve sending in Settings → Email first.');
+  if (!mb.ready(box, s)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : used ? 'The mailbox that emailed this lead is no longer connected or approved.' : 'Approve sending in Settings → Email first.');
+  if (mb.sentToday(box.id) >= mb.capOf(box, s)) throw new Error(`${box.label} has reached today's limit. The report can go tomorrow.`);
   const block = outreachBlock(lead, db.isSuppressed(lead.email, lead.domain));
   if (block) throw new Error(`Not sent: ${block}.`);
   const first = db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(leadId) as { subject: string; message_id: string } | undefined;
   const firstName = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.split(' ')[0] : '';
   const body = `Hi ${firstName || `${lead.name} team`},\n\nAs promised, here is the one-page review of ${lead.domain || lead.name}. The first two fixes on it are the quickest wins.\n\nHappy to talk it through if useful.\n\nBest,`;
   const id = await sendRaw(lead.email, first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, `${body}\n\n${footer(s)}`, first?.message_id ?? '', [{ filename: reportName(lead.name, s.profile.company), path: reportPath(leadId) }], box.id);
+  // Counted like every other email, so daily limits include it.
+  db.addMessage({ lead_id: leadId, step: 99, subject: first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, body: '(proof report)', status: 'sent', mailbox: box.id } as any);
+  db.raw().prepare("UPDATE messages SET sent_at = ?, message_id = ? WHERE id = (SELECT MAX(id) FROM messages WHERE lead_id = ? AND step = 99)").run(db.now(), id, leadId);
   db.logEvent(leadId, 'sent', 'Proof report sent');
   return id;
 }
@@ -50,6 +54,7 @@ export function footer(s: Settings) {
 export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main') {
   const s = load();
   const box = mb.boxById(boxId, s);
+  if (!box) throw new Error('That mailbox was removed or switched off.');
   if (!mb.connected(box)) throw new Error(box.main ? 'Connect your mailbox first: Settings → Email.' : `Mailbox "${box.label}" is not connected.`);
   const from = mb.fromOf(box);
   const host = from.split('@')[1] || 'localhost';
@@ -63,6 +68,7 @@ export async function sendRaw(to: string, subject: string, text: string, inReply
 
 export async function testMailbox(boxId = 'main') {
   const b = mb.boxById(boxId);
+  if (!b) throw new Error('That mailbox was removed or switched off.');
   if (b.kind === 'sendgrid') { const r = await fetchText('https://api.sendgrid.com/v3/scopes', { headers: { Authorization: `Bearer ${b.sendgridKey}` } }); if (!r.ok) throw new Error(`SendGrid refused the key (HTTP ${r.status}).`); return `SendGrid key works. Quarrix can send from ${mb.fromOf(b)} once the sender is verified in SendGrid.`; }
   await (await mb.transport(b)).verify();
   return 'Connected. Quarrix can send from ' + mb.fromOf(b);
@@ -138,7 +144,9 @@ export async function tick(notify: (m: string) => void) {
       }
       if (!inWindow(lead, s)) continue;
       const box = mb.boxById(m.mailbox, s);
-      if (!mb.connected(box) || !mb.approved(box, s) || mb.sentToday(box.id) >= mb.capOf(box, s) || !gapOk(box.id)) continue;
+      // Never switch accounts mid-sequence: if its mailbox is gone, the sequence stops with a clear reason.
+      if (!box) { db.cancelPending(lead.id, `Stopped: mailbox "${m.mailbox}" was removed or switched off`); continue; }
+      if (!mb.ready(box, s) || mb.sentToday(box.id) >= mb.capOf(box, s) || !gapOk(box.id)) continue;
       const first = m.step > 0 ? (db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(lead.id) as { subject: string; message_id: string } | undefined) : undefined;
       try {
         const subject = m.step > 0 && first ? `Re: ${first.subject}` : m.subject;

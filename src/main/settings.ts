@@ -34,7 +34,7 @@ export type Settings = {
     recontactDays: number; bouncePct: number; pausedReason: string; senderTimezone: string;
     abTest: boolean; abSubjectB: string;
   };
-  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string; authorizedAt: string };
+  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string; authorizedAt: string; dailyLimit: number };
   signals: { on: boolean; everyDays: number; perRun: number };
   /** Daily request ceilings per source; 0 = no limit. */
   budgets: Record<string, number>;
@@ -82,7 +82,7 @@ export const defaults: Settings = {
     dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
     auth: 'password', oauthClientId: '', oauthClientSecret: '', oauthRefresh: '', oauthUser: '', authorizedAt: '', authorizedFrom: '', recontactDays: 90, bouncePct: 5, pausedReason: '', senderTimezone: '', abTest: false, abSubjectB: '',
   },
-  whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US', authorizedAt: '' },
+  whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US', authorizedAt: '', dailyLimit: 50 },
   signals: { on: true, everyDays: 7, perRun: 30 },
   budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0, hunter: 25, zerobounce: 50 },
   openFeeds: [],

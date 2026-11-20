@@ -19,12 +19,15 @@ export function mainBox(s: Settings = load()): Box {
   };
 }
 export const boxes = (s: Settings = load()): Box[] => [mainBox(s), ...(s.mailboxes ?? []).filter((b) => b.on).map((b) => ({ ...b, main: false }))];
-export const boxById = (id: string | null | undefined, s: Settings = load()) => boxes(s).find((b) => b.id === (id || 'main')) ?? mainBox(s);
+/** The mailbox with this id, or null when it was removed or switched off. There is no fallback to another account. */
+export const boxById = (id: string | null | undefined, s: Settings = load()): Box | null => boxes(s).find((b) => b.id === (id || 'main')) ?? null;
 
-export const connected = (b: Box) => b.kind === 'sendgrid' ? !!b.sendgridKey : b.kind === 'smtp' ? !!(b.smtpUser && b.smtpPass) : !!b.oauthRefresh;
-export const fromOf = (b: Box) => (b.fromEmail || b.smtpUser).toLowerCase();
+export const connected = (b: Box) => (b.kind === 'sendgrid' ? !!b.sendgridKey : b.kind === 'smtp' ? !!(b.smtpUser && b.smtpPass && b.smtpHost) : !!b.oauthRefresh) && /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(fromOf(b));
+export const fromOf = (b: Box) => (b.fromEmail || b.smtpUser || '').toLowerCase();
 /** Each mailbox must be approved for its own sending address; changing the address turns it off again. */
-export const approved = (b: Box, s: Settings = load()) => !!b.authorizedAt && b.authorizedFrom === fromOf(b) && !s.email.pausedReason;
+export const approved = (b: Box, s: Settings = load()) => connected(b) && !!b.authorizedAt && !!fromOf(b) && b.authorizedFrom === fromOf(b) && !s.email.pausedReason;
+/** Ready to send: connected, approved for its current address, not paused. */
+export const ready = (b: Box | null, s: Settings = load()): b is Box => !!b && approved(b, s);
 
 const tokens = new Map<string, { token: string; until: number }>();
 async function token(b: Box) {
@@ -73,14 +76,19 @@ export function capOf(b: Box, s: Settings = load()) {
 }
 /** The approved mailbox with the most room left today (round robin by load). */
 export function pick(s: Settings = load()): Box | null {
-  const ready = boxes(s).filter((b) => connected(b) && approved(b, s));
-  if (!ready.length) return null;
-  return ready.map((b) => ({ b, room: capOf(b, s) - sentToday(b.id) })).sort((x, y) => y.room - x.room)[0].b;
+  const list = boxes(s).filter((b) => approved(b, s));
+  if (!list.length) return null;
+  // Least loaded relative to its own limit, counting first emails already waiting to go today.
+  const waiting = (id: string) => (db.raw().prepare("SELECT COUNT(*) n FROM messages WHERE status = 'scheduled' AND step = 0 AND channel = 'email' AND mailbox = ?").get(id) as { n: number }).n;
+  return list.map((b) => ({ b, load: (sentToday(b.id) + waiting(b.id)) / capOf(b, s) })).sort((x, y) => x.load - y.load)[0].b;
 }
 
 export function authorize_(id: string, on: boolean) {
   const s = load();
   if (id === 'main') return null;
+  const b = s.mailboxes.find((x) => x.id === id);
+  if (!b) throw new Error('Mailbox not found.');
+  if (on && !connected({ ...b, main: false })) throw new Error('Connect this mailbox and set its sending address before approving it.');
   const list = s.mailboxes.map((b) => (b.id === id ? { ...b, authorizedAt: on ? db.now() : '', authorizedFrom: on ? (b.fromEmail || b.smtpUser).toLowerCase() : '' } : b));
   save({ mailboxes: list });
   return on;

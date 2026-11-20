@@ -4,12 +4,32 @@ export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 export const BOT_UA = 'Quarrix/1.0 (+https://github.com/nexonic-technologies/quarrix)';
 
 import { lookup } from 'node:dns/promises';
+import { lookup as dnsLookup } from 'node:dns';
+import { Agent, fetch as undiciFetch } from 'undici';
 import { isIP } from 'node:net';
 import { isBlockedHost, isPrivateAddress } from './safety';
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type FetchOpts = { timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number };
+
+/**
+ * DNS-rebinding-safe connections: the address is checked at connect time, on the exact IP the socket uses,
+ * so a name that resolves to a public address for the check and a private one for the request is still refused.
+ */
+const safeLookup = (host: string, opts: any, cb: (err: Error | null, address?: any, family?: number) => void) => {
+  dnsLookup(host, { ...opts, all: true }, (err, addrs: any) => {
+    if (err) return cb(err);
+    const list = (Array.isArray(addrs) ? addrs : [{ address: addrs, family: opts?.family ?? 4 }]) as { address: string; family: number }[];
+    const bad = list.find((a) => isPrivateAddress(a.address));
+    if (bad) return cb(Object.assign(new Error('Blocked a link that resolves to a private network address.'), { code: 'EBLOCKED' }));
+    if (opts?.all) return cb(null, list);
+    return cb(null, list[0].address, list[0].family);
+  });
+};
+export { safeLookup };
+const nativeFetch = globalThis.fetch;
+const publicAgent = new Agent({ connect: { lookup: safeLookup as any }, headersTimeout: 30000, bodyTimeout: 60000 });
 
 /** Throws when the URL points at this computer or the local network (protects against SSRF from scraped links). */
 export async function assertPublicUrl(url: string) {
@@ -42,7 +62,9 @@ export async function fetchText(url: string, opts: FetchOpts = {}) {
     for (let hop = 0; ; hop++) {
       if (!opts.allowLocal) await assertPublicUrl(cur);
       requestHook(new URL(cur).hostname);
-      const r = await fetch(cur, {
+      // Tests replace globalThis.fetch with recorded responses; the app always uses the checked connection.
+      const r = await (opts.allowLocal || globalThis.fetch !== nativeFetch ? globalThis.fetch : (undiciFetch as unknown as typeof fetch))(cur, {
+        ...(opts.allowLocal ? {} : { dispatcher: publicAgent }),
         method, body: body as BodyInit | undefined, signal: ctrl.signal, redirect: 'manual',
         headers: { 'User-Agent': opts.ua ?? UA, Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', ...(opts.headers ?? {}) },
       });

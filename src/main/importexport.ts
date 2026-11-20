@@ -133,7 +133,7 @@ export async function importFile(path: string) {
   let added = 0, merged = 0;
   const tx = db.raw().transaction(() => {
     for (const l of leads) {
-      const [, created] = db.upsertLead(l);
+      const [, created] = db.upsertLead({ ...l, client: load().currentClient ?? '' });
       created ? added++ : merged++;
     }
   });
