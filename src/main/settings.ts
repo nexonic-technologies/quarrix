@@ -36,6 +36,7 @@ export type Settings = {
   verify: { provider: 'none' | 'hunter' | 'zerobounce'; hunterKey: string; zerobounceKey: string; auto: boolean; maxPerDay: number; findWithHunter: boolean };
   /** Re-check leads whose data is older than this many days (QF-030). */
   freshDays: number;
+  crm: { stages: { key: string; label: string; probability: number }[]; currency: string };
 };
 
 export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret'] as const;
@@ -61,6 +62,7 @@ export const defaults: Settings = {
   icp: DEFAULT_ICP,
   verify: { provider: 'none', hunterKey: '', zerobounceKey: '', auto: false, maxPerDay: 50, findWithHunter: false },
   freshDays: 90,
+  crm: { stages: [], currency: 'USD' },
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');

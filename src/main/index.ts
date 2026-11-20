@@ -1,3 +1,4 @@
+import { Notification } from 'electron';
 import { isSafeExternalUrl } from './safety';
 import * as budget from './budget';
 import { checkSources } from './health';
@@ -5,6 +6,8 @@ import { SOURCES } from './sources/catalog';
 import { EMAIL_STATUS, listingUrl, PRESETS } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
 import * as oauth from './oauth';
+import * as crm from './crm';
+import * as backup from './backup';
 import { checkDomain, dryRunPlan } from './deliverability';
 import { onMapsLoad } from './sources/gmaps';
 import { geocode } from './sources/osm';
@@ -115,6 +118,42 @@ function registerIpc() {
   handle('replies:update', (id: number, patch: { intent?: string; handled?: boolean }) => { db.updateReply(Number(id), { intent: patch?.intent ? String(patch.intent) : undefined, handled: patch?.handled }); return true; });
   handle('outreach:attention', () => db.attention());
   handle('outreach:metrics', () => db.outreachMetrics());
+  handle('crm:stages', () => crm.stages());
+  handle('deals:list', () => crm.listDeals());
+  handle('deals:save', (d) => crm.saveDeal(d ?? {}));
+  handle('deals:move', (id: number, stage: string, beforeId: number | null) => crm.moveDeal(Number(id), String(stage), beforeId ? Number(beforeId) : null));
+  handle('deals:delete', (id: number) => crm.deleteDeal(Number(id)));
+  handle('deals:history', (id: number) => crm.dealHistory(Number(id)));
+  handle('deals:forLead', (id: number) => crm.leadDeals(Number(id)));
+  handle('deals:forecast', () => crm.forecast());
+  handle('tasks:list', (f) => crm.listTasks(f ?? {}));
+  handle('tasks:save', (t) => crm.saveTask(t ?? {}));
+  handle('tasks:delete', (id: number) => crm.deleteTask(Number(id)));
+  handle('fields:list', (entity?: string) => crm.listFields(entity));
+  handle('fields:save', (f) => crm.saveField(f));
+  handle('fields:delete', (id: number) => crm.deleteField(Number(id)));
+  handle('fields:set', (entity: 'lead' | 'deal', id: number, key: string, value: unknown) => crm.setCustom(entity === 'deal' ? 'deal' : 'lead', Number(id), String(key), value));
+  handle('views:list', (screen: string) => crm.listViews(String(screen)));
+  handle('views:save', (v) => crm.saveView(v));
+  handle('views:delete', (id: number) => crm.deleteView(Number(id)));
+  handle('dupes:list', () => crm.duplicateGroups());
+  handle('dupes:merge', (keepId: number, ids: number[]) => { const r = crm.mergeLeads(Number(keepId), (ids ?? []).map(Number)); send('leads'); return r; });
+  handle('dupes:apart', (ids: number[]) => crm.keepApart((ids ?? []).map(Number)));
+  handle('dupes:merges', () => crm.listMerges());
+  handle('dupes:undo', (id: number) => { const n = crm.undoMerge(Number(id)); send('leads'); return n; });
+  handle('backup:make', async (pass: string) => {
+    const r = await dialog.showSaveDialog(win!, { defaultPath: `quarrix-backup-${new Date().toISOString().slice(0, 10)}.qbak`, filters: [{ name: 'Quarrix backup', extensions: ['qbak'] }] });
+    if (r.canceled || !r.filePath) return null;
+    const out = await backup.makeBackup(r.filePath, String(pass ?? ''));
+    shell.showItemInFolder(r.filePath);
+    return out;
+  });
+  handle('backup:restore', async (pass: string) => {
+    const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], filters: [{ name: 'Quarrix backup', extensions: ['qbak'] }] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return backup.prepareRestore(r.filePaths[0], String(pass ?? ''));
+  });
+  handle('app:restart', () => { app.relaunch(); app.exit(0); });
   handle('icp:rescore', () => jobs.rescoreAll());
   handle('leads:intel', (id: number) => {
     const l = db.getLead(Number(id));
@@ -241,8 +280,11 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.nexonictechnologies.quarrix');
+  const restored = backup.applyPendingRestore();
   db.openDb();
   db.migrateData();
+  crm.migrate();
+  if (restored) setTimeout(() => send('toast', 'Backup restored. Your previous data was kept as a safety copy in the app folder.'), 3000);
   registerIpc();
   createWindow();
   budget.install();
@@ -251,6 +293,13 @@ app.whenReady().then(() => {
   autopilot.start(send);
   signals.start(send);
   setInterval(() => void mail.tick((m) => send('toast', m)), 60_000);
+  // Task reminders (QF-049): a desktop notification when a task falls due.
+  setInterval(() => {
+    for (const t of crm.dueReminders() as any[]) {
+      new Notification({ title: `Due: ${t.title}`, body: t.lead_name ? `For ${t.lead_name}` : 'Quarrix task' }).show();
+      send('toast', `Task due: ${t.title}`);
+    }
+  }, 60_000);
   setInterval(() => void mail.checkInbox().then((r) => { if (r.replies || r.bounces) { send('leads'); send('toast', `${r.replies} new replies, ${r.bounces} bounces`); } }).catch(() => undefined), 10 * 60_000);
   if (app.isPackaged) autoUpdater.checkForUpdatesAndNotify().catch(() => undefined);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

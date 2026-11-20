@@ -146,12 +146,15 @@ export async function exportLeads(all: db.Lead[], path: string) {
   const ext = extname(path).toLowerCase();
   // Sources whose terms do not allow exporting stored data (QF-017) are left out.
   const rows = all.filter((r) => sourceInfo(r.source)?.export !== false);
+  const labels = Object.fromEntries((db.raw().prepare("SELECT key, label FROM custom_fields WHERE entity = 'lead'").all() as { key: string; label: string }[]).map((f) => [f.key, f.label]));
   const flat = rows.map((r) => {
     const o: Record<string, unknown> = Object.fromEntries(EXPORT_COLS.map(([k, label]) => [label, r[k]]));
     const socials = JSON.parse(r.socials || '{}');
     for (const k of ['facebook', 'instagram', 'linkedin', 'x', 'youtube', 'tiktok']) o[k[0].toUpperCase() + k.slice(1)] = socials[k] ?? '';
     o['Other emails'] = JSON.parse(r.emails || '[]').filter((e: string) => e !== r.email).join(', ');
     o['Data credit'] = sourceInfo(r.source)?.attribution ?? '';
+    o.Grade = (r as any).grade ?? '';
+    for (const [k, v] of Object.entries(JSON.parse((r as any).custom || '{}'))) o[labels[k] ?? k] = v;
     return o;
   });
   if (ext === '.json') writeFileSync(path, JSON.stringify(flat, null, 2));

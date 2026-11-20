@@ -1,5 +1,6 @@
 import { LeadMap } from './FindTools';
 import { EvidenceCard, EMAIL_TEXT } from './Evidence';
+import { Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
 import { useCallback, useEffect, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
@@ -23,6 +24,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [view, setView] = useState<'list' | 'map'>('list');
   const [grade, setGrade] = useState('');
+  const [dupes, setDupes] = useState(false);
   const [role, setRole] = useState('');
   const [open, setOpen] = useState<number | null>(() => { const v = Number(sessionStorage.getItem('quarrix.openLead')) || null; sessionStorage.removeItem('quarrix.openLead'); return v; });
   const [searchId, setSearchId] = useState<number | undefined>(() => Number(sessionStorage.getItem('quarrix.search')) || undefined);
@@ -71,6 +73,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       <div className="page-head">
         <div className="grow"><p><b className="big-n">{total.toLocaleString()}</b> businesses{searchId ? ' from one search' : ''}</p></div>
         {searchId && <button className="btn ghost" onClick={() => setSearchId(undefined)}><X size={15} /> Show all leads</button>}
+        <button className="btn ghost" onClick={() => setDupes(true)}>Duplicates</button>
         <button className="btn" onClick={async () => { const n = await call('file:export', filter, 'xlsx'); if (n) toast.push(`Exported ${n} leads`); }}><Download size={15} /> Export these</button>
       </div>
       <div className="toolbar">
@@ -98,6 +101,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
         </select>
       </div>
 
+      <SavedViews current={{ q, status, country, category, has, sort, grade, role }} apply={(f) => { setQ(f.q ?? ''); setStatus(f.status ?? ''); setCountry(f.country ?? ''); setCategory(f.category ?? ''); setHas(f.has ?? ''); setSort(f.sort ?? 'fit'); setGrade(f.grade ?? ''); setRole(f.role ?? ''); setPage(0); }} />
+      {dupes && <Duplicates onClose={() => { setDupes(false); void load(); }} />}
       {rows.length === 0 ? (
         <div className="panel empty"><EmptyArt /><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>
       ) : view === 'map' ? (
@@ -199,6 +204,7 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
             </div>
           )}
           <EvidenceCard lead={l} onChange={reload} />
+          <LeadCrmCard lead={l} onChange={reload} />
           <ProofCard id={id} hasEmail={!!l.email} onChange={reload} />
           <dl className="kv">
             <dt>Email</dt><dd>{l.email ? <><a href={`mailto:${l.email}`}>{l.email}</a>{l.email_status === 'ok' && <span className="ok-pill">accepts mail</span>}{l.email_status === 'no-mx' && <span className="bad-pill">no mail server</span>}</> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>

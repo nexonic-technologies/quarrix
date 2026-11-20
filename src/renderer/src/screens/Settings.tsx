@@ -1,6 +1,7 @@
 import { SourcesPanel } from './SourcesPanel';
 import { IcpPanel } from './IcpPanel';
 import { SendingSafety, SignIn } from './EmailExtras';
+import { DataSettings } from './CrmParts';
 import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
@@ -8,7 +9,7 @@ import { NEXONIC, NEXONIC_LOGO } from '../brand';
 import { Logo } from '../Art';
 import { Mail, Globe, ExternalLink } from 'lucide-react';
 
-const SECTIONS = [['profile', 'You and your offer'], ['icp', 'Ideal customer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
+const SECTIONS = [['profile', 'You and your offer'], ['icp', 'Ideal customer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['data', 'Pipeline and data'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
 
 export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   const [s, setS] = useState<any>(null);
@@ -122,6 +123,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'icp' && <IcpPanel s={s} set={set} />}
+          {sec === 'data' && <DataSettings s={s} set={set} />}
           {sec === 'sources' && <section>
             {S('sources.googleMaps', 'Google Maps (free, runs in a hidden window at a human pace)')}
             {S('sources.osm', 'OpenStreetMap (free, open data)')}

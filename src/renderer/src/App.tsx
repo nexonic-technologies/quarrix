@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, KanbanSquare, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -11,8 +11,9 @@ import { Autopilot } from './screens/Autopilot';
 import { Jobs } from './screens/Jobs';
 import { Dashboard } from './screens/Dashboard';
 import { Signals } from './screens/Signals';
+import { Pipeline } from './screens/Pipeline';
 
-export type Screen = 'dashboard' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
+export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
@@ -48,6 +49,7 @@ export function App() {
 
   const TITLES: Record<Screen, [string, string]> = {
     dashboard: ['Dashboard', 'Leads, outreach and your job hunt, live.'],
+    pipeline: ['Pipeline', 'Deals, tasks and what the next months look like.'],
     signals: ['Signals', 'The right moment to reach out: new businesses, broken sites, expiring domains, low ratings and hiring.'],
     find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
@@ -60,7 +62,7 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
+    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['pipeline', 'Pipeline', KanbanSquare], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
 
@@ -100,6 +102,7 @@ export function App() {
         </header>
         <div className="screen" key={screen}>
           {screen === 'dashboard' && <Dashboard tick={tick} go={go} />}
+          {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'find' && <Find tick={tick} go={go} />}
           {screen === 'leads' && <Leads tick={tick} go={go} />}

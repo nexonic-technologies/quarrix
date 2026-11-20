@@ -50,15 +50,15 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-044 | Role and department contact filters | P2 | Built | "Contact role" filter (contact_role and contacts.role) | typecheck |
 | QF-045 | Contact freshness and historical changes | P1 | Built | email_checks.at, contacts.confirmed_at, bounces set status | typecheck |
 | QF-046 | Contact do-not-solicit enforcement | P0 | Done | safety.ts outreachBlock; outreach.ts, mail.ts | test/safety.test.ts |
-| QF-047 | Kanban pipeline view | P1 | To do |  |  |
-| QF-048 | Deal and opportunity records | P1 | To do |  |  |
-| QF-049 | Tasks and reminders | P1 | To do |  |  |
-| QF-050 | Custom fields and field types | P2 | To do |  |  |
-| QF-051 | Customizable saved views | P2 | To do |  |  |
-| QF-052 | Companies, contacts, locations and deals data model | P1 | To do |  |  |
-| QF-053 | Data merge review UI | P2 | To do |  |  |
-| QF-054 | Calendar-based next-action view | P2 | To do |  |  |
-| QF-055 | Opportunity forecasting dashboard | P2 | Partial | Dashboard funnel (0.10.0); no deal values yet | typecheck only |
+| QF-047 | Kanban pipeline view | P1 | Built | crm.ts deals + moveDeal + deal_history; Pipeline board (drag and drop, arrow buttons) | typecheck, preview |
+| QF-048 | Deal and opportunity records | P1 | Built | deals table: value, currency, probability, products, expected close, lost reason | typecheck |
+| QF-049 | Tasks and reminders | P1 | Built | tasks table, reminders (Notification every minute), Pipeline → Tasks, tasks on each lead | typecheck |
+| QF-050 | Custom fields and field types | P2 | Done | custom_fields + cleanValue (text, number, date, select, url); in exports | test/crm.test.ts |
+| QF-051 | Customizable saved views | P2 | Built | saved_views; Leads "Save view" chips | typecheck |
+| QF-052 | Companies, contacts, locations and deals data model | P1 | Partial | Leads + contacts + deals + tasks linked; locations grouped by domain. No separate company table yet. | — |
+| QF-053 | Data merge review UI | P2 | Built | crm.duplicateGroups / mergeLeads / undoMerge / keepApart; Leads → Duplicates | typecheck; needs live data |
+| QF-054 | Calendar-based next-action view | P2 | Built | Pipeline → Tasks → Week view (local tasks; no external calendar sync) | preview |
+| QF-055 | Opportunity forecasting dashboard | P2 | Built | crm.forecast: open, weighted, won, win rate, by stage and month, lost reasons | typecheck |
 | QF-056 | Client/project workspaces | P3 | To do |  |  |
 | QF-057 | Role-based collaboration (optional) | P3 | To do |  |  |
 | QF-058 | Fix ordered follow-up state machine | P0 | Done | safety.ts DUE_SQL; db.dueMessages | test/safety.test.ts (SQLite) |
@@ -122,7 +122,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-116 | Distinct Business and Career workspaces | P1 | To do |  |  |
 | QF-117 | Advanced search preview and estimate | P1 | Built | same as QF-013 | preview UI |
 | QF-118 | Safe export wizard with field mapping | P2 | To do |  |  |
-| QF-119 | Encrypted database backups and recovery | P1 | To do |  |  |
+| QF-119 | Encrypted database backups and recovery | P1 | Done | backupcrypto.ts (AES-256-GCM + scrypt), backup.ts (checked restore at next start, safety copy) | test/crm.test.ts |
 | QF-120 | Per-feature privacy disclosures | P1 | To do |  |  |
 | QF-121 | App signing and macOS notarization | P1 | To do |  |  |
 | QF-122 | Accessibility and keyboard support | P2 | To do |  |  |
