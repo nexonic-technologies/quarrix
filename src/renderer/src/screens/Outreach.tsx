@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react';
 import { call, type Message } from '../api';
 import { toast, type Screen } from '../App';
 import { Avatar, EmptyArt } from '../Art';
+import { Attention, Metrics, Replies, SendPlan } from './Inbox';
 import { Check, RefreshCw, Trash2, Save, MessageCircle } from 'lucide-react';
 
 type Group = { lead_id: number; name: string; email: string; place: string; email0?: Message; followups: Message[]; wa?: Message };
 
 export function Outreach({ tick, go }: { tick: number; go: (s: Screen) => void }) {
-  const [tab, setTab] = useState<'draft' | 'scheduled' | 'sent' | 'failed'>('draft');
+  const [tab, setTab] = useState<'draft' | 'scheduled' | 'sent' | 'failed' | 'replies' | 'attention' | 'plan'>('draft');
+  const openLead = (id: number) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); };
   const [msgs, setMsgs] = useState<Message[]>([]);
-  useEffect(() => { call<Message[]>('messages:list', tab).then(setMsgs); }, [tab, tick]);
+  useEffect(() => { if (['draft', 'scheduled', 'sent', 'failed'].includes(tab)) call<Message[]>('messages:list', tab).then(setMsgs); }, [tab, tick]);
 
   const groups: Group[] = [];
   for (const m of msgs) {
@@ -24,13 +26,14 @@ export function Outreach({ tick, go }: { tick: number; go: (s: Screen) => void }
     <div className="page">
       <div className="row" style={{ justifyContent: 'space-between', marginBottom: 14 }}>
       <div className="tabs seg" role="tablist" style={{ margin: 0 }}>
-        {([['draft', 'To approve'], ['scheduled', 'Waiting to send'], ['sent', 'Sent'], ['failed', 'Failed']] as const).map(([k, v]) => (
+        {([['draft', 'To approve'], ['scheduled', 'Waiting to send'], ['plan', 'Send plan'], ['sent', 'Sent'], ['replies', 'Replies'], ['attention', 'Needs attention'], ['failed', 'Failed']] as const).map(([k, v]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{v}</button>
         ))}
       </div>
       {tab === 'draft' && groups.length > 1 && <button className="btn primary" onClick={async () => { const n = await call('messages:approveAll'); toast.push(`Approved ${n}. They send within your daily limit.`); setMsgs(await call('messages:list', 'draft')); }}><Check size={15} /> Approve all {groups.length}</button>}
       </div>
-      {tab !== 'draft' ? (
+      <Metrics tick={tick} />
+      {tab === 'replies' ? <Replies tick={tick} openLead={openLead} /> : tab === 'attention' ? <Attention tick={tick} openLead={openLead} /> : tab === 'plan' ? <SendPlan tick={tick} /> : tab !== 'draft' ? (
         msgs.length === 0 ? <div className="panel empty"><EmptyArt /><h3>Nothing here</h3>{tab === 'scheduled' ? 'Approved emails wait here until the recipient\'s working hours.' : 'Sent emails will be listed here.'}</div> : (
           <div className="panel table-wrap"><table className="leads"><thead><tr><th>Business</th><th>Email</th><th>Subject</th><th>{tab === 'sent' ? 'Sent' : tab === 'failed' ? 'Problem' : 'Due'}</th><th /></tr></thead>
             <tbody>{msgs.filter((m) => m.channel === 'email').map((m) => (

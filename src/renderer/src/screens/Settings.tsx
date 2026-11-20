@@ -1,5 +1,6 @@
 import { SourcesPanel } from './SourcesPanel';
 import { IcpPanel } from './IcpPanel';
+import { SendingSafety, SignIn } from './EmailExtras';
 import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
@@ -78,6 +79,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'email' && <section>
+            <SignIn s={s} set={set} reload={() => call('settings:get').then(setS)} />
             <label className="field"><span>Mailbox</span>
               <select className="select" value={s.email.preset} onChange={(e) => {
                 const p = e.target.value; set('email.preset', p);
@@ -97,10 +99,10 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
               <input className="input" style={{ maxWidth: 240 }} placeholder="Send a test to…" value={testTo} onChange={(e) => setTestTo(e.target.value)} />
               <button className="btn" disabled={!testTo} onClick={async () => { await save(); try { await call('mail:testSend', testTo); toast.push('Test email sent'); } catch (e: any) { toast.push(e.message, true); } }}>Send test</button>
             </div>
+            <SendingSafety s={s} set={set} />
             <h2 style={{ marginTop: 10 }}>Pace</h2>
             <div className="grid3">{T('email.warmStart', 'Start with (per day)', '', 'number')}{T('email.warmStep', 'Add each day', '', 'number')}{T('email.dailyLimit', 'Maximum per day', 'Up to 40 is safe for one mailbox.', 'number')}
               {T('email.gapMinutes', 'Minutes between emails', '', 'number')}{T('email.windowStart', 'Send from (hour)', 'In the recipient\'s time.', 'number')}{T('email.windowEnd', 'Until (hour)', '', 'number')}</div>
-            <label className="field"><span>Follow-ups after (days, comma separated)</span><input className="input" value={s.email.followups.join(', ')} onChange={(e) => set('email.followups', e.target.value.split(',').map((x) => parseInt(x, 10)).filter((n) => n > 0).slice(0, 4))} /><small>Two follow-ups after 3 and 7 days works well. Leave empty for no follow-ups.</small></label>
             <div className="row">{S('email.weekdaysOnly', 'Monday to Friday only')}{S('email.unsubscribeLine', 'Add an opt-out line under every email')}{S('email.attachReport', 'Attach the proof report to the first email')}<small className="muted">Off is safer: files in a first cold email can land it in spam. Send the report with "Email it to them" once they reply.</small></div>
             <h2 style={{ marginTop: 10 }}>Replies</h2>
             {S('email.imapOn', 'Watch my inbox for replies and bounces (stops follow-ups automatically)')}

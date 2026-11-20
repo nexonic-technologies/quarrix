@@ -62,22 +62,22 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-056 | Client/project workspaces | P3 | To do |  |  |
 | QF-057 | Role-based collaboration (optional) | P3 | To do |  |  |
 | QF-058 | Fix ordered follow-up state machine | P0 | Done | safety.ts DUE_SQL; db.dueMessages | test/safety.test.ts (SQLite) |
-| QF-059 | Gmail browser-based OAuth | P1 | To do |  |  |
-| QF-060 | Microsoft 365/Outlook OAuth | P1 | To do |  |  |
+| QF-059 | Gmail browser-based OAuth | P1 | Built | oauth.ts (Google, loopback + PKCE, user's own client), XOAUTH2 in mail.ts | typecheck; needs the owner's OAuth client to test |
+| QF-060 | Microsoft 365/Outlook OAuth | P1 | Built | oauth.ts (Microsoft 365 SMTP.Send + IMAP) | typecheck; needs an Azure app to test |
 | QF-061 | Multiple connected sending accounts | P2 | To do |  |  |
-| QF-062 | Unified replies inbox | P2 | To do |  |  |
-| QF-063 | Reply intent labeling | P2 | To do |  |  |
-| QF-064 | Visual sequence editor | P1 | To do |  |  |
-| QF-065 | Pre-send dry run | P1 | To do |  |  |
-| QF-066 | Explicit send authorization | P1 | To do |  |  |
-| QF-067 | IANA timezone-aware scheduling | P1 | To do |  |  |
-| QF-068 | Bounce/complaint circuit breakers | P1 | To do |  |  |
-| QF-069 | Deliverability DNS diagnostics | P2 | To do |  |  |
+| QF-062 | Unified replies inbox | P2 | Built | replies table; Outreach → Replies (one mailbox) | typecheck |
+| QF-063 | Reply intent labeling | P2 | Done | rules.classifyReply with reason; ambiguous → review | test/rules.test.ts |
+| QF-064 | Visual sequence editor | P1 | Built | Sequence editor in Settings → Email (global steps; not per campaign yet) | typecheck |
+| QF-065 | Pre-send dry run | P1 | Done | rules.dryRun + deliverability.dryRunPlan; Outreach → Send plan | test/rules.test.ts |
+| QF-066 | Explicit send authorization | P1 | Built | email.authorizedAt/authorizedFrom; sending off until approved; UI cannot set it | typecheck |
+| QF-067 | IANA timezone-aware scheduling | P1 | Done | rules.zoneFor (tz-lookup), localClock, inWindowAt, nextWindow; mail.inWindow | test/rules.test.ts |
+| QF-068 | Bounce/complaint circuit breakers | P1 | Done | rules.breaker + mail.recentHealth; auto-pause with reason | test/rules.test.ts |
+| QF-069 | Deliverability DNS diagnostics | P2 | Done | rules.explainDns + deliverability.checkDomain | test/rules.test.ts |
 | QF-070 | Optional inbox placement testing | P3 | To do |  |  |
 | QF-071 | A/B tests for approved messaging | P2 | To do |  |  |
-| QF-072 | Per-mailbox and per-campaign metrics | P2 | To do |  |  |
-| QF-073 | Campaign attention center | P1 | To do |  |  |
-| QF-074 | Cross-campaign contact exclusion rules | P1 | To do |  |  |
+| QF-072 | Per-mailbox and per-campaign metrics | P2 | Partial | Outreach metrics strip (totals); per-campaign sent/replies exist; per-mailbox needs QF-061 | — |
+| QF-073 | Campaign attention center | P1 | Built | db.attention; Outreach → Needs attention | typecheck |
+| QF-074 | Cross-campaign contact exclusion rules | P1 | Built | mail.contactedRecently (same email or domain, any campaign) | typecheck |
 | QF-075 | Optional transactional email provider adapter | P3 | To do |  |  |
 | QF-076 | No-code automation builder | P2 | To do |  |  |
 | QF-077 | Workflow templates | P2 | To do |  |  |
@@ -137,7 +137,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 2 | SSRF: private IPs, DNS check, checked redirects, 3 MB cap | Done | util.ts `fetchText`, `assertPublicUrl`; gmaps.ts `openPage` | test/safety.test.ts |
 | 3 | Domain-only merges of chain branches | Done | safety.ts `sameBusiness`; db.ts `findDuplicate` | test/safety.test.ts |
 | 4 | MX shown as "ok" | Done | intel.ts statuses, verify.ts, migration | test/intel.test.ts |
-| 5 | Time zones from longitude | To do | mail.ts `inWindow` | — |
+| 5 | Time zones from longitude | Done | rules.ts zoneFor / inWindowAt | test/rules.test.ts |
 | 6 | noSolicit must block outreach | Done | safety.ts `outreachBlock` | test/safety.test.ts |
 | 7 | Report captcha / broken selectors | Partial | gmaps.ts throws captcha and bot-check errors | — |
 | 8 | Plain-text secret fallback | Done | settings.ts: session-only, never written; warning in Settings | manual |

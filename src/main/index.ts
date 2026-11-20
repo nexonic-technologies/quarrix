@@ -4,6 +4,8 @@ import { checkSources } from './health';
 import { SOURCES } from './sources/catalog';
 import { EMAIL_STATUS, listingUrl, PRESETS } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
+import * as oauth from './oauth';
+import { checkDomain, dryRunPlan } from './deliverability';
 import { onMapsLoad } from './sources/gmaps';
 import { geocode } from './sources/osm';
 import type { Geo } from './geo';
@@ -23,7 +25,7 @@ import * as proof from './proof';
 import * as signals from './signals';
 import { exportLeads, importFile } from './importexport';
 import { closeMaps } from './sources/gmaps';
-import { load, publicSettings, saveFromUi } from './settings';
+import { load, publicSettings, save, saveFromUi } from './settings';
 import { CATEGORIES } from '../shared/categories';
 
 let win: BrowserWindow | null = null;
@@ -94,6 +96,25 @@ function registerIpc() {
   handle('templates:delete', (id: number) => db.deleteTemplate(Number(id)));
   handle('sources:catalog', () => SOURCES);
   handle('icp:presets', () => PRESETS);
+  handle('mail:oauth', (p: string) => { if (p !== 'google' && p !== 'microsoft') throw new Error('Unknown provider.'); return oauth.connect(p); });
+  handle('mail:oauthOff', () => oauth.disconnect());
+  handle('mail:authorize', (confirm: boolean) => {
+    const e = load().email;
+    if (!confirm) { save({ email: { authorizedAt: '', authorizedFrom: '' } }); return null; }
+    const id = mail.senderId(e);
+    if (!id || !id.includes('@')) throw new Error('Set the email address you send from first.');
+    if (!load().profile.name || !load().profile.company) throw new Error('Add your name and company under "You and your offer" first, so people know who is writing.');
+    save({ email: { authorizedAt: db.now(), authorizedFrom: id, pausedReason: '' } });
+    return id;
+  });
+  handle('mail:resume', () => { save({ email: { pausedReason: '' } }); return true; });
+  handle('mail:dns', (domain?: string) => checkDomain(domain ? String(domain) : undefined));
+  handle('mail:dryrun', (days?: number) => dryRunPlan(Math.min(14, Math.max(1, Number(days) || 3))));
+  handle('mail:health', () => ({ ...mail.recentHealth(), paused: load().email.pausedReason, authorized: load().email.authorizedAt, from: load().email.authorizedFrom }));
+  handle('replies:list', (all?: boolean) => db.listReplies(!all));
+  handle('replies:update', (id: number, patch: { intent?: string; handled?: boolean }) => { db.updateReply(Number(id), { intent: patch?.intent ? String(patch.intent) : undefined, handled: patch?.handled }); return true; });
+  handle('outreach:attention', () => db.attention());
+  handle('outreach:metrics', () => db.outreachMetrics());
   handle('icp:rescore', () => jobs.rescoreAll());
   handle('leads:intel', (id: number) => {
     const l = db.getLead(Number(id));

@@ -56,6 +56,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   CREATE TABLE IF NOT EXISTS email_checks (email TEXT PRIMARY KEY, status TEXT NOT NULL, provider TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS lead_snapshots (id INTEGER PRIMARY KEY, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, data TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS snapshots_lead ON lead_snapshots(lead_id, at);
+  CREATE TABLE IF NOT EXISTS replies (id INTEGER PRIMARY KEY, lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, from_addr TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', intent TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', review INTEGER NOT NULL DEFAULT 0, handled INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS search_templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, categories TEXT NOT NULL, places TEXT NOT NULL, sources TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS provider_usage (day TEXT NOT NULL, source TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, source));
   CREATE TABLE IF NOT EXISTS suppress (value TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
@@ -280,6 +281,35 @@ export const lastSnapshot = (leadId: number) => db.prepare('SELECT * FROM lead_s
 export const listSnapshots = (leadId: number) => db.prepare('SELECT * FROM lead_snapshots WHERE lead_id = ? ORDER BY id DESC LIMIT 30').all(leadId);
 /** Other locations that share the website domain (QF-018). */
 export const branchesOf = (lead: Lead) => (lead.domain ? db.prepare('SELECT id, name, address, city, phone FROM leads WHERE domain = ? AND id <> ? LIMIT 50').all(lead.domain, lead.id) : []);
+
+export const addReply = (r: { lead_id: number; from_addr: string; subject: string; body: string; intent: string; reason: string; review: boolean }) =>
+  db.prepare('INSERT INTO replies (lead_id, at, from_addr, subject, body, intent, reason, review) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(r.lead_id, now(), r.from_addr, r.subject, r.body, r.intent, r.reason, r.review ? 1 : 0);
+export const listReplies = (onlyOpen = true) => db.prepare(`SELECT r.*, l.name lead_name, l.status lead_status FROM replies r LEFT JOIN leads l ON l.id = r.lead_id ${onlyOpen ? 'WHERE r.handled = 0' : ''} ORDER BY r.id DESC LIMIT 300`).all();
+export const updateReply = (id: number, patch: { intent?: string; handled?: boolean }) => {
+  if (patch.intent) db.prepare('UPDATE replies SET intent = ?, review = 0 WHERE id = ?').run(patch.intent, id);
+  if (patch.handled != null) db.prepare('UPDATE replies SET handled = ? WHERE id = ?').run(patch.handled ? 1 : 0, id);
+};
+/** Things that need a person: failures, cancelled sends, replies to review, opt-outs (QF-073). */
+export function attention() {
+  return {
+    failed: db.prepare("SELECT m.id, m.lead_id, m.error, m.step, l.name FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'failed' ORDER BY m.id DESC LIMIT 100").all(),
+    blocked: db.prepare("SELECT m.id, m.lead_id, m.error, m.step, l.name FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'cancelled' AND m.error LIKE 'Stopped:%' AND m.created_at >= ? ORDER BY m.id DESC LIMIT 100").all(new Date(Date.now() - 14 * 864e5).toISOString()),
+    review: db.prepare("SELECT r.id, r.lead_id, r.subject, r.intent, r.reason, l.name FROM replies r LEFT JOIN leads l ON l.id = r.lead_id WHERE r.handled = 0 AND r.review = 1 ORDER BY r.id DESC LIMIT 100").all(),
+    optouts: db.prepare("SELECT value, reason, at FROM suppress WHERE at >= ? ORDER BY at DESC LIMIT 100").all(new Date(Date.now() - 14 * 864e5).toISOString()),
+  };
+}
+/** Sent, bounced and replies per campaign and in total (QF-072). */
+export function outreachMetrics() {
+  const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  return {
+    sent: one("SELECT COUNT(*) n FROM messages WHERE status = 'sent'"),
+    bounced: one("SELECT COUNT(DISTINCT lead_id) n FROM events WHERE type = 'bounce'"),
+    replies: one('SELECT COUNT(DISTINCT lead_id) n FROM replies'),
+    positive: one("SELECT COUNT(DISTINCT lead_id) n FROM replies WHERE intent IN ('interested','meeting')"),
+    optouts: one("SELECT COUNT(DISTINCT lead_id) n FROM replies WHERE intent = 'opt_out'"),
+    byIntent: db.prepare('SELECT intent, COUNT(*) n FROM replies GROUP BY intent').all(),
+  };
+}
 
 export function addSearchGeo(id: number, geo: string) { db.prepare('UPDATE searches SET geo = ? WHERE id = ?').run(geo, id); }
 export const saveCheckpoint = (id: number, cp: unknown) => db.prepare('UPDATE searches SET checkpoint = ? WHERE id = ?').run(JSON.stringify(cp), id);

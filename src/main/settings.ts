@@ -19,6 +19,10 @@ export type Settings = {
     imapOn: boolean; imapHost: string; imapPort: number; imapUser: string; imapPass: string;
     dailyLimit: number; warmStart: number; warmStep: number; gapMinutes: number;
     windowStart: number; windowEnd: number; weekdaysOnly: boolean; followups: number[]; unsubscribeLine: boolean; attachReport: boolean;
+    auth: 'password' | 'google' | 'microsoft'; oauthClientId: string; oauthClientSecret: string; oauthRefresh: string; oauthUser: string;
+    /** Set when the user confirms they may send from this identity (QF-066). Sending stays off until then. */
+    authorizedAt: string; authorizedFrom: string;
+    recontactDays: number; bouncePct: number; pausedReason: string; senderTimezone: string;
   };
   whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
   signals: { on: boolean; everyDays: number; perRun: number };
@@ -34,7 +38,7 @@ export type Settings = {
   freshDays: number;
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -46,6 +50,7 @@ export const defaults: Settings = {
     preset: 'gmail', fromName: '', fromEmail: '', smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '',
     imapOn: false, imapHost: 'imap.gmail.com', imapPort: 993, imapUser: '', imapPass: '',
     dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
+    auth: 'password', oauthClientId: '', oauthClientSecret: '', oauthRefresh: '', oauthUser: '', authorizedAt: '', authorizedFrom: '', recontactDays: 90, bouncePct: 5, pausedReason: '', senderTimezone: '',
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
   signals: { on: true, everyDays: 7, perRun: 30 },
@@ -124,6 +129,8 @@ export function saveFromUi(patch: Record<string, any>) {
     const v = get(p, path);
     if (v === '••••••••') set(p, path, get(load() as Record<string, any>, path));
   }
+  // Fields only the main process may change: sending approval, the safety pause and the OAuth session.
+  if (p.email) for (const k of ['authorizedAt', 'authorizedFrom', 'pausedReason', 'oauthRefresh', 'oauthUser', 'auth']) delete p.email[k];
   save(p);
   return publicSettings();
 }
