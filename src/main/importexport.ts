@@ -77,7 +77,7 @@ async function readRows(path: string): Promise<Record<string, unknown>[]> {
   throw new Error('Use a .csv, .xlsx, .json or .pdf file.');
 }
 
-async function pdfText(path: string) {
+export async function pdfText(path: string) {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)), useSystemFonts: true }).promise;
   let text = '';

@@ -48,7 +48,7 @@ export function App() {
     find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
     autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
-    jobs: ['Job search', 'Jobs from LinkedIn, remote boards and hiring posts, in one place.'],
+    jobs: ['Job search', 'LinkedIn, Indeed, Google Jobs, Rozee and remote boards, matched to your CV.'],
     outreach: ['Outreach', 'Read, tweak and approve. Follow-ups stop when someone replies.'],
     files: ['Import and export', 'Bring in the lists you have, or take your leads anywhere.'],
     settings: ['Settings', 'Your details, mailbox, writing model and sources.'],

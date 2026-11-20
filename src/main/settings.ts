@@ -9,7 +9,7 @@ export type Settings = {
   theme: 'system' | 'light' | 'dark';
   profile: { skills: string; company: string; name: string; title: string; website: string; phone: string; address: string; services: string; tone: string; language: string };
   ai: { provider: Provider; model: string; baseUrl: string; apiKey: string };
-  sources: { googleMaps: boolean; osm: boolean; places: boolean; placesKey: string; pagespeedKey: string; mapsDelayMs: number; maxPerSearch: number };
+  sources: { googleMaps: boolean; osm: boolean; places: boolean; placesKey: string; pagespeedKey: string; mapsDelayMs: number; maxPerSearch: number; adzunaId: string; adzunaKey: string; joobleKey: string };
   enrich: { auto: boolean; audit: boolean; pages: number };
   email: {
     preset: 'gmail' | 'outlook' | 'custom'; fromName: string; fromEmail: string;
@@ -21,13 +21,13 @@ export type Settings = {
   whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
   profile: { skills: '', company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
   ai: { provider: 'none', model: '', baseUrl: '', apiKey: '' },
-  sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 0 },
+  sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 0, adzunaId: '', adzunaKey: '', joobleKey: '' },
   enrich: { auto: true, audit: false, pages: 3 },
   email: {
     preset: 'gmail', fromName: '', fromEmail: '', smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '',

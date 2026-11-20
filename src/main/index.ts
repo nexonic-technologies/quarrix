@@ -9,6 +9,7 @@ import { listModels, PROVIDERS } from './ai';
 import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
 import { citiesOf, matchJobs, searchJobs } from './jobsearch';
+import * as cv from './resume';
 import { exportLeads, importFile } from './importexport';
 import { closeMaps } from './sources/gmaps';
 import { load, publicSettings, saveFromUi } from './settings';
@@ -63,7 +64,26 @@ function registerIpc() {
   handle('messages:approve', (leadId: number) => approve(leadId));
   handle('messages:approveAll', () => approveAll());
   handle('jobs:search', (q) => searchJobs(q));
-  handle('jobs:match', (jobs, profile: string) => { const s = load(); if (s.ai.provider === 'none') throw new Error('Add a writing model in Settings → Writing to rank jobs by fit.'); return matchJobs(s, jobs, profile); });
+  handle('jobs:match', (jobs) => {
+    const s = load(); const c = cv.getCv();
+    if (!c) throw new Error('Upload your CV first.');
+    if (s.ai.provider === 'none') return cv.keywordMatch(c, jobs);
+    return matchJobs(s, jobs, `${c.profile.summary}\nTarget roles: ${c.profile.roles.join(', ')}\nLevel: ${c.profile.level}\nSkills: ${c.profile.skills.join(', ')}\n\n${c.text}`);
+  });
+  handle('cv:get', () => cv.getCv());
+  handle('cv:upload', async () => {
+    const r = await dialog.showOpenDialog(win!, { title: 'Choose your CV', properties: ['openFile'], filters: [{ name: 'CV', extensions: ['pdf', 'docx', 'txt', 'md'] }] });
+    return r.canceled || !r.filePaths[0] ? null : cv.loadCv(r.filePaths[0]);
+  });
+  handle('cv:profile', (p) => cv.saveProfile(p));
+  handle('jobs:letter', (job) => cv.coverLetter(job));
+  handle('jobs:tailor', (job) => cv.tailorCv(job));
+  handle('jobs:saveDoc', async (text: string, name: string) => {
+    const r = await dialog.showSaveDialog(win!, { defaultPath: `${name.replace(/[^\w -]+/g, '').slice(0, 60)}.docx`, filters: [{ name: 'Word', extensions: ['docx'] }, { name: 'Text', extensions: ['txt'] }] });
+    if (r.canceled || !r.filePath) return null;
+    if (r.filePath.endsWith('.txt')) (await import('node:fs')).writeFileSync(r.filePath, text); else await cv.saveDocx(r.filePath, text);
+    return r.filePath;
+  });
   handle('jobs:saved', () => db.savedJobs());
   handle('jobs:save', (job) => db.saveJob(job));
   handle('jobs:unsave', (id: string) => db.unsaveJob(id));

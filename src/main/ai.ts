@@ -172,3 +172,10 @@ export function guessFit(lead: Lead, facts?: Record<string, any>, score?: number
   const fit = Math.min(95, 25 + (score ?? 0) * 0.7 + needs.length * 8);
   return { fit: Math.round(fit), needs: needs.slice(0, 3) };
 }
+
+/** "free" for local or free-tier models (smaller batches, shorter prompts), "paid" for paid keys. */
+export function tier(ai: Ai): 'none' | 'free' | 'paid' {
+  if (ai.provider === 'none') return 'none';
+  if (['ollama', 'lmstudio', 'groq'].includes(ai.provider) || /:free\b|free/i.test(ai.model)) return 'free';
+  return 'paid';
+}
