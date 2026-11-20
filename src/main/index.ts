@@ -98,7 +98,12 @@ function registerIpc() {
     return r.filePath;
   });
   handle('jobs:saved', () => db.savedJobs());
-  handle('jobs:save', (job) => db.saveJob(job));
+  handle('jobs:save', (job) => {
+    const before = (db.savedJobs() as { id: string; status?: string }[]).find((j) => j.id === job.id)?.status;
+    if (job.status && job.status !== before) db.logEvent(null as never, 'job_status', `${job.status}: ${job.title} at ${job.company}`);
+    return db.saveJob(job);
+  });
+  handle('dash:get', (days: number) => db.dashboard(days || 30));
   handle('jobs:unsave', (id: string) => db.unsaveJob(id));
   handle('geo:cities', (cc: string) => citiesOf(cc));
   handle('search:log', (id: number) => jobs.searchLog(id));

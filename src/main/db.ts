@@ -255,3 +255,62 @@ export const recentEvents = (limit = 100) => db.prepare('SELECT * FROM events OR
 export const savedJobs = () => (db.prepare('SELECT data FROM saved_jobs ORDER BY at DESC').all() as { data: string }[]).map((r) => JSON.parse(r.data));
 export const saveJob = (job: { id: string }) => db.prepare('INSERT OR REPLACE INTO saved_jobs (id, at, data) VALUES (?, ?, ?)').run(job.id, now(), JSON.stringify(job));
 export const unsaveJob = (id: string) => db.prepare('DELETE FROM saved_jobs WHERE id = ?').run(id);
+
+/* ---------- Dashboard ---------- */
+export function dashboard(days = 30) {
+  const one = (sql: string, ...a: unknown[]) => (db.prepare(sql).get(...(a as never[])) as { n: number }).n;
+  const today = new Date().toISOString().slice(0, 10);
+  const since = (d: number) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+  const series = Array.from({ length: days }, (_, i) => since(days - 1 - i));
+  const byDay = (sql: string) => {
+    const m = new Map((db.prepare(sql).all(since(days - 1)) as { d: string; n: number }[]).map((r) => [r.d, r.n]));
+    return series.map((d) => m.get(d) ?? 0);
+  };
+  const jobs = savedJobs() as { status?: string; title: string; company: string }[];
+  const jobStatus: Record<string, number> = { Saved: 0, Applied: 0, Interview: 0, Offer: 0, Rejected: 0 };
+  for (const j of jobs) jobStatus[j.status ?? 'Saved'] = (jobStatus[j.status ?? 'Saved'] ?? 0) + 1;
+  const week = (sql: string, a: number, b: number) => one(sql, since(a), since(b));
+  return {
+    days: series,
+    series: {
+      leads: byDay("SELECT substr(created_at,1,10) d, COUNT(*) n FROM leads WHERE created_at >= ? GROUP BY d"),
+      sent: byDay("SELECT substr(sent_at,1,10) d, COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ? GROUP BY d"),
+      replies: byDay("SELECT substr(at,1,10) d, COUNT(*) n FROM events WHERE type = 'reply' AND at >= ? GROUP BY d"),
+      applied: byDay("SELECT substr(at,1,10) d, COUNT(*) n FROM events WHERE type = 'job_status' AND detail LIKE 'Applied%' AND at >= ? GROUP BY d"),
+    },
+    totals: {
+      leads: one('SELECT COUNT(*) n FROM leads'),
+      leadsToday: one('SELECT COUNT(*) n FROM leads WHERE created_at >= ?', today),
+      leadsWeek: week('SELECT COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < ?', 6, -1),
+      leadsPrevWeek: week('SELECT COUNT(*) n FROM leads WHERE created_at >= ? AND created_at < ?', 13, 6),
+      withEmail: one("SELECT COUNT(*) n FROM leads WHERE email <> ''"),
+      verified: one("SELECT COUNT(*) n FROM leads WHERE email_status = 'ok'"),
+      shortlisted: one('SELECT COUNT(*) n FROM leads WHERE fit >= 60'),
+      reports: one("SELECT COUNT(*) n FROM events WHERE type = 'report'"),
+      drafts: one("SELECT COUNT(DISTINCT lead_id) n FROM messages WHERE status = 'draft' AND channel = 'email'"),
+      scheduled: one("SELECT COUNT(*) n FROM messages WHERE status = 'scheduled'"),
+      sent: one("SELECT COUNT(*) n FROM messages WHERE status = 'sent'"),
+      sentToday: one("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ?", today),
+      sentWeek: week("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ? AND sent_at < ?", 6, -1),
+      sentPrevWeek: week("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ? AND sent_at < ?", 13, 6),
+      failed: one("SELECT COUNT(*) n FROM messages WHERE status = 'failed'"),
+      replies: one("SELECT COUNT(*) n FROM events WHERE type = 'reply'"),
+      repliesWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'reply' AND at >= ? AND at < ?", 6, -1),
+      repliesPrevWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'reply' AND at >= ? AND at < ?", 13, 6),
+      contactedLeads: one("SELECT COUNT(DISTINCT lead_id) n FROM messages WHERE status = 'sent'"),
+      won: one("SELECT COUNT(*) n FROM leads WHERE status = 'won'"),
+      interested: one("SELECT COUNT(*) n FROM leads WHERE status IN ('interested','replied')"),
+      applied: jobStatus.Applied + jobStatus.Interview + jobStatus.Offer + jobStatus.Rejected,
+      appliedWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'job_status' AND detail LIKE 'Applied%' AND at >= ? AND at < ?", 6, -1),
+      appliedPrevWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'job_status' AND detail LIKE 'Applied%' AND at >= ? AND at < ?", 13, 6),
+      campaigns: one('SELECT COUNT(*) n FROM campaigns WHERE enabled = 1'),
+    },
+    jobStatus,
+    sources: db.prepare("SELECT source, COUNT(*) n FROM leads GROUP BY source ORDER BY n DESC LIMIT 8").all(),
+    categories: db.prepare("SELECT category, COUNT(*) n FROM leads WHERE category <> '' GROUP BY category ORDER BY n DESC LIMIT 6").all(),
+    countries: db.prepare("SELECT country, COUNT(*) n FROM leads WHERE country <> '' GROUP BY country ORDER BY n DESC LIMIT 6").all(),
+    running: db.prepare("SELECT id, category, place, status, found, added FROM searches WHERE status IN ('running','queued') ORDER BY id").all(),
+    nextSend: (db.prepare("SELECT m.due_at, l.name FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'scheduled' AND m.due_at IS NOT NULL ORDER BY m.due_at LIMIT 1").get() ?? null),
+    activity: db.prepare(`SELECT e.id, e.at, e.type, e.detail, l.name FROM events e LEFT JOIN leads l ON l.id = e.lead_id ORDER BY e.id DESC LIMIT 18`).all(),
+  };
+}
