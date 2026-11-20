@@ -3,7 +3,7 @@ export type Lead = {
   id: number; created_at: string; name: string; category: string; address: string; city: string; region: string; country: string; postcode: string;
   lat: number | null; lon: number | null; phone: string; email: string; emails: string; website: string; domain: string; socials: string;
   rating: number | null; reviews: number | null; source: string; status: string; score: number | null; audit: string; tags: string; notes: string; enriched_at: string | null;
-  contact_name?: string; contact_role?: string; email_status?: string; summary?: string;
+  contact_name?: string; contact_role?: string; email_status?: string; summary?: string; fit?: number | null; needs?: string;
 };
 export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string };
 export type Message = { id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; error: string; lead_name?: string; lead_email?: string; lead_city?: string; lead_country?: string };
@@ -38,7 +38,7 @@ const demoLeads: Lead[] = [
   socials: JSON.stringify(i % 2 ? { facebook: 'https://facebook.com/x', instagram: 'https://instagram.com/x' } : { facebook: 'https://facebook.com/x' }),
   rating, reviews, source: i % 3 ? 'gmaps' : 'osm', status, score,
   audit: JSON.stringify(score ? { findings: ['Google PageSpeed mobile score is 31/100.', 'Not set up for phones (no mobile viewport).', 'The footer still says © 2019.'], facts: { platform: 'WordPress', https: true } } : {}),
-  tags: '', notes: '', enriched_at: domain ? new Date().toISOString() : null,
+  tags: '', notes: '', enriched_at: domain ? new Date().toISOString() : null, fit: domain ? Math.min(95, 30 + (score as number ?? 0)) : 88, needs: domain ? 'Redesign, Online booking' : 'Website',
 })) as Lead[];
 
 async function mock(ch: string, args: unknown[]): Promise<{ ok: boolean; data?: unknown; error?: string }> {
@@ -60,6 +60,15 @@ async function mock(ch: string, args: unknown[]): Promise<{ ok: boolean; data?: 
     'search:log': () => [{ at: new Date().toISOString(), msg: 'Google Maps: 118 places listed' }, { at: new Date().toISOString(), msg: '+ Lakeside Dental Studio' }, { at: new Date().toISOString(), msg: '+ Hill Country Smiles' }, { at: new Date().toISOString(), msg: 'Google Maps: area 3 of 42, Hyde Park' }],
     'campaigns:list': () => [{ id: 1, name: 'Dentists, USA', category: 'Dentists', places: JSON.stringify(['Austin, Texas', 'Dallas, Texas', 'Houston, Texas']), sources: '["gmaps","osm","web"]', daily: 20, auto_send: 1, enabled: 1, cursor: 2, last_run: new Date().toISOString(), leads: 412, with_email: 233, sent: 61, replies: 4 }],
     'messages:approveAll': () => 3,
+    'jobs:saved': () => [],
+    'geo:cities': () => ['London', 'Manchester', 'Birmingham', 'Leeds', 'Glasgow'],
+    'jobs:search': () => ({ errors: [], jobs: [
+      ['Senior Frontend Developer (React)', 'Northwind Labs', 'Remote, UK', 'remote', 'Full-time', 'Senior', 'GBP 70k–90k', 'LinkedIn', 1],
+      ['WordPress Developer', 'Bright Pixel Studio', 'London, United Kingdom', 'hybrid', 'Contract', 'Mid level', '', 'LinkedIn', 2],
+      ['Web Developer', 'Acme Health', 'Worldwide', 'remote', 'Full-time', 'Mid level', 'USD 60k–80k', 'Remotive', 3],
+      ['Junior Web Designer', 'Kite & Co', 'London', 'onsite', 'Full-time', 'Entry level', '', 'Arbeitnow', 5],
+      ['Need a Shopify developer for a store redesign', 'u/sarah_builds', 'Remote', 'remote', 'Contract', 'Mid level', '$1,500', 'Reddit', 1],
+    ].map(([title, company, location, workplace, type, level, salary, source, d], i) => ({ id: 'j' + i, title, company, location, workplace, type, level, salary, source, url: 'https://example.com', posted: new Date(Date.now() - (d as number) * 864e5).toISOString(), tags: [], snippet: 'We are looking for a developer to join our small product team and help build fast, accessible websites.' })) }),
   };
   return { ok: true, data: (data[ch] ?? (() => null))() };
 }

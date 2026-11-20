@@ -1,7 +1,7 @@
 // Background work: run searches one at a time, then visit websites for emails and social links.
 import * as db from './db';
 import { enrichWebsite, pagespeed, receivesMail, siteScore } from './enrich';
-import { research } from './ai';
+import { guessFit, research } from './ai';
 import { searchWeb } from './sources/web';
 import { searchDirectories } from './sources/directories';
 import { searchPosts } from './sources/posts';
@@ -146,7 +146,7 @@ export async function runEnrichment(ids?: number[]) {
   if (!ids && !settings.enrich.auto) return;
   const pick = () => (ids
     ? (ids.length ? db.getLead(ids.shift()!) : undefined)
-    : (db.raw().prepare("SELECT * FROM leads WHERE website <> '' AND enriched_at IS NULL ORDER BY id LIMIT 1").get() as db.Lead | undefined));
+    : (db.raw().prepare("SELECT * FROM leads WHERE enriched_at IS NULL AND source <> 'reddit' ORDER BY id LIMIT 1").get() as db.Lead | undefined));
   while (enriching < 6) {
     const lead = pick();
     if (!lead) break;
@@ -159,7 +159,13 @@ export async function runEnrichment(ids?: number[]) {
 export async function enrichOne(lead: db.Lead) {
   const settings = load();
   db.updateLead(lead.id, { enriched_at: db.now() });
-  if (!lead.website) return;
+  if (!lead.website) {
+    // No website at all: the clearest need. With a model, still ask it to judge the fit from the other facts.
+    let f = guessFit(lead);
+    if (settings.ai.provider !== 'none') { const ai = await research(settings, lead, '').catch(() => null); if (ai) f = { fit: ai.fit, needs: ai.needs.length ? ai.needs : f.needs }; }
+    db.updateLead(lead.id, { fit: f.fit, needs: f.needs.join(', ') });
+    return;
+  }
   const r = await enrichWebsite(lead.website, lead.country, settings.enrich.pages).catch((e) => ({ ok: false as const, error: String(e.message ?? e) }));
   if (!r.ok) {
     db.updateLead(lead.id, { audit: JSON.stringify({ error: r.error }) });
@@ -171,15 +177,16 @@ export async function enrichOne(lead: db.Lead) {
   if (settings.enrich.audit) psi = await pagespeed(r.website, settings.sources.pagespeedKey).catch(() => undefined);
   const sc = siteScore(r.facts, psi);
   let contact = { contact_name: r.contact.name, contact_role: r.contact.role, summary: '' };
+  let fit = guessFit(lead, r.facts, sc.score);
   if (settings.ai.provider !== 'none') {
-    const ai = await research(settings, lead, r.text).catch(() => null);
-    if (ai) contact = { contact_name: ai.contact_name || contact.contact_name, contact_role: ai.contact_role || contact.contact_role, summary: ai.summary };
+    const ai = await research(settings, { ...lead, audit: JSON.stringify({ findings: sc.findings }) }, r.text).catch(() => null);
+    if (ai) { contact = { contact_name: ai.contact_name || contact.contact_name, contact_role: ai.contact_role || contact.contact_role, summary: ai.summary }; fit = { fit: ai.fit, needs: ai.needs }; }
   }
   const email = lead.email || r.email;
   const emailStatus = email ? ((await receivesMail(email.split('@')[1]).catch(() => false)) ? 'ok' : 'no-mx') : '';
   db.updateLead(lead.id, {
     contact_name: lead.contact_name || contact.contact_name, contact_role: lead.contact_role || contact.contact_role,
-    summary: lead.summary || contact.summary, email_status: emailStatus,
+    summary: lead.summary || contact.summary, email_status: emailStatus, fit: fit.fit, needs: fit.needs.join(', '),
     website: r.website, domain: r.domain, email: lead.email || r.email, emails: JSON.stringify(emails), socials: JSON.stringify(socials),
     phone: lead.phone || r.phones[0] || '', score: sc.score,
     address: lead.address || [r.schema.street, r.schema.city, r.schema.postcode].filter(Boolean).join(', '),

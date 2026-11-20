@@ -15,14 +15,14 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [country, setCountry] = useState('');
   const [category, setCategory] = useState('');
   const [has, setHas] = useState('');
-  const [sort, setSort] = useState('newest');
+  const [sort, setSort] = useState('fit');
   const [page, setPage] = useState(0);
   const [facets, setFacets] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [open, setOpen] = useState<number | null>(null);
   const [searchId, setSearchId] = useState<number | undefined>(() => Number(sessionStorage.getItem('quarrix.search')) || undefined);
 
-  const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website' };
+  const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist' };
   const load = useCallback(async () => {
     const r = await call<{ total: number; rows: Lead[] }>('leads:query', { ...filter, limit: PAGE, offset: page * PAGE });
     setRows(r.rows);
@@ -70,10 +70,10 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <option value="">Any country</option>{facets.countries.map((c) => <option key={c}>{c}</option>)}
         </select>
         <select className="select" value={has} onChange={(e) => { setHas(e.target.value); setPage(0); }} aria-label="Contact details">
-          <option value="">Any contact details</option><option value="email">Has email</option><option value="phone">Has phone</option><option value="website">Has website</option>
+          <option value="">Any contact details</option><option value="shortlist">Shortlisted (good fit)</option><option value="email">Has email</option><option value="phone">Has phone</option><option value="website">Has website</option>
         </select>
         <select className="select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
-          <option value="newest">Newest first</option><option value="name">Name</option><option value="score">Website needs most help</option><option value="rating">Best rated</option>
+          <option value="fit">Best fit first</option><option value="newest">Newest first</option><option value="name">Name</option><option value="score">Website needs most help</option><option value="rating">Best rated</option>
         </select>
       </div>
 
@@ -84,7 +84,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <table className="leads">
             <thead><tr>
               <th style={{ width: 34 }}><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSel(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Business</th><th>Contact person</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
+              <th>Business</th><th>Contact person</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How likely they need what you offer, out of 100">Fit</th><th>Status</th>
             </tr></thead>
             <tbody>
               {rows.map((l) => (
@@ -97,7 +97,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                   <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={l.email_status === 'ok' ? 'The domain accepts email' : l.email_status === 'no-mx' ? 'This domain has no mail server' : ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
-                  <td>{l.score != null ? <span className={`score ${l.score >= 40 ? 'hot' : ''}`}>{l.score}</span> : <span className="muted">{l.website ? (l.enriched_at ? 'n/a' : 'checking') : 'no site'}</span>}</td>
+                  <td>{l.fit != null ? <span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`} title={l.needs || ''}>{l.fit}{l.needs ? <em>{l.needs.split(',')[0]}</em> : null}</span> : <span className="muted">{l.enriched_at ? 'n/a' : 'checking'}</span>}</td>
                   <td><span className={`status ${l.status}`}>{STATUS_LABEL[l.status] ?? l.status}</span></td>
                 </tr>
               ))}
@@ -165,10 +165,11 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
           </div>
         </header>
         <div className="body">
-          {(l.contact_name || l.summary) && (
+          {(l.contact_name || l.summary || l.fit != null) && (
             <div className="insight">
               {l.contact_name && <div><span className="muted small">Decision maker</span><b>{l.contact_name}</b>{l.contact_role && <span className="muted"> · {l.contact_role}</span>}</div>}
               {l.summary && <p>{l.summary}</p>}
+              {l.fit != null && <div className="needs"><span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`}>{l.fit}% fit</span>{(l.needs || '').split(',').filter(Boolean).map((n) => <span key={n} className="need">needs {n.trim().toLowerCase()}</span>)}</div>}
             </div>
           )}
           <dl className="kv">

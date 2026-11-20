@@ -4,6 +4,7 @@
 import * as db from './db';
 import * as jobs from './jobs';
 import { approve, createDrafts } from './outreach';
+import { load } from './settings';
 
 type Notify = (event: string, data?: unknown) => void;
 let busy = false;
@@ -36,7 +37,8 @@ export async function run(notify: Notify, force?: number) {
       const ids = (db.raw().prepare(`SELECT l.id FROM leads l JOIN searches s ON s.id = l.search_id
         WHERE s.campaign_id = ? AND l.status = 'new' AND l.email <> '' AND l.enriched_at IS NOT NULL AND l.email_status <> 'no-mx'
         AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.lead_id = l.id)
-        ORDER BY (l.contact_name <> '') DESC, l.score DESC, l.id LIMIT ?`).all(c.id, room) as { id: number }[]).map((r) => r.id);
+        AND (l.fit IS NULL OR l.fit >= ?)
+        ORDER BY l.fit DESC, (l.contact_name <> '') DESC, l.score DESC, l.id LIMIT ?`).all(c.id, load().ai.provider !== 'none' ? 55 : 0, room) as { id: number }[]).map((r) => r.id);
       if (!ids.length) continue;
       await createDrafts(ids, () => notify('drafts'));
       for (const id of ids) {

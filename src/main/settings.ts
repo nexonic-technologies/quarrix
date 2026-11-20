@@ -7,7 +7,7 @@ export type Provider = 'none' | 'anthropic' | 'openai' | 'gemini' | 'openrouter'
 
 export type Settings = {
   theme: 'system' | 'light' | 'dark';
-  profile: { company: string; name: string; title: string; website: string; phone: string; address: string; services: string; tone: string; language: string };
+  profile: { skills: string; company: string; name: string; title: string; website: string; phone: string; address: string; services: string; tone: string; language: string };
   ai: { provider: Provider; model: string; baseUrl: string; apiKey: string };
   sources: { googleMaps: boolean; osm: boolean; places: boolean; placesKey: string; pagespeedKey: string; mapsDelayMs: number; maxPerSearch: number };
   enrich: { auto: boolean; audit: boolean; pages: number };
@@ -25,7 +25,7 @@ export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespee
 
 export const defaults: Settings = {
   theme: 'light',
-  profile: { company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
+  profile: { skills: '', company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
   ai: { provider: 'none', model: '', baseUrl: '', apiKey: '' },
   sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 0 },
   enrich: { auto: true, audit: false, pages: 3 },

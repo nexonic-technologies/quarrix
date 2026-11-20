@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -8,8 +8,9 @@ import { Outreach } from './screens/Outreach';
 import { ImportExport } from './screens/ImportExport';
 import { SettingsScreen } from './screens/Settings';
 import { Autopilot } from './screens/Autopilot';
+import { Jobs } from './screens/Jobs';
 
-export type Screen = 'find' | 'leads' | 'outreach' | 'autopilot' | 'files' | 'settings';
+export type Screen = 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
@@ -47,6 +48,7 @@ export function App() {
     find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
     autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
+    jobs: ['Job search', 'Jobs from LinkedIn, remote boards and hiring posts, in one place.'],
     outreach: ['Outreach', 'Read, tweak and approve. Follow-ups stop when someone replies.'],
     files: ['Import and export', 'Bring in the lists you have, or take your leads anywhere.'],
     settings: ['Settings', 'Your details, mailbox, writing model and sources.'],
@@ -54,7 +56,7 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
+    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket], ['jobs', 'Job search', Briefcase],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
 
@@ -97,6 +99,7 @@ export function App() {
           {screen === 'leads' && <Leads tick={tick} go={go} />}
           {screen === 'outreach' && <Outreach tick={tick} go={go} />}
           {screen === 'autopilot' && <Autopilot tick={tick} go={go} />}
+          {screen === 'jobs' && <Jobs />}
           {screen === 'files' && <ImportExport go={go} />}
           {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
         </div>

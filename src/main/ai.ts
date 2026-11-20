@@ -144,10 +144,31 @@ export function signature(s: Settings) {
   return [p.name, [p.title, p.company].filter(Boolean).join(', '), p.website?.replace(/^https?:\/\//, ''), p.phone].filter(Boolean).join('\n');
 }
 
-/** With a model set up: read the website text and pick out the decision maker and a two-line summary. */
-export async function research(settings: Settings, lead: Lead, siteText: string): Promise<{ contact_name: string; contact_role: string; summary: string }> {
-  const system = 'You read a business website and return facts only. If something is not stated on the page, leave it empty. Never guess names.\n'
-    + 'Return one JSON object: {"contact_name":"owner, founder or most senior named person, full name","contact_role":"their role as written","summary":"2 sentences: what the business does and who it serves, plus one visible gap or opportunity (for example no online booking, dated site, no reviews section)"}';
-  const j = parseJson(await complete(settings.ai, system, `Business: ${lead.name} (${lead.category})\nWebsite text:\n${siteText.slice(0, 5000)}`, 500)) ?? {};
-  return { contact_name: String(j.contact_name ?? '').slice(0, 80), contact_role: String(j.contact_role ?? '').slice(0, 60), summary: String(j.summary ?? '').slice(0, 600) };
+export const NEEDS = ['Website', 'Redesign', 'SEO', 'Graphic design', 'Branding', 'Social media', 'Online booking', 'Mobile app', 'Google reviews'];
+
+/** With a model set up: read the website text, find the decision maker, and judge how much this business needs what you offer. */
+export async function research(settings: Settings, lead: Lead, siteText: string): Promise<{ contact_name: string; contact_role: string; summary: string; fit: number; needs: string[] }> {
+  const offer = settings.profile.services || 'websites, graphic design and online marketing for small businesses';
+  const system = 'You assess small businesses as potential clients. Use only the facts given; if a fact is missing, leave it empty. Never guess names.\n'
+    + `The sender offers: ${offer}\n`
+    + `Return one JSON object: {"contact_name":"owner, founder or most senior named person, full name","contact_role":"their role as written","summary":"2 sentences: what they do and the most visible gap","needs":[up to 3 from ${JSON.stringify(NEEDS)}],"fit":0-100}\n`
+    + 'fit = how likely they need and would pay for what the sender offers: 80+ clear visible need (no website, broken or dated site, no booking for an appointment business), 50-79 some need, under 50 well served already or a big chain.';
+  const j = parseJson(await complete(settings.ai, system, `${leadFacts(lead)}\nWebsite text:\n${siteText.slice(0, 5000) || '(no website)'}`, 600)) ?? {};
+  return {
+    contact_name: String(j.contact_name ?? '').slice(0, 80), contact_role: String(j.contact_role ?? '').slice(0, 60), summary: String(j.summary ?? '').slice(0, 600),
+    fit: Math.max(0, Math.min(100, Math.round(Number(j.fit) || 0))), needs: (Array.isArray(j.needs) ? j.needs : []).map(String).filter((x: string) => NEEDS.includes(x)).slice(0, 3),
+  };
+}
+
+/** Without a model: a simple estimate from what the website check found. */
+export function guessFit(lead: Lead, facts?: Record<string, any>, score?: number | null): { fit: number; needs: string[] } {
+  if (!lead.website) return { fit: 85, needs: ['Website'] };
+  const needs: string[] = [];
+  if ((score ?? 0) >= 40) needs.push('Redesign');
+  if (facts && !facts.description) needs.push('SEO');
+  if (facts && !facts.booking && /dent|clinic|salon|spa|physio|doctor|vet|barber|beauty|massage|fitness|gym|restaurant/i.test(lead.category)) needs.push('Online booking');
+  if (Object.keys(safe(lead.socials)).length === 0) needs.push('Social media');
+  if (!lead.rating || (lead.reviews ?? 0) < 10) needs.push('Google reviews');
+  const fit = Math.min(95, 25 + (score ?? 0) * 0.7 + needs.length * 8);
+  return { fit: Math.round(fit), needs: needs.slice(0, 3) };
 }

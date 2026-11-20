@@ -12,7 +12,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
-  contact_name: string; contact_role: string; email_status: string; summary: string;
+  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -58,9 +58,10 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
     id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', category TEXT NOT NULL DEFAULT '',
     places TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', daily INTEGER NOT NULL DEFAULT 20,
     auto_send INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, cursor INTEGER NOT NULL DEFAULT 0, last_run TEXT
-  );`);
+  );
+  CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER']]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -71,7 +72,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {
@@ -117,7 +118,7 @@ export function updateLead(id: number, patch: Record<string, unknown>) {
 
 export const getLead = (id: number) => db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as Lead | undefined;
 
-export type LeadQuery = { q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[] };
+export type LeadQuery = { shortlist?: boolean; q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[] };
 
 export function queryLeads(f: LeadQuery) {
   const where: string[] = [];
@@ -134,9 +135,10 @@ export function queryLeads(f: LeadQuery) {
   if (f.hasPhone) where.push("phone <> ''");
   if (f.hasWebsite) where.push("website <> ''");
   if (f.searchId) { where.push('search_id = ?'); args.push(f.searchId); }
+  if (f.shortlist) where.push('fit >= 60');
   if (f.ids?.length) { where.push(`id IN (${f.ids.map(() => '?').join(',')})`); args.push(...f.ids); }
   const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const sorts: Record<string, string> = { newest: 'id DESC', name: 'name COLLATE NOCASE ASC', score: 'score DESC NULLS LAST, id DESC', rating: 'rating DESC NULLS LAST' };
+  const sorts: Record<string, string> = { newest: 'id DESC', name: 'name COLLATE NOCASE ASC', score: 'score DESC NULLS LAST, id DESC', rating: 'rating DESC NULLS LAST', fit: 'fit DESC NULLS LAST, id DESC' };
   const order = sorts[f.sort || 'newest'] || sorts.newest;
   const total = (db.prepare(`SELECT COUNT(*) n FROM leads ${w}`).get(...(args as never[])) as { n: number }).n;
   const rows = db.prepare(`SELECT * FROM leads ${w} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...(args as never[]), f.limit ?? 200, f.offset ?? 0) as Lead[];
@@ -248,3 +250,8 @@ export function isSuppressed(email: string, domain = '') {
 export const logEvent = (leadId: number | null, type: string, detail = '') => db.prepare('INSERT INTO events (lead_id, at, type, detail) VALUES (?, ?, ?, ?)').run(leadId, now(), type, detail.slice(0, 2000));
 export const eventsFor = (leadId: number) => db.prepare('SELECT * FROM events WHERE lead_id = ? ORDER BY id DESC LIMIT 100').all(leadId);
 export const recentEvents = (limit = 100) => db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit);
+
+/* ---------- Saved jobs ---------- */
+export const savedJobs = () => (db.prepare('SELECT data FROM saved_jobs ORDER BY at DESC').all() as { data: string }[]).map((r) => JSON.parse(r.data));
+export const saveJob = (job: { id: string }) => db.prepare('INSERT OR REPLACE INTO saved_jobs (id, at, data) VALUES (?, ?, ?)').run(job.id, now(), JSON.stringify(job));
+export const unsaveJob = (id: string) => db.prepare('DELETE FROM saved_jobs WHERE id = ?').run(id);
