@@ -1,5 +1,6 @@
 // Local SQLite database: everything stays on this computer.
 import { DUE_SQL, sameBusiness } from './safety';
+import { signalConfidence } from './intel';
 import Database from 'better-sqlite3';
 import { app } from 'electron';
 import { join } from 'node:path';
@@ -13,7 +14,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
-  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string;
+  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string; relevance: number | null; evidence: number | null; grade: string; reasons: string; details: string; email_checked_at: string | null;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -51,6 +52,10 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
     message_id TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS messages_due ON messages(status, due_at);
+  CREATE TABLE IF NOT EXISTS contacts (id INTEGER PRIMARY KEY, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', source_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, confirmed_at TEXT, UNIQUE (lead_id, name, email));
+  CREATE TABLE IF NOT EXISTS email_checks (email TEXT PRIMARY KEY, status TEXT NOT NULL, provider TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS lead_snapshots (id INTEGER PRIMARY KEY, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, data TEXT NOT NULL);
+  CREATE INDEX IF NOT EXISTS snapshots_lead ON lead_snapshots(lead_id, at);
   CREATE TABLE IF NOT EXISTS search_templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, categories TEXT NOT NULL, places TEXT NOT NULL, sources TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS provider_usage (day TEXT NOT NULL, source TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, source));
   CREATE TABLE IF NOT EXISTS suppress (value TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
@@ -72,7 +77,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT']]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -83,7 +88,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance', 'relevance', 'evidence', 'grade', 'reasons', 'details', 'email_checked_at'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {
@@ -131,7 +136,7 @@ export function updateLead(id: number, patch: Record<string, unknown>) {
 
 export const getLead = (id: number) => db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as Lead | undefined;
 
-export type LeadQuery = { shortlist?: boolean; q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[] };
+export type LeadQuery = { shortlist?: boolean; q?: string; status?: string; country?: string; category?: string; hasEmail?: boolean; hasPhone?: boolean; hasWebsite?: boolean; searchId?: number; sort?: string; limit?: number; offset?: number; ids?: number[]; grade?: string; stale?: number; role?: string; emailStatus?: string };
 
 export function queryLeads(f: LeadQuery) {
   const where: string[] = [];
@@ -149,9 +154,13 @@ export function queryLeads(f: LeadQuery) {
   if (f.hasWebsite) where.push("website <> ''");
   if (f.searchId) { where.push('search_id = ?'); args.push(f.searchId); }
   if (f.shortlist) where.push('fit >= 60');
+  if (f.grade) { where.push('grade = ?'); args.push(f.grade); }
+  if (f.stale) { where.push('(enriched_at IS NULL OR enriched_at < ?)'); args.push(new Date(Date.now() - f.stale * 864e5).toISOString()); }
+  if (f.role) { where.push('(contact_role LIKE ? OR id IN (SELECT lead_id FROM contacts WHERE role LIKE ?))'); args.push(`%${f.role}%`, `%${f.role}%`); }
+  if (f.emailStatus) { where.push('email_status = ?'); args.push(f.emailStatus); }
   if (f.ids?.length) { where.push(`id IN (${f.ids.map(() => '?').join(',')})`); args.push(...f.ids); }
   const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const sorts: Record<string, string> = { newest: 'id DESC', name: 'name COLLATE NOCASE ASC', score: 'score DESC NULLS LAST, id DESC', rating: 'rating DESC NULLS LAST', fit: 'fit DESC NULLS LAST, id DESC' };
+  const sorts: Record<string, string> = { newest: 'id DESC', name: 'name COLLATE NOCASE ASC', score: 'score DESC NULLS LAST, id DESC', rating: 'rating DESC NULLS LAST', fit: 'fit DESC NULLS LAST, id DESC', grade: "CASE grade WHEN 'A' THEN 0 WHEN 'B' THEN 1 WHEN 'C' THEN 2 WHEN 'D' THEN 3 ELSE 4 END, relevance DESC NULLS LAST, id DESC" };
   const order = sorts[f.sort || 'newest'] || sorts.newest;
   const total = (db.prepare(`SELECT COUNT(*) n FROM leads ${w}`).get(...(args as never[])) as { n: number }).n;
   const rows = db.prepare(`SELECT * FROM leads ${w} ORDER BY ${order} LIMIT ? OFFSET ?`).all(...(args as never[]), f.limit ?? 200, f.offset ?? 0) as Lead[];
@@ -205,8 +214,8 @@ export function addSearch(category: string, place: string, sources: string[], ca
 /* ---------- Signals ---------- */
 export type Signal = { id: number; lead_id: number | null; at: string; type: string; level: string; title: string; detail: string; key: string; seen: number; dismissed: number };
 /** Adds a signal once per key. Returns true when it is new. */
-export function addSignal(sg: { lead_id: number | null; type: string; level: 'hot' | 'warm' | 'info'; title: string; detail?: string; key: string }) {
-  const r = db.prepare('INSERT OR IGNORE INTO signals (lead_id, at, type, level, title, detail, key) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sg.lead_id, now(), sg.type, sg.level, sg.title, sg.detail ?? '', sg.key);
+export function addSignal(sg: { lead_id: number | null; type: string; level: 'hot' | 'warm' | 'info'; title: string; detail?: string; key: string; evidence?: string }) {
+  const r = db.prepare('INSERT OR IGNORE INTO signals (lead_id, at, type, level, title, detail, key, confidence, evidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sg.lead_id, now(), sg.type, sg.level, sg.title, sg.detail ?? '', sg.key, signalConfidence(sg.type, sg.detail), sg.evidence ?? '');
   if (r.changes) logEvent(sg.lead_id, 'signal', sg.title);
   return r.changes > 0;
 }
@@ -251,6 +260,27 @@ export const updateSearch = (id: number, patch: Partial<Search>) => {
   db.prepare(`UPDATE searches SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => (patch as Record<string, unknown>)[c] as never), id);
 };
 export const listSearches = (limit = 30) => db.prepare('SELECT * FROM searches ORDER BY id DESC LIMIT ?').all(limit) as Search[];
+/** One-off data fixes that are safe to run at every start. */
+export function migrateData() {
+  // "ok" used to mean only that the domain has MX records; say exactly that now (QF-041).
+  db.prepare("UPDATE leads SET email_status = 'mx-ok' WHERE email_status = 'ok'").run();
+}
+export const listContacts = (leadId: number) => db.prepare('SELECT * FROM contacts WHERE lead_id = ? ORDER BY confirmed_at DESC NULLS LAST, id').all(leadId);
+export function addContact(c: { lead_id: number; name?: string; role?: string; email?: string; phone?: string; source?: string; source_url?: string }) {
+  if (!c.name && !c.email && !c.phone) return;
+  db.prepare(`INSERT INTO contacts (lead_id, name, role, email, phone, source, source_url, created_at, confirmed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(lead_id, name, email) DO UPDATE SET role = COALESCE(NULLIF(excluded.role, ''), role), phone = COALESCE(NULLIF(excluded.phone, ''), phone), source_url = COALESCE(NULLIF(excluded.source_url, ''), source_url), confirmed_at = excluded.confirmed_at`)
+    .run(c.lead_id, c.name ?? '', c.role ?? '', (c.email ?? '').toLowerCase(), c.phone ?? '', c.source ?? '', c.source_url ?? '', now(), now());
+}
+export const deleteContact = (id: number) => db.prepare('DELETE FROM contacts WHERE id = ?').run(id);
+export const emailCheck = (email: string) => db.prepare('SELECT * FROM email_checks WHERE email = ?').get(email.toLowerCase()) as { email: string; status: string; provider: string; detail: string; at: string } | undefined;
+export const saveEmailCheck = (email: string, status: string, provider: string, detail = '') => db.prepare('INSERT INTO email_checks (email, status, provider, detail, at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(email) DO UPDATE SET status = excluded.status, provider = excluded.provider, detail = excluded.detail, at = excluded.at').run(email.toLowerCase(), status, provider, detail, now());
+export const addSnapshot = (leadId: number, data: unknown) => db.prepare('INSERT INTO lead_snapshots (lead_id, at, data) VALUES (?, ?, ?)').run(leadId, now(), JSON.stringify(data));
+export const lastSnapshot = (leadId: number) => db.prepare('SELECT * FROM lead_snapshots WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(leadId) as { id: number; at: string; data: string } | undefined;
+export const listSnapshots = (leadId: number) => db.prepare('SELECT * FROM lead_snapshots WHERE lead_id = ? ORDER BY id DESC LIMIT 30').all(leadId);
+/** Other locations that share the website domain (QF-018). */
+export const branchesOf = (lead: Lead) => (lead.domain ? db.prepare('SELECT id, name, address, city, phone FROM leads WHERE domain = ? AND id <> ? LIMIT 50').all(lead.domain, lead.id) : []);
+
 export function addSearchGeo(id: number, geo: string) { db.prepare('UPDATE searches SET geo = ? WHERE id = ?').run(geo, id); }
 export const saveCheckpoint = (id: number, cp: unknown) => db.prepare('UPDATE searches SET checkpoint = ? WHERE id = ?').run(JSON.stringify(cp), id);
 /** After a crash or restart, searches that were running go back in the queue and continue from their checkpoint. */

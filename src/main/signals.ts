@@ -45,7 +45,7 @@ const ROLES = /\b(marketing|seo|social media|web ?(developer|designer)|wordpress
 
 export async function checkLead(lead: db.Lead) {
   const found: number[] = [];
-  const add = (sg: Parameters<typeof db.addSignal>[0]) => { if (db.addSignal(sg)) found.push(1); };
+  const add = (sg: Parameters<typeof db.addSignal>[0]) => { if (db.addSignal({ evidence: lead.website ? `Checked ${lead.website} on ${db.now().slice(0, 10)}` : '', ...sg })) found.push(1); };
   const month = new Date().toISOString().slice(0, 7);
   // Reputation, from the listing data already collected.
   if (lead.rating != null && (lead.reviews ?? 0) >= 5 && lead.rating < 4)
@@ -104,6 +104,9 @@ export async function run(notify: Notify, force = false) {
       jobs.queueSearch(w.category, w.place, JSON.parse(w.sources), null, w.id);
       db.saveWatch({ id: w.id, last_run: db.now() });
     }
+    // Stale data (QF-030): send old leads back through the website check, a few each run; the snapshot diff raises "changed" signals.
+    const fresh = load().freshDays ?? 90;
+    if (fresh > 0) db.raw().prepare(`UPDATE leads SET enriched_at = NULL WHERE id IN (SELECT id FROM leads WHERE enriched_at IS NOT NULL AND enriched_at < ? AND status NOT IN ('lost','do_not_contact') ORDER BY enriched_at LIMIT ?)`).run(new Date(Date.now() - fresh * DAY).toISOString(), Math.max(5, Math.round(cfg.perRun / 3)));
     // 2. Health checks on leads you have not contacted to death yet, oldest check first.
     const due = db.raw().prepare(`SELECT * FROM leads WHERE status NOT IN ('won','lost','do_not_contact') AND source <> 'reddit'
       AND (checked_at IS NULL OR checked_at < ?) ORDER BY (checked_at IS NOT NULL), checked_at LIMIT ?`).all(new Date(Date.now() - cfg.everyDays * DAY).toISOString(), cfg.perRun) as db.Lead[];

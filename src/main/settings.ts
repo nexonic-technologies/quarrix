@@ -1,4 +1,5 @@
 // Settings stored as JSON in the app folder. Passwords and API keys are encrypted with the OS keychain (safeStorage).
+import { DEFAULT_ICP, type Icp } from './intel';
 import type { OpenFeed } from './sources/opendata';
 import { app, safeStorage } from 'electron';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -26,9 +27,14 @@ export type Settings = {
   openFeeds: OpenFeed[];
   npiIndividuals: boolean;
   findWebsites: boolean;
+  icp: Icp;
+  /** Optional mailbox verification and email finding (QF-031, QF-039, QF-042). */
+  verify: { provider: 'none' | 'hunter' | 'zerobounce'; hunterKey: string; zerobounceKey: string; auto: boolean; maxPerDay: number; findWithHunter: boolean };
+  /** Re-check leads whose data is older than this many days (QF-030). */
+  freshDays: number;
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -43,10 +49,13 @@ export const defaults: Settings = {
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
   signals: { on: true, everyDays: 7, perRun: 30 },
-  budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0 },
+  budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0, hunter: 25, zerobounce: 50 },
   openFeeds: [],
   npiIndividuals: false,
   findWebsites: true,
+  icp: DEFAULT_ICP,
+  verify: { provider: 'none', hunterKey: '', zerobounceKey: '', auto: false, maxPerDay: 50, findWithHunter: false },
+  freshDays: 90,
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');

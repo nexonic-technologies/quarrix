@@ -1,4 +1,5 @@
 import { LeadMap } from './FindTools';
+import { EvidenceCard, EMAIL_TEXT } from './Evidence';
 import { useCallback, useEffect, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
@@ -21,15 +22,17 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [facets, setFacets] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [view, setView] = useState<'list' | 'map'>('list');
+  const [grade, setGrade] = useState('');
+  const [role, setRole] = useState('');
   const [open, setOpen] = useState<number | null>(() => { const v = Number(sessionStorage.getItem('quarrix.openLead')) || null; sessionStorage.removeItem('quarrix.openLead'); return v; });
   const [searchId, setSearchId] = useState<number | undefined>(() => Number(sessionStorage.getItem('quarrix.search')) || undefined);
 
-  const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist' };
+  const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist', stale: has === 'stale' ? 90 : undefined, emailStatus: has.startsWith('es:') ? has.slice(3) : undefined, grade: grade || undefined, role: role || undefined };
   const load = useCallback(async () => {
     const r = await call<{ total: number; rows: Lead[] }>('leads:query', { ...filter, limit: PAGE, offset: page * PAGE });
     setRows(r.rows);
     setTotal(r.total);
-  }, [q, status, country, category, has, sort, page, searchId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, status, country, category, has, sort, page, searchId, grade, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void load(); }, [load, tick]);
   useEffect(() => { call('facets').then(setFacets); }, [tick]);
@@ -48,6 +51,11 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       let ok = 0;
       for (const id of ids) { try { await call('proof:make', id); ok++; } catch { /* skip */ } }
       toast.push(`${ok} proof reports ready`);
+    }
+    if (what === 'verify') {
+      toast.push(`Checking ${ids.length} emails…`);
+      const r = await call<{ checked: number; verified: number; invalid: number; errors: string[] }>('email:verify', ids);
+      toast.push(`${r.checked} checked: ${r.verified} confirmed, ${r.invalid} not deliverable${r.errors.length ? `. ${r.errors[0]}` : ''}`, r.errors.length > 0 && !r.checked);
     }
     if (what === 'enrich') { await call('leads:enrich', ids); toast.push('Checking websites for emails and social links'); }
     if (what === 'delete') { if (!confirm(`Delete ${ids.length} leads? This cannot be undone.`)) return; await call('leads:delete', ids); toast.push('Deleted'); }
@@ -78,8 +86,12 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <option value="">Any country</option>{facets.countries.map((c) => <option key={c}>{c}</option>)}
         </select>
         <select className="select" value={has} onChange={(e) => { setHas(e.target.value); setPage(0); }} aria-label="Contact details">
-          <option value="">Any contact details</option><option value="shortlist">Shortlisted (good fit)</option><option value="email">Has email</option><option value="phone">Has phone</option><option value="website">Has website</option>
+          <option value="">Any contact details</option><option value="shortlist">Shortlisted (good fit)</option><option value="email">Has email</option><option value="phone">Has phone</option><option value="stale">Not checked in 90 days</option><option value="es:verified">Email confirmed</option><option value="es:mx-ok">Email domain takes mail</option><option value="es:invalid">Email rejected</option><option value="website">Has website</option>
         </select>
+        <select className="select" value={grade} onChange={(e) => { setGrade(e.target.value); setPage(0); }} aria-label="Grade">
+          <option value="">Any grade</option><option value="A">A: strong match</option><option value="B">B: good match</option><option value="C">C: check first</option><option value="D">D: poor match</option>
+        </select>
+        <input className="select" style={{ width: 130 }} placeholder="Contact role" value={role} onChange={(e) => { setRole(e.target.value); setPage(0); }} aria-label="Contact role, for example owner" />
         <div className="seg" role="group" aria-label="View"><button className={`btn small ${view === 'list' ? 'primary' : 'ghost'}`} aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className={`btn small ${view === 'map' ? 'primary' : 'ghost'}`} aria-pressed={view === 'map'} onClick={() => setView('map')}>Map</button></div>
         <select className="select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
           <option value="fit">Best fit first</option><option value="newest">Newest first</option><option value="name">Name</option><option value="score">Website needs most help</option><option value="rating">Best rated</option>
@@ -95,7 +107,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <table className="leads">
             <thead><tr>
               <th style={{ width: 34 }}><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSel(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Business</th><th>Contact person</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How likely they need what you offer, out of 100">Fit</th><th>Status</th>
+              <th>Business</th><th>Contact person</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="Match with your ideal customer (Settings → Ideal customer), backed by evidence">Grade</th><th title="How likely they need what you offer, out of 100">Fit</th><th>Status</th>
             </tr></thead>
             <tbody>
               {rows.map((l) => (
@@ -105,9 +117,10 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                   <td className="clip">{l.contact_name ? <><span className="t2">{l.contact_name}</span><span className="sub">{l.contact_role}</span></> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'not found'}</span>}</td>
                   <td className="clip">{l.category}</td>
                   <td className="clip" title={[l.city, l.region, l.country].filter(Boolean).join(', ')}>{[l.city || l.region, l.country].filter(Boolean).join(', ') || <span className="muted">unknown</span>}</td>
-                  <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={l.email_status === 'ok' ? 'The domain accepts email' : l.email_status === 'no-mx' ? 'This domain has no mail server' : ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
+                  <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={EMAIL_TEXT[l.email_status ?? ''] ?? ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
+                  <td>{l.grade ? <span className={`grade g${l.grade}`} title={`${json<any>(l.reasons, {}).summary ?? ''} · relevance ${l.relevance ?? '?'}, evidence ${l.evidence ?? '?'}`}>{l.grade}</span> : <span className="muted">–</span>}</td>
                   <td>{l.fit != null ? <span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`} title={l.needs || ''}>{l.fit}{l.needs ? <em>{l.needs.split(',')[0]}</em> : null}</span> : <span className="muted">{l.enriched_at ? 'n/a' : 'checking'}</span>}</td>
                   <td><span className={`status ${l.status}`}>{STATUS_LABEL[l.status] ?? l.status}</span></td>
                 </tr>
@@ -128,6 +141,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <span>{sel.size} selected</span>
           <button className="btn small" onClick={() => bulk('draft')}>Write emails</button>
           <button className="btn small" onClick={() => bulk('enrich')}>Check websites</button>
+          <button className="btn small" onClick={() => bulk('verify')} title="Syntax and mail server for free; mailbox check if you added a verifier key">Check emails</button>
           <button className="btn small" onClick={() => bulk('proof')}>Make reports</button>
           <button className="btn small" onClick={() => bulk('export:xlsx')}>Export</button>
           <select className="btn small" value="" onChange={(e) => e.target.value && bulk('status:' + e.target.value)} aria-label="Set status">
@@ -184,6 +198,7 @@ function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => 
               {l.fit != null && <div className="needs"><span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`}>{l.fit}% fit</span>{(l.needs || '').split(',').filter(Boolean).map((n) => <span key={n} className="need">needs {n.trim().toLowerCase()}</span>)}</div>}
             </div>
           )}
+          <EvidenceCard lead={l} onChange={reload} />
           <ProofCard id={id} hasEmail={!!l.email} onChange={reload} />
           <dl className="kv">
             <dt>Email</dt><dd>{l.email ? <><a href={`mailto:${l.email}`}>{l.email}</a>{l.email_status === 'ok' && <span className="ok-pill">accepts mail</span>}{l.email_status === 'no-mx' && <span className="bad-pill">no mail server</span>}</> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>

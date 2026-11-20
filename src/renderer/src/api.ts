@@ -4,8 +4,9 @@ export type Lead = {
   lat: number | null; lon: number | null; phone: string; email: string; emails: string; website: string; domain: string; socials: string;
   rating: number | null; reviews: number | null; source: string; status: string; score: number | null; audit: string; tags: string; notes: string; enriched_at: string | null;
   contact_name?: string; contact_role?: string; email_status?: string; summary?: string; fit?: number | null; needs?: string;
+  source_ref?: string; provenance?: string; relevance?: number | null; evidence?: number | null; grade?: string; reasons?: string; details?: string; email_checked_at?: string | null;
 };
-export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string };
+export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; geo?: string };
 export type Message = { id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; error: string; lead_name?: string; lead_email?: string; lead_city?: string; lead_country?: string };
 
 type Bridge = { call: (ch: string, ...a: unknown[]) => Promise<{ ok: boolean; data?: any; error?: string }>; on: (fn: (e: string, d: unknown) => void) => () => void; platform: string };

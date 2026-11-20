@@ -21,34 +21,34 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-015 | Business search map with clustering | P2 | Built | FindTools LeadMap (Leaflet + markercluster), Leads → Map | preview UI |
 | QF-016 | Optional company website lookup | P2 | Done | sources/lookup.ts findWebsite + websiteEvidence; provenance.website | test/discovery.test.ts (evidence rule) |
 | QF-017 | Contact-source permissions registry | P1 | Built | catalog export/contact/attribution; export skips no-export sources and adds "Data credit" | test/discovery.test.ts (flags) |
-| QF-018 | Company-versus-branch hierarchy | P1 | To do |  |  |
-| QF-019 | Multi-contact relationships | P1 | To do |  |  |
+| QF-018 | Company-versus-branch hierarchy | P1 | Partial | Other locations sharing a domain (db.branchesOf, Evidence card); no separate company table yet | — |
+| QF-019 | Multi-contact relationships | P1 | Built | contacts table; website, Hunter and manual contacts in the Evidence card | typecheck |
 | QF-020 | Operating-hours data | P2 | To do |  |  |
 | QF-021 | Business open/closed status tracking | P2 | To do |  |  |
 | QF-022 | Price tier and amenities fields | P3 | To do |  |  |
-| QF-023 | Booking, ordering and menu links | P2 | To do |  |  |
-| QF-024 | Place listing IDs and canonical URLs | P1 | To do |  |  |
-| QF-025 | Review distribution and trends | P2 | To do |  |  |
+| QF-023 | Booking, ordering and menu links | P2 | Done | intel.actionLinks → leads.details.links | test/intel.test.ts |
+| QF-024 | Place listing IDs and canonical URLs | P1 | Done | intel.listingUrl; Evidence card "open" | test/intel.test.ts |
+| QF-025 | Review distribution and trends | P2 | Partial | lead_snapshots keep rating/reviews per check; history list, no chart | test/intel.test.ts (diff) |
 | QF-026 | Business imagery and profile media | P3 | To do |  |  |
-| QF-027 | Website technology inventory | P2 | To do |  |  |
+| QF-027 | Website technology inventory | P2 | Done | intel.detectTech (34 technologies with markers) | test/intel.test.ts |
 | QF-028 | Company size and growth fields | P3 | To do |  |  |
-| QF-029 | Evidence and source provenance per field | P1 | Partial | leads.provenance: listing source/ref/date, website evidence | — |
-| QF-030 | Field freshness and stale-data warnings | P1 | Partial | leads.checked_at + weekly recheck (signals.ts) | typecheck only |
-| QF-031 | Configurable enrichment waterfall | P1 | To do |  |  |
-| QF-032 | Provider conflict reconciliation | P2 | To do |  |  |
-| QF-033 | Explainable ICP fit rules | P1 | To do |  |  |
-| QF-034 | Industry-specific qualification presets | P1 | To do |  |  |
-| QF-035 | A/B/C lead quality tiers | P2 | To do |  |  |
-| QF-036 | Business-change watchlists | P2 | Partial | signals.ts watches + new_listing / hiring signals (0.11.0) | typecheck only |
-| QF-037 | Source snapshots and comparison history | P2 | To do |  |  |
-| QF-038 | Buying-signal confidence controls | P2 | Partial | signals table: level, detail, date; not yet a confidence field | typecheck only |
-| QF-039 | Bulk domain-based contact lookup | P2 | To do |  |  |
-| QF-040 | Verified source URLs for discovered contacts | P1 | To do |  |  |
-| QF-041 | Email syntax and domain-level checks as separate statuses | P1 | To do |  |  |
-| QF-042 | Optional provider-backed mailbox verification | P2 | To do |  |  |
-| QF-043 | Bulk email validation queue | P2 | To do |  |  |
-| QF-044 | Role and department contact filters | P2 | To do |  |  |
-| QF-045 | Contact freshness and historical changes | P1 | Partial | bounces suppress and cancel (mail.ts); no history view | — |
+| QF-029 | Evidence and source provenance per field | P1 | Built | leads.provenance: listing, website evidence, email pages, checks, conflicts | typecheck |
+| QF-030 | Field freshness and stale-data warnings | P1 | Built | settings.freshDays; signals runner re-checks stale leads; "Not checked in 90 days" filter | typecheck |
+| QF-031 | Configurable enrichment waterfall | P1 | Built | jobs.enrichOne: own site first, then Hunter if enabled; budgets apply | typecheck |
+| QF-032 | Provider conflict reconciliation | P2 | Built | provenance.conflicts for phone and city; shown in Evidence card | typecheck |
+| QF-033 | Explainable ICP fit rules | P1 | Done | intel.scoreLead (relevance and evidence kept apart); Settings → Ideal customer | test/intel.test.ts |
+| QF-034 | Industry-specific qualification presets | P1 | Done | intel.PRESETS (7 editable presets) | test/intel.test.ts |
+| QF-035 | A/B/C lead quality tiers | P2 | Done | A/B/C/D grade with reasons; Grade column and filter | test/intel.test.ts |
+| QF-036 | Business-change watchlists | P2 | Built | watches (0.11) plus "changed" signals from snapshot diffs | test/intel.test.ts (diff) |
+| QF-037 | Source snapshots and comparison history | P2 | Built | lead_snapshots + diffSnapshot | test/intel.test.ts |
+| QF-038 | Buying-signal confidence controls | P2 | Done | signals.confidence and signals.evidence | test/intel.test.ts |
+| QF-039 | Bulk domain-based contact lookup | P2 | Built | verify.hunterDomain; "Find more emails" in the Evidence card | typecheck; needs a Hunter key |
+| QF-040 | Verified source URLs for discovered contacts | P1 | Built | enrich.ts emailSources → provenance.emails; shown per email | typecheck |
+| QF-041 | Email syntax and domain-level checks as separate statuses | P1 | Done | intel.EMAIL_STATUS, validSyntax; "ok" migrated to "mx-ok" | test/intel.test.ts |
+| QF-042 | Optional provider-backed mailbox verification | P2 | Built | verify.ts Hunter and ZeroBounce adapters | typecheck; needs a key |
+| QF-043 | Bulk email validation queue | P2 | Built | verify.verifyLeads, 30-day cache (email_checks), daily limits; "Check emails" bulk action | typecheck |
+| QF-044 | Role and department contact filters | P2 | Built | "Contact role" filter (contact_role and contacts.role) | typecheck |
+| QF-045 | Contact freshness and historical changes | P1 | Built | email_checks.at, contacts.confirmed_at, bounces set status | typecheck |
 | QF-046 | Contact do-not-solicit enforcement | P0 | Done | safety.ts outreachBlock; outreach.ts, mail.ts | test/safety.test.ts |
 | QF-047 | Kanban pipeline view | P1 | To do |  |  |
 | QF-048 | Deal and opportunity records | P1 | To do |  |  |
@@ -136,7 +136,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 1 | Follow-up order, NULL due dates | Done | safety.ts `DUE_SQL` | test/safety.test.ts |
 | 2 | SSRF: private IPs, DNS check, checked redirects, 3 MB cap | Done | util.ts `fetchText`, `assertPublicUrl`; gmaps.ts `openPage` | test/safety.test.ts |
 | 3 | Domain-only merges of chain branches | Done | safety.ts `sameBusiness`; db.ts `findDuplicate` | test/safety.test.ts |
-| 4 | MX shown as "ok" | To do | enrich.ts / Leads.tsx | — |
+| 4 | MX shown as "ok" | Done | intel.ts statuses, verify.ts, migration | test/intel.test.ts |
 | 5 | Time zones from longitude | To do | mail.ts `inWindow` | — |
 | 6 | noSolicit must block outreach | Done | safety.ts `outreachBlock` | test/safety.test.ts |
 | 7 | Report captcha / broken selectors | Partial | gmaps.ts throws captcha and bot-check errors | — |

@@ -1,6 +1,6 @@
 // Background work: run searches one at a time, then visit websites for emails and social links.
 import * as db from './db';
-import { enrichWebsite, pagespeed, receivesMail, siteScore } from './enrich';
+import { enrichWebsite, pagespeed, siteScore } from './enrich';
 import { guessFit, research } from './ai';
 import { searchWeb } from './sources/web';
 import { searchDirectories } from './sources/directories';
@@ -9,6 +9,8 @@ import { searchFoursquare, searchTomTom } from './sources/keyed';
 import { load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { findWebsite } from './sources/lookup';
+import { checkEmail, hunterDomain } from './verify';
+import { diffSnapshot, scoreLead } from './intel';
 import { searchArcgis, searchNpi, searchSocrata, searchWikidata } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
 import { BudgetError, remaining } from './budget';
@@ -154,7 +156,7 @@ async function runSearches() {
         });
         found++;
         if (created) {
-          added++; log(s.id, `+ ${c.name}`);
+          added++; log(s.id, `+ ${c.name}`); rescore(id);
           // A watch that has run before: anything new on the map is a new business, often just opened.
           if (watchRan) {
             const fresh = (c.reviews ?? 0) <= 5;
@@ -340,11 +342,14 @@ export async function enrichOne(lead: db.Lead) {
     let f = guessFit(lead);
     if (settings.ai.provider !== 'none') { const ai = await research(settings, lead, '').catch(() => null); if (ai) f = { fit: ai.fit, needs: ai.needs.length ? ai.needs : f.needs }; }
     db.updateLead(lead.id, { fit: f.fit, needs: f.needs.join(', ') });
+    snapshotAndDiff(lead.id);
+    rescore(lead.id);
     return;
   }
   const r = await enrichWebsite(lead.website, lead.country, settings.enrich.pages).catch((e) => ({ ok: false as const, error: String(e.message ?? e) }));
   if (!r.ok) {
     db.updateLead(lead.id, { audit: JSON.stringify({ error: r.error }) });
+    rescore(lead.id);
     return;
   }
   const emails = [...new Set([...JSON.parse(lead.emails || '[]'), ...r.emails])];
@@ -358,17 +363,71 @@ export async function enrichOne(lead: db.Lead) {
     const ai = await research(settings, { ...lead, audit: JSON.stringify({ findings: sc.findings }) }, r.text).catch(() => null);
     if (ai) { contact = { contact_name: ai.contact_name || contact.contact_name, contact_role: ai.contact_role || contact.contact_role, summary: ai.summary }; fit = { fit: ai.fit, needs: ai.needs }; }
   }
-  const email = lead.email || r.email;
-  const emailStatus = email ? ((await receivesMail(email.split('@')[1]).catch(() => false)) ? 'ok' : 'no-mx') : '';
+  const prov = JSON.parse(lead.provenance || '{}');
+  prov.emails = { ...(prov.emails ?? {}), ...r.emailSources };
+  prov.checked = { website: r.website, at: db.now(), pages: Object.values(r.emailSources).length };
+  let email = lead.email || r.email;
+  // Waterfall (QF-031): the business's own site first; Hunter only when enabled, a key is set and nothing was found.
+  if (!email && settings.verify.findWithHunter && settings.verify.hunterKey && r.domain) {
+    const found = await hunterDomain(r.domain).catch(() => []);
+    for (const f of found) db.addContact({ lead_id: lead.id, name: f.name, role: f.role, email: f.email, source: 'hunter', source_url: f.source_url });
+    const best = found.filter((f) => f.type !== 'personal' || f.name).sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
+    if (best) { email = best.email; prov.emails[best.email] = `Hunter${best.source_url ? `: ${best.source_url}` : ''} (confidence ${best.confidence ?? '?'})`; }
+  }
+  const check = email ? await checkEmail(email, settings.verify.auto).catch(() => null) : null;
+  // Keep both values when sources disagree instead of silently overwriting (QF-032).
+  const conflicts: Record<string, { value: string; source: string }[]> = { ...(prov.conflicts ?? {}) };
+  const differs = (a: string, b: string) => !!a && !!b && a.replace(/\D/g, '').slice(-9) !== b.replace(/\D/g, '').slice(-9);
+  if (differs(lead.phone, r.phones[0] ?? '')) conflicts.phone = [{ value: lead.phone, source: lead.source }, { value: r.phones[0], source: 'website' }];
+  if (lead.city && r.schema.city && lead.city.toLowerCase() !== r.schema.city.toLowerCase()) conflicts.city = [{ value: lead.city, source: lead.source }, { value: r.schema.city, source: 'website' }];
+  prov.conflicts = conflicts;
+  if (contact.contact_name) db.addContact({ lead_id: lead.id, name: contact.contact_name, role: contact.contact_role, email: email && email.split('@')[0].includes(contact.contact_name.split(' ')[0].toLowerCase()) ? email : '', source: 'website', source_url: r.website });
+  for (const p of r.people.slice(0, 10)) db.addContact({ lead_id: lead.id, name: p.name, role: p.role, source: 'website', source_url: r.website });
+  for (const e of r.emails.slice(0, 5)) db.addContact({ lead_id: lead.id, email: e, source: 'website', source_url: r.emailSources[e] ?? r.website });
   db.updateLead(lead.id, {
     contact_name: lead.contact_name || contact.contact_name, contact_role: lead.contact_role || contact.contact_role,
-    summary: lead.summary || contact.summary, email_status: emailStatus, fit: fit.fit, needs: fit.needs.join(', '),
-    website: r.website, domain: r.domain, email: lead.email || r.email, emails: JSON.stringify(emails), socials: JSON.stringify(socials),
+    summary: lead.summary || contact.summary, email_status: check?.status ?? '', email_checked_at: check?.at ?? null, fit: fit.fit, needs: fit.needs.join(', '),
+    website: r.website, domain: r.domain, email, emails: JSON.stringify([...new Set([...emails, ...(email ? [email] : [])])]), socials: JSON.stringify(socials),
     phone: lead.phone || r.phones[0] || '', score: sc.score,
     address: lead.address || [r.schema.street, r.schema.city, r.schema.postcode].filter(Boolean).join(', '),
     city: lead.city || r.schema.city || '', region: lead.region || r.schema.region || '',
-    audit: JSON.stringify({ facts: r.facts, psi, findings: sc.findings, phones: r.phones }),
+    audit: JSON.stringify({ facts: { ...r.facts, tech: r.tech }, psi, findings: sc.findings, phones: r.phones }),
+    details: JSON.stringify({ ...JSON.parse(lead.details || '{}'), links: r.links }),
+    provenance: JSON.stringify(prov),
   });
+  snapshotAndDiff(lead.id);
+  rescore(lead.id);
+}
+
+/** Recompute relevance, evidence and grade from the user's ideal customer profile. */
+export function rescore(id: number) {
+  const l = db.getLead(id);
+  if (!l) return;
+  const r = scoreLead(l, load().icp);
+  db.updateLead(id, { relevance: r.relevance, evidence: r.evidence, grade: r.grade, reasons: JSON.stringify(r.reasons) });
+}
+
+export function rescoreAll() {
+  const ids = (db.raw().prepare('SELECT id FROM leads').all() as { id: number }[]).map((x) => x.id);
+  db.raw().transaction(() => { for (const id of ids) rescore(id); })();
+  notify('leads');
+  return ids.length;
+}
+
+/** Keep a dated copy of the key fields and raise a signal when something real changed since the last check (QF-036, QF-037). */
+function snapshotAndDiff(id: number) {
+  const l = db.getLead(id);
+  if (!l) return;
+  const data = { rating: l.rating, reviews: l.reviews, phone: l.phone, email: l.email, website: l.website, address: l.address };
+  const prev = db.lastSnapshot(id);
+  if (prev) {
+    const changes = diffSnapshot(JSON.parse(prev.data), data);
+    if (!changes.length) return;
+    const text = changes.map((c) => `${c.field}: ${c.before ?? '—'} → ${c.after ?? '—'}`).join('; ');
+    const drop = changes.find((c) => c.field === 'rating' && Number(c.after) < Number(c.before));
+    db.addSignal({ lead_id: id, type: 'changed', level: drop ? 'warm' : 'info', title: `${l.name}: ${changes.map((c) => c.field).join(', ')} changed`, detail: text, key: `chg:${id}:${prev.id}`, evidence: `Compared with the check on ${prev.at.slice(0, 10)}` });
+  }
+  db.addSnapshot(id, data);
 }
 
 /** Earlier versions could store the wrong country for Google Maps leads (for example JP for New York). */

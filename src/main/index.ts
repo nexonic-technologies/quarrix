@@ -2,6 +2,8 @@ import { isSafeExternalUrl } from './safety';
 import * as budget from './budget';
 import { checkSources } from './health';
 import { SOURCES } from './sources/catalog';
+import { EMAIL_STATUS, listingUrl, PRESETS } from './intel';
+import { hunterDomain, verifyLeads } from './verify';
 import { onMapsLoad } from './sources/gmaps';
 import { geocode } from './sources/osm';
 import type { Geo } from './geo';
@@ -91,6 +93,23 @@ function registerIpc() {
   handle('templates:save', (t) => db.saveTemplate(t));
   handle('templates:delete', (id: number) => db.deleteTemplate(Number(id)));
   handle('sources:catalog', () => SOURCES);
+  handle('icp:presets', () => PRESETS);
+  handle('icp:rescore', () => jobs.rescoreAll());
+  handle('leads:intel', (id: number) => {
+    const l = db.getLead(Number(id));
+    if (!l) throw new Error('Lead not found.');
+    return { contacts: db.listContacts(l.id), branches: db.branchesOf(l), snapshots: db.listSnapshots(l.id), listing: listingUrl(l.source, l.source_ref), emailCheck: l.email ? db.emailCheck(l.email) ?? null : null, statusText: EMAIL_STATUS };
+  });
+  handle('contacts:add', (c) => { db.addContact({ lead_id: Number(c.lead_id), name: String(c.name ?? ''), role: String(c.role ?? ''), email: String(c.email ?? ''), phone: String(c.phone ?? ''), source: 'you' }); return db.listContacts(Number(c.lead_id)); });
+  handle('contacts:delete', (id: number) => db.deleteContact(Number(id)));
+  handle('email:verify', async (ids: number[]) => { const r = await verifyLeads((Array.isArray(ids) ? ids : []).map(Number).slice(0, 5000), (d, t) => send('progress', { id: -1, msg: `Checked ${d} of ${t} emails` })); send('leads'); jobs.rescoreAll(); return r; });
+  handle('email:find', async (id: number) => {
+    const l = db.getLead(Number(id));
+    if (!l?.domain) throw new Error('This lead has no website domain.');
+    const found = await hunterDomain(l.domain);
+    for (const f of found) db.addContact({ lead_id: l.id, name: f.name, role: f.role, email: f.email, source: 'hunter', source_url: f.source_url });
+    return found.length;
+  });
   handle('geo:find', async (q: string) => { const p = await geocode(String(q).slice(0, 200)); return p ? { lat: p.lat, lon: p.lon } : null; });
   handle('sources:health', () => checkSources());
   handle('sources:usage', () => db.usageToday());
@@ -202,6 +221,7 @@ function registerIpc() {
 app.whenReady().then(() => {
   app.setAppUserModelId('com.nexonictechnologies.quarrix');
   db.openDb();
+  db.migrateData();
   registerIpc();
   createWindow();
   budget.install();

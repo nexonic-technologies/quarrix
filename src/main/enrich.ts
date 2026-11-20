@@ -1,4 +1,5 @@
 // Visit a business's own website (home + contact/about pages) for its published emails, phones, social links and site facts.
+import { actionLinks, detectTech } from './intel';
 import * as cheerio from 'cheerio';
 import { promises as dns } from 'node:dns';
 import { domainOf, fetchText, isPlatformHost, normalizePhone } from './util';
@@ -54,7 +55,7 @@ export type SiteFacts = {
   platform: string; copyrightYear: number; booking: boolean; form: boolean; analytics: boolean; schema: boolean; noSolicit: boolean;
 };
 
-export type EnrichResult = { ok: true; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string>; contact: { name: string; role: string }; text: string } | { ok: false; error: string };
+export type EnrichResult = { ok: true; emailSources: Record<string, string>; tech: ReturnType<typeof detectTech>; links: Record<string, string>; people: { name: string; role: string }[]; website: string; domain: string; emails: string[]; email: string; phones: string[]; socials: Record<string, string>; facts: SiteFacts; schema: Record<string, string>; contact: { name: string; role: string }; text: string } | { ok: false; error: string };
 
 export async function enrichWebsite(website: string, country: string, pages = 3): Promise<EnrichResult> {
   let start = /^https?:\/\//i.test(website) ? website : `https://${website}`;
@@ -68,6 +69,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   if (isPlatformHost(domain)) return { ok: false, error: 'Website is only a social or directory page' };
 
   const htmls = [home.text];
+  const urls = [home.url];
   const $ = cheerio.load(home.text);
   const links = new Map<string, number>();
   $('a[href]').each((_, a) => {
@@ -81,9 +83,13 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   });
   for (const url of [...links.entries()].sort((a, b) => a[1] - b[1]).map(([u]) => u).slice(0, Math.max(0, pages - 1))) {
     const p = await fetchText(url, { timeout: 12000 }).catch(() => null);
-    if (p?.ok) htmls.push(p.text);
+    if (p?.ok) { htmls.push(p.text); urls.push(p.url); }
   }
   const all = htmls.join('\n');
+  // Where each email was seen, so every address can be checked at its source (QF-040).
+  const emailSources: Record<string, string> = {};
+  htmls.forEach((h, i) => { for (const e of extractEmails(h)) if (!emailSources[e.toLowerCase()]) emailSources[e.toLowerCase()] = urls[i]; });
+  const anchors = $('a[href]').map((_, a) => { try { return { href: new URL(String($(a).attr('href')), home!.url).toString(), text: $(a).text().trim().slice(0, 80) }; } catch { return null; } }).get().filter(Boolean) as { href: string; text: string }[];
   const emails = rankEmails(extractEmails(all), domain);
 
   const phones = new Set<string>();
@@ -116,7 +122,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
   });
   if (people[0]) { schema.contactName = people[0].name; schema.contactRole = people[0].role; }
   if (schema.phone) phones.add(normalizePhone(schema.phone, country));
-  if (schema.email) emails.unshift(schema.email.toLowerCase());
+  if (schema.email) { emails.unshift(schema.email.toLowerCase()); emailSources[schema.email.toLowerCase()] ??= `${home.url} (structured data)`; }
 
   const lower = all.toLowerCase();
   const years = [...home.text.matchAll(/(?:©|&copy;|copyright)\s*(?:\d{4}\s*[-–]\s*)?(\d{4})/gi)].map((m) => +m[1]);
@@ -139,7 +145,7 @@ export async function enrichWebsite(website: string, country: string, pages = 3)
     if (mine) uniqueEmails = [mine, ...uniqueEmails.filter((e) => e !== mine)];
   }
   const text = htmls.map((h) => cheerio.load(h)('body').text()).join('\n').replace(/\s+/g, ' ').slice(0, 6000);
-  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema, contact, text };
+  return { ok: true, website: home.url, domain, emails: uniqueEmails, email: uniqueEmails[0] ?? '', phones: [...phones].filter(Boolean), socials, facts, schema, contact, text, emailSources, tech: detectTech(all), links: actionLinks(anchors), people };
 }
 
 const ROLES = 'Founder|Co-Founder|Cofounder|CEO|Chief Executive Officer|Owner|Co-Owner|Managing Director|Managing Partner|Director|Principal|President|Proprietor|Head Doctor|Lead Dentist|Practice Owner|Partner';
