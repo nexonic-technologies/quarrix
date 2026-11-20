@@ -27,7 +27,7 @@ export const defaults: Settings = {
   theme: 'light',
   profile: { company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
   ai: { provider: 'none', model: '', baseUrl: '', apiKey: '' },
-  sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 500 },
+  sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 0 },
   enrich: { auto: true, audit: false, pages: 3 },
   email: {
     preset: 'gmail', fromName: '', fromEmail: '', smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '',
@@ -70,7 +70,7 @@ export function load(): Settings {
     try { stored = JSON.parse(readFileSync(file(), 'utf8')); } catch { stored = {}; }
   }
   const s = deepMerge(structuredClone(defaults), stored);
-  if (s.sources.maxPerSearch === 60) s.sources.maxPerSearch = 500; // old default
+  if (s.sources.maxPerSearch === 60 || s.sources.maxPerSearch === 500) s.sources.maxPerSearch = 0; // old defaults; 0 means no limit
   s.theme = 'light';
   for (const p of SECRET_PATHS) set(s, p, dec(get(s, p)));
   cache = s;

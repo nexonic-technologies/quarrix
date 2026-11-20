@@ -42,8 +42,8 @@ export async function searchOsm(category: string, place: string, limit: number):
     const word = category.replace(/["\\]/g, '').replace(/s$/i, '');
     filter = ['shop', 'office', 'craft', 'amenity', 'healthcare', 'tourism', 'leisure'].map((k) => `nwr["${k}"]["name"~"${word}",i]${scope};`).join('');
   }
-  const q = `[out:json][timeout:60];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center ${Math.min(limit * 2, 500)};`;
-  const r = await fetchText('https://overpass-api.de/api/interpreter', { method: 'POST', ua: BOT_UA, timeout: 70000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+  const q = `[out:json][timeout:180];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center${Number.isFinite(limit) ? ' ' + limit * 2 : ''};`;
+  const r = await fetchText('https://overpass-api.de/api/interpreter', { method: 'POST', ua: BOT_UA, timeout: 190000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
   if (!r.ok) throw new Error(`OpenStreetMap is busy (HTTP ${r.status}). Try again in a few minutes.`);
   const els = (JSON.parse(r.text).elements ?? []) as any[];
   const out: Candidate[] = [];

@@ -108,7 +108,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
             {S('sources.googleMaps', 'Google Maps (free, runs in a hidden window at a human pace)')}
             {S('sources.osm', 'OpenStreetMap (free, open data)')}
             {T('sources.placesKey', 'Google Places API key', 'Optional. Google Cloud → enable "Places API (New)" → create a key.', 'password')}
-            <div className="grid2">{T('sources.maxPerSearch', 'Most businesses per search', '', 'number')}{T('sources.mapsDelayMs', 'Pause between Google Maps places (ms)', 'Higher is gentler. Google may ask for a captcha if this is too low.', 'number')}</div>
+            <div className="grid2">{T('sources.maxPerSearch', 'Most businesses per search', '0 means no limit: collect everything available. Big cities can take an hour or more.', 'number')}{T('sources.mapsDelayMs', 'Pause between Google Maps places (ms)', 'Higher is gentler. Google may ask for a captcha if this is too low.', 'number')}</div>
             <h2 style={{ marginTop: 10 }}>Website check</h2>
             {S('enrich.auto', 'Visit each new business\'s website for emails, phones and social links')}
             {S('enrich.audit', 'Also run Google PageSpeed (slower; adds a speed score)')}

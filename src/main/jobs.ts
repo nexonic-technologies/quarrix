@@ -68,10 +68,10 @@ async function runSearches() {
     notify('leads');
   };
   const progress = (msg: string) => notify('progress', { id: s.id, msg });
-  const limit = settings.sources.maxPerSearch;
+  const limit = settings.sources.maxPerSearch > 0 ? settings.sources.maxPerSearch : Infinity; // 0 = everything available
   let areas: string[] | null = null;
   const moreAreas = async () => {
-    if (!areas) { progress('Splitting the area into neighbourhoods…'); areas = (await subAreas(s.place).catch(() => [])).map((a) => `${a}, ${s.place}`); }
+    if (!areas) { progress('Splitting the area into neighbourhoods…'); areas = (await subAreas(s.place, limit === Infinity ? 200 : 40).catch(() => [])).map((a) => `${a}, ${s.place}`); }
     return areas;
   };
   // Google lists only about 120 places per query (Places API: 60), so after the whole-city query
