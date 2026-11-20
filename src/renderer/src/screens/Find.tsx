@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
-import { HeroArt, HeroBg, spotlight, useSceneMode, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { HeroArt, HeroBg, spotlight, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
 import { CityInput } from '../CityInput';
 import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
 import { COUNTRIES } from '../countries';
@@ -67,9 +67,9 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
         <HeroBg kind="leads" mode={mode} />
         <div className="finder-art"><HeroArt kind="leads" /></div>
         <div className="finder-text">
-          <span className="eyebrow"><Sparkles size={13} /> {mode === 'busy' ? 'Finding businesses…' : mode === 'done' ? 'Search finished' : 'New search'}</span>
-          <h2>Who are you looking for?</h2>
-          <p>Pick a kind of business and a place. Big cities are searched neighbourhood by neighbourhood.</p>
+          <span className="eyebrow" key={mode}><Sparkles size={13} /> {mode === 'busy' ? 'Finding businesses…' : mode === 'done' ? 'Search finished' : 'New search'}</span>
+          <h2 className="hero-title"><RiseText text="Find" /> <RotatingWord words={['dentists', 'restaurants', 'law firms', 'clinics', 'salons', 'real estate agents', 'startups']} /> <RiseText text="that need you." /></h2>
+          <RiseText as="p" text="Pick a kind of business and a place. Big cities are searched neighbourhood by neighbourhood." />
         </div>
         <div className="finder-form">
           <label className="fbox">

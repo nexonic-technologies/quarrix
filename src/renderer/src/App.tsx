@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Logo, Ring, Avatar } from './Art';
+import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
 import { Leads } from './screens/Leads';
@@ -90,8 +90,8 @@ export function App() {
       <main className="main">
         <header className="topbar">
           <div className="grow">
-            <h1>{TITLES[screen][0]}</h1>
-            <p>{TITLES[screen][1]}</p>
+            <RiseText as="h1" text={TITLES[screen][0]} />
+            <p className="fade-in" key={screen}>{TITLES[screen][1]}</p>
           </div>
         </header>
         <div className="screen" key={screen}>

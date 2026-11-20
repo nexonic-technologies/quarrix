@@ -280,3 +280,21 @@ export function HeroScene({ kind, mode }: { kind: 'leads' | 'jobs'; mode: SceneM
   }, [kind]);
   return <canvas ref={ref} className="hero-scene" aria-hidden />;
 }
+
+/* Animated type: words rise in one after another; a rotating word swaps with a slide. */
+export function RiseText({ text, as: Tag = 'span', className = '' }: { text: string; as?: 'span' | 'h1' | 'h2' | 'p'; className?: string }) {
+  return (
+    <Tag className={`rise ${className}`} key={text} aria-label={text}>
+      {text.split(' ').map((w, i) => <span key={i} aria-hidden style={{ animationDelay: `${i * 45}ms` }}>{w}&nbsp;</span>)}
+    </Tag>
+  );
+}
+export function RotatingWord({ words, ms = 2400 }: { words: string[]; ms?: number }) {
+  const [i, setI] = useState(0);
+  useEffect(() => { const t = setInterval(() => setI((n) => (n + 1) % words.length), ms); return () => clearInterval(t); }, [words.length, ms]);
+  return (
+    <span className="rotor" aria-live="off">
+      <span key={i} className="rotor-word">{words[i]}</span>
+    </span>
+  );
+}

@@ -1,4 +1,5 @@
-@import '@fontsource-variable/inter';
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/sora';
 
 /* Quarrix: one light theme. Clean white surfaces, compact type, violet with a soft aurora gradient. */
 :root {
@@ -23,14 +24,15 @@
   --radius-l: 16px;
   --shadow: 0 1px 2px rgba(20, 20, 40, 0.04);
   --shadow-lift: 0 1px 2px rgba(20, 20, 40, 0.04), 0 12px 28px -14px rgba(60, 40, 140, 0.22);
-  --font: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Manrope Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --display: 'Sora Variable', 'Manrope Variable', system-ui, sans-serif;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   color-scheme: light;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { font: 13px/1.5 var(--font); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; font-feature-settings: 'cv11', 'ss01'; }
+body { font: 13px/1.5 var(--font); color: var(--ink); background: var(--bg); -webkit-font-smoothing: antialiased; font-feature-settings: 'tnum' 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 a { color: var(--violet-ink); }
 :focus-visible { outline: 2px solid #a78bfa; outline-offset: 2px; border-radius: 6px; }
@@ -554,3 +556,23 @@ table.leads .t2 { display: block; color: var(--ink); }
 .finder[data-mode='busy'] .eyebrow svg { animation: spin 1.2s linear infinite; }
 .finder .btn.go { transition: background 0.4s, box-shadow 0.4s; }
 .finder[data-mode='busy'] .btn.go { background: rgb(var(--scene)); border-color: rgb(var(--scene)); }
+
+/* ---------- 0.8: typography ---------- */
+body { font-size: 13.5px; letter-spacing: 0.005em; }
+h1, h2, h3, .brand, .topbar h1, .stat b, .big-n, .live-stats b, .camp-stats b, .job-title, .cv-top b, .about-hero h2, .flow-step b, .empty h3 { font-family: var(--display); letter-spacing: -0.02em; }
+.topbar h1 { font-size: 19px; font-weight: 600; }
+.brand { font-weight: 600; }
+.stat b { font-weight: 600; }
+.nav button, .btn, .chip, .pill-btn, .tabs button, .settings nav button { font-weight: 600; letter-spacing: 0; }
+.panel h2, .section-head h2 { font-family: var(--display); font-weight: 600; }
+.status, .tag, .fit, .match, .score { font-weight: 600; }
+.rise > span { display: inline-block; opacity: 0; transform: translateY(0.45em); filter: blur(3px); animation: word-in 0.55s var(--ease) forwards; }
+@keyframes word-in { to { opacity: 1; transform: none; filter: none; } }
+.fade-in { animation: enter 0.5s var(--ease) 0.15s backwards; }
+.hero-title { font-size: 22px !important; font-weight: 600 !important; line-height: 1.25; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0; }
+.rotor { position: relative; display: inline-flex; overflow: hidden; vertical-align: bottom; padding: 0 0.15em; margin-right: 0.25em; border-radius: 8px; background: rgba(255, 255, 255, 0.55); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8); }
+.rotor-word { display: inline-block; background: linear-gradient(90deg, rgb(var(--scene, 124, 58, 237)), #db2777, rgb(var(--scene, 124, 58, 237))); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: rotor-in 0.6s var(--ease), shimmer 3s linear infinite; }
+@keyframes rotor-in { from { transform: translateY(80%); opacity: 0; filter: blur(4px); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.eyebrow { animation: pop 0.35s var(--ease); }
+.finder p.rise { margin-top: 4px; }
