@@ -3,8 +3,8 @@ import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
 import { HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
-import { CityInput } from '../CityInput';
-import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
+import { CityInput, CountryInput } from '../CityInput';
+import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, ChevronRight } from 'lucide-react';
 import { COUNTRIES } from '../countries';
 import { LiveSearch } from './LiveSearch';
 
@@ -96,13 +96,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               </div>
             )}
           </label>
-          <label className="fbox country">
-            <Flag size={16} />
-            <select aria-label="Country" value={country} onChange={(e) => setCountry(e.target.value)}>
-              <option value="">Any country</option>
-              {COUNTRIES.map(([code, name, flag]) => <option key={code} value={code}>{flag} {name}</option>)}
-            </select>
-          </label>
+          <CountryInput value={country} onChange={setCountry} />
           <CityInput country={country} value={place} onChange={setPlace} onEnter={start} placeholder={country ? 'City or area (empty = whole country)' : 'City or area, e.g. Austin, Texas'} />
           <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>

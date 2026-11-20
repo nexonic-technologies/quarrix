@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search as SearchIcon, Flag, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
+import { Search as SearchIcon, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
 import { call } from '../api';
 import { toast } from '../App';
 import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord } from '../Art';
-import { CityInput } from '../CityInput';
+import { CityInput, CountryInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -140,9 +140,7 @@ export function Jobs() {
         </div>
         <div className="finder-form">
           <label className="fbox"><SearchIcon size={16} /><input placeholder="Job title or skill, e.g. Web developer" value={kw} onChange={(e) => setKw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} /></label>
-          <label className="fbox country"><Flag size={16} />
-            <select value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Country"><option value="">Any country</option>{COUNTRIES.map(([c, n, f]) => <option key={c} value={c}>{f} {n}</option>)}</select>
-          </label>
+          <CountryInput value={country} onChange={setCountry} />
           <CityInput country={country} value={city} onChange={setCity} onEnter={() => run()} placeholder="City (optional)" />
           <button className="btn primary go" onClick={() => run()} disabled={busy}>{busy ? 'Searching…' : 'Search jobs'}</button>
         </div>

@@ -177,9 +177,11 @@ export const spotlight = (e: React.MouseEvent<HTMLElement>) => {
   const cx = art.left + art.width / 2, cy = art.top + art.height / 2;
   const dx = e.clientX - cx, dy = e.clientY - cy;
   el.classList.add('tracking');
-  el.style.setProperty('--spin', `${(Math.atan2(dy, dx) * 180) / Math.PI + 90}deg`);
-  el.style.setProperty('--tx', `${Math.max(-18, Math.min(18, -dy / 14))}deg`);
-  el.style.setProperty('--ty', `${Math.max(-18, Math.min(18, dx / 22))}deg`);
+  // Gentle parallax: a small turn and tilt toward the pointer, never a full spin.
+  const clamp = (v: number, m: number) => Math.max(-m, Math.min(m, v));
+  el.style.setProperty('--spin', `${clamp(dx / 30, 12)}deg`);
+  el.style.setProperty('--tx', `${clamp(-dy / 40, 8)}deg`);
+  el.style.setProperty('--ty', `${clamp(dx / 60, 8)}deg`);
 };
 export const spotlightReset = (e: React.MouseEvent<HTMLElement>) => {
   const el = e.currentTarget;
@@ -250,7 +252,7 @@ export function HeroScene({ kind, mode }: { kind: 'leads' | 'jobs'; mode: SceneM
       for (const p of ps) {
         p.x += p.vx * speed; p.y += p.vy * speed;
         const dx = p.x - mouse.x, dy = p.y - mouse.y, d = Math.hypot(dx, dy);
-        if (d < 90 && d > 0) { p.x += (dx / d) * 0.8; p.y += (dy / d) * 0.8; }
+        if (d < 90 && d > 0) { p.x += (dx / d) * 0.3; p.y += (dy / d) * 0.3; }
         if (kind === 'jobs' && p.y < -20) Object.assign(p, spawn(h + 10));
         if (p.x < -20) p.x = w + 20; if (p.x > w + 20) p.x = -20;
         if (kind === 'leads') { if (p.y < -20) p.y = h + 20; if (p.y > h + 20) p.y = -20; }

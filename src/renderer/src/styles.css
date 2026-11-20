@@ -477,35 +477,30 @@ table.leads .t2 { display: block; color: var(--ink); }
 .hero-bg i:nth-child(3) { width: 220px; height: 220px; background: #fbcfe8; right: -40px; top: -60px; animation-delay: -9s; }
 .hero-bg .spot { position: absolute; inset: 0; background: radial-gradient(360px circle at var(--mx, 70%) var(--my, 30%), rgba(255, 255, 255, 0.55), transparent 60%); opacity: 0; transition: opacity 0.4s; }
 .finder:hover .hero-bg .spot { opacity: 1; }
-.finder:hover .hero-bg { animation-duration: 7s; }
-.finder:hover .hero-bg i { animation-duration: 6s; }
 .hero-bg::after { content: ''; position: absolute; inset: 0; background-image: radial-gradient(1.4px 1.4px at 62% 20%, #fff, transparent), radial-gradient(1px 1px at 72% 70%, #fff, transparent), radial-gradient(1.4px 1.4px at 86% 16%, #fff, transparent), radial-gradient(1px 1px at 20% 80%, #fff, transparent), radial-gradient(1.2px 1.2px at 40% 15%, #fff, transparent); animation: twinkle 3s ease-in-out infinite; }
 @keyframes aurora-move { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
 @keyframes blob { from { transform: translate(0, 0) scale(1); } to { transform: translate(60px, 30px) scale(1.2); } }
 .finder::before { display: none; }
 
-.hero-art { position: relative; width: 170px; height: 170px; transform: perspective(520px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) rotate(var(--spin, 0deg)); transition: transform 1.1s cubic-bezier(0.22, 1.5, 0.36, 1); will-change: transform; }
-.finder.tracking .hero-art { transition: transform 0.18s ease-out; }
-.hero-art .core img { transform: rotate(calc(-1 * var(--spin, 0deg))); transition: transform 1.1s cubic-bezier(0.22, 1.5, 0.36, 1); }
-.finder.tracking .hero-art .core img { transition: transform 0.18s ease-out; }
+.hero-art { position: relative; width: 170px; height: 170px; transform: perspective(700px) rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg)) rotate(var(--spin, 0deg)); transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1); will-change: transform; }
+.finder.tracking .hero-art { transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+.hero-art .core img { transform: rotate(calc(-1 * var(--spin, 0deg))); transition: transform 1.4s cubic-bezier(0.16, 1, 0.3, 1); }
 .hero-art .ring { position: absolute; border-radius: 50%; border: 1px solid rgba(124, 58, 237, 0.22); background: rgba(255, 255, 255, 0.18); }
 .hero-art .r1 { inset: 0; } .hero-art .r2 { inset: 24px; } .hero-art .r3 { inset: 48px; background: rgba(255, 255, 255, 0.35); }
-.hero-art .sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(124, 58, 237, 0.32), rgba(124, 58, 237, 0) 70deg, transparent 360deg); animation: spin 4s linear infinite; }
-.finder:hover .hero-art .sweep { animation-duration: 1.6s; }
+.hero-art .sweep { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(124, 58, 237, 0.32), rgba(124, 58, 237, 0) 70deg, transparent 360deg); animation: spin 7s linear infinite; }
 .hero-art .core { position: absolute; inset: 52px; display: grid; place-items: center; animation: core 3s ease-in-out infinite; }
 .hero-art .core img { width: 58px; height: 58px; filter: drop-shadow(0 8px 14px rgba(76, 29, 149, 0.45)); }
 @keyframes core { 50% { transform: scale(1.07); } }
-.hero-art .orbit { position: absolute; inset: 0; animation: spin 16s linear infinite; }
-.hero-art .orbit.ob1 { animation-duration: 22s; animation-delay: -11s; animation-direction: reverse; inset: 20px; }
-.hero-art .orbit.ob2 { animation-duration: 19s; animation-delay: -6s; inset: 8px; }
-.hero-art .orbit.ob3 { animation-duration: 26s; animation-delay: -12s; animation-direction: reverse; inset: 30px; }
-.finder:hover .hero-art .orbit { animation-duration: 6s; }
-.hero-art .bubble { position: absolute; left: 50%; top: -13px; transform: translateX(-50%); display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.9); color: var(--violet); box-shadow: 0 6px 14px -6px rgba(76, 29, 149, 0.5); animation: counter 16s linear infinite; }
-.hero-art .ob1 .bubble { color: #0891b2; animation-duration: 22s; animation-direction: reverse; }
-.hero-art .ob2 .bubble { color: #db2777; animation-duration: 19s; }
-.hero-art .ob3 .bubble { color: #16a34a; animation-duration: 26s; animation-direction: reverse; }
+.hero-art .orbit { position: absolute; inset: 6px; animation: spin 40s linear infinite; }
+.hero-art .orbit.ob1 { animation-delay: -10s; }
+.hero-art .orbit.ob2 { animation-delay: -20s; }
+.hero-art .orbit.ob3 { animation-delay: -30s; }
+.hero-art .bubble { position: absolute; left: 50%; top: -13px; transform: translateX(-50%); display: grid; place-items: center; width: 26px; height: 26px; border-radius: 9px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.9); color: var(--violet); box-shadow: 0 6px 14px -6px rgba(76, 29, 149, 0.5); animation: counter 40s linear infinite; }
+.hero-art .ob1 .bubble { color: #0891b2; animation-delay: -10s; }
+.hero-art .ob2 .bubble { color: #db2777; animation-delay: -20s; }
+.hero-art .ob3 .bubble { color: #16a34a; animation-delay: -30s; }
 @keyframes counter { to { transform: translateX(-50%) rotate(-360deg); } }
-.hero-art .blip { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; left: calc(20% + var(--i) * 11%); top: calc(18% + var(--i) * 12%); opacity: 0; animation: blip 3.2s ease-out infinite; animation-delay: calc(var(--i) * 0.55s); }
+.hero-art .blip { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; left: calc(20% + var(--i) * 11%); top: calc(18% + var(--i) * 12%); opacity: 0; animation: blip 4.5s ease-out infinite; animation-delay: calc(var(--i) * 0.75s); }
 @keyframes blip { 0% { opacity: 0; transform: scale(0.4); } 20% { opacity: 1; transform: scale(1.3); box-shadow: 0 0 0 6px rgba(139, 92, 246, 0.15); } 100% { opacity: 0; transform: scale(0.6); } }
 .fbox.city { flex: 0 0 240px; }
 .spin { animation: spin 0.9s linear infinite; }
@@ -552,8 +547,7 @@ table.leads .t2 { display: block; color: var(--ink); }
 .finder .hero-art .sweep { background: conic-gradient(from 0deg, rgba(var(--scene), 0.38), rgba(var(--scene), 0) 70deg, transparent 360deg); }
 .finder .hero-art .ring { border-color: rgba(var(--scene), 0.25); transition: border-color 0.6s; }
 .finder .hero-art .blip { background: rgb(var(--scene)); }
-.finder[data-mode='busy'] .hero-art .sweep { animation-duration: 1.1s; }
-.finder[data-mode='busy'] .hero-art .orbit { animation-duration: 5s; }
+.finder[data-mode='busy'] .hero-art .sweep { animation-duration: 2.6s; }
 .finder[data-mode='busy'] .eyebrow { color: rgb(var(--scene)); }
 .finder[data-mode='busy'] .eyebrow svg { animation: spin 1.2s linear infinite; }
 .finder .btn.go { transition: background 0.4s, box-shadow 0.4s; }
@@ -578,3 +572,23 @@ h1, h2, h3, .brand, .topbar h1, .stat b, .big-n, .live-stats b, .camp-stats b, .
 @keyframes shimmer { to { background-position: -200% 0; } }
 .eyebrow { animation: pop 0.35s var(--ease); }
 .finder p.rise { margin-top: 4px; }
+
+/* ---------- 0.8.2: themed combo boxes ---------- */
+.fbox.combo { position: relative; cursor: text; }
+.fbox.combo.country { flex: 0 0 210px; }
+.fbox.combo.city { flex: 0 0 240px; }
+.fbox.combo.open { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.25); }
+.fbox.combo input { min-width: 0; }
+.combo-prefix { font-size: 15px; line-height: 1; }
+.combo-caret { color: var(--ink-3); flex: none; transition: transform 0.25s var(--ease); }
+.fbox.combo.open .combo-caret { transform: rotate(180deg); color: var(--violet); }
+.combo-clear { all: unset; cursor: pointer; color: var(--ink-3); font-size: 16px; line-height: 1; padding: 0 2px; }
+.combo-clear:hover { color: var(--violet); }
+.combo-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; min-width: 240px; z-index: 40; max-height: 300px; overflow: auto; padding: 5px; background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(16px); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 18px 44px -14px rgba(40, 24, 90, 0.28); animation: pop 0.16s var(--ease); color: var(--ink); cursor: default; }
+.combo-menu.empty { padding: 10px 12px; color: var(--ink-3); font-size: 12.5px; }
+.combo-menu button { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; }
+.combo-menu button.on { background: var(--violet-soft); }
+.combo-menu button.sel { color: var(--violet-ink); font-weight: 650; }
+.combo-menu button svg { color: var(--violet); }
+.combo-menu em { font-style: normal; font-size: 11px; color: var(--ink-3); }
+.combo-menu::-webkit-scrollbar { width: 8px; }
