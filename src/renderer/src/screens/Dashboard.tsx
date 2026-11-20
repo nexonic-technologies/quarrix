@@ -174,6 +174,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
             </div>
           ))}
           <div className="live-meta">
+            <span className="clickable-row" onClick={() => go('signals')}><Radio size={13} /> {t.signals ?? 0} buying signals, {t.signalsHot ?? 0} hot</span>
             <span><Rocket size={13} /> {t.campaigns} autopilot campaign{t.campaigns === 1 ? '' : 's'} on</span>
             <span><Clock size={13} /> {d.nextSend ? `Next email to ${d.nextSend.name} ${new Date(d.nextSend.due_at) > new Date() ? new Date(d.nextSend.due_at).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'soon'}` : 'No emails queued'}</span>
           </div>

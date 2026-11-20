@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -10,8 +10,9 @@ import { SettingsScreen } from './screens/Settings';
 import { Autopilot } from './screens/Autopilot';
 import { Jobs } from './screens/Jobs';
 import { Dashboard } from './screens/Dashboard';
+import { Signals } from './screens/Signals';
 
-export type Screen = 'dashboard' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
+export type Screen = 'dashboard' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
@@ -20,7 +21,7 @@ export const toast = { push: (_t: string, _err?: boolean) => undefined as void }
 export function App() {
   const [screen, setScreen] = useState<Screen>((location.hash.slice(1) as Screen) || 'dashboard');
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0 });
+  const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0, signals: 0 });
   const [tick, setTick] = useState(0);
   const [me, setMe] = useState({ name: '', company: '' });
 
@@ -31,8 +32,8 @@ export function App() {
   };
 
   const refreshCounts = useCallback(async () => {
-    const [s, cap] = await Promise.all([call('stats'), call<number>('mail:cap')]);
-    setCounts({ drafts: s.drafts, sentToday: s.sentToday, cap });
+    const [s, cap, sig] = await Promise.all([call('stats'), call<number>('mail:cap'), call<{ unseen: number }[]>('signals:counts').catch(() => [])]);
+    setCounts({ drafts: s.drafts, sentToday: s.sentToday, cap, signals: sig.reduce((n, x) => n + (x.unseen || 0), 0) });
   }, []);
 
   useEffect(() => {
@@ -40,13 +41,14 @@ export function App() {
     call('settings:get').then((s) => { setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
-      if (e === 'drafts' || e === 'leads') void refreshCounts();
+      if (e === 'drafts' || e === 'leads' || e === 'signals') void refreshCounts();
       setTick((n) => n + 1);
     });
   }, [refreshCounts]);
 
   const TITLES: Record<Screen, [string, string]> = {
     dashboard: ['Dashboard', 'Leads, outreach and your job hunt, live.'],
+    signals: ['Signals', 'The right moment to reach out: new businesses, broken sites, expiring domains, low ratings and hiring.'],
     find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
     autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
@@ -58,7 +60,7 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
+    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
 
@@ -98,6 +100,7 @@ export function App() {
         </header>
         <div className="screen" key={screen}>
           {screen === 'dashboard' && <Dashboard tick={tick} go={go} />}
+          {screen === 'signals' && <Signals tick={tick} go={go} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'find' && <Find tick={tick} go={go} />}
           {screen === 'leads' && <Leads tick={tick} go={go} />}
           {screen === 'outreach' && <Outreach tick={tick} go={go} />}

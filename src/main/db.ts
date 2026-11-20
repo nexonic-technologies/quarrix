@@ -59,9 +59,17 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
     places TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', daily INTEGER NOT NULL DEFAULT 20,
     auto_send INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, cursor INTEGER NOT NULL DEFAULT 0, last_run TEXT
   );
+  CREATE TABLE IF NOT EXISTS signals (
+    id INTEGER PRIMARY KEY, lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, type TEXT NOT NULL,
+    level TEXT NOT NULL DEFAULT 'warm', title TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '', key TEXT NOT NULL UNIQUE, seen INTEGER NOT NULL DEFAULT 0, dismissed INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS watches (
+    id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, category TEXT NOT NULL, place TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '["gmaps","osm"]',
+    every_days INTEGER NOT NULL DEFAULT 7, last_run TEXT, runs INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 1
+  );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -72,7 +80,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {
@@ -183,11 +191,36 @@ export function facets() {
 
 /* ---------- Searches ---------- */
 
-export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null };
+export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null; watch_id: number | null };
 
-export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null) {
-  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id) VALUES (?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId).lastInsertRowid);
+export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null) {
+  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id, watch_id) VALUES (?, ?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId, watchId).lastInsertRowid);
 }
+
+/* ---------- Signals ---------- */
+export type Signal = { id: number; lead_id: number | null; at: string; type: string; level: string; title: string; detail: string; key: string; seen: number; dismissed: number };
+/** Adds a signal once per key. Returns true when it is new. */
+export function addSignal(sg: { lead_id: number | null; type: string; level: 'hot' | 'warm' | 'info'; title: string; detail?: string; key: string }) {
+  const r = db.prepare('INSERT OR IGNORE INTO signals (lead_id, at, type, level, title, detail, key) VALUES (?, ?, ?, ?, ?, ?, ?)').run(sg.lead_id, now(), sg.type, sg.level, sg.title, sg.detail ?? '', sg.key);
+  if (r.changes) logEvent(sg.lead_id, 'signal', sg.title);
+  return r.changes > 0;
+}
+export function listSignals(f: { type?: string; all?: boolean } = {}) {
+  return db.prepare(`SELECT s.*, l.name, l.category, l.city, l.country, l.email, l.website, l.domain, l.status lead_status FROM signals s LEFT JOIN leads l ON l.id = s.lead_id
+    WHERE ${f.all ? '1' : 's.dismissed = 0'} ${f.type ? 'AND s.type = ?' : ''} ORDER BY CASE s.level WHEN 'hot' THEN 0 WHEN 'warm' THEN 1 ELSE 2 END, s.id DESC LIMIT 400`).all(...(f.type ? [f.type] : []));
+}
+export const signalCounts = () => db.prepare('SELECT type, level, COUNT(*) n, SUM(seen = 0) unseen FROM signals WHERE dismissed = 0 GROUP BY type, level').all();
+export const leadSignals = (leadId: number) => db.prepare('SELECT * FROM signals WHERE lead_id = ? AND dismissed = 0 ORDER BY id DESC LIMIT 5').all(leadId) as Signal[];
+export const updateSignal = (id: number, patch: { seen?: number; dismissed?: number }) => db.prepare(`UPDATE signals SET ${Object.keys(patch).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(patch), id);
+export const markAllSeen = () => db.prepare('UPDATE signals SET seen = 1 WHERE seen = 0').run();
+export const listWatches = () => db.prepare('SELECT w.*, (SELECT COUNT(*) FROM signals s JOIN leads l ON l.id = s.lead_id JOIN searches se ON se.id = l.search_id WHERE se.watch_id = w.id AND s.type = \'new_listing\') found FROM watches w ORDER BY id DESC').all();
+export function saveWatch(w: { id?: number; category?: string; place?: string; sources?: string; every_days?: number; enabled?: number; last_run?: string; runs?: number }) {
+  const cols = ['category', 'place', 'sources', 'every_days', 'enabled', 'last_run', 'runs'].filter((k) => (w as Record<string, unknown>)[k] !== undefined);
+  const vals = cols.map((k) => (w as Record<string, unknown>)[k] as never);
+  if (w.id) { db.prepare(`UPDATE watches SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, w.id); return w.id; }
+  return Number(db.prepare(`INSERT INTO watches (created_at, ${cols.join(',')}) VALUES (?, ${cols.map(() => '?').join(',')})`).run(now(), ...vals).lastInsertRowid);
+}
+export const deleteWatch = (id: number) => db.prepare('DELETE FROM watches WHERE id = ?').run(id);
 
 /* ---------- Autopilot campaigns ---------- */
 
@@ -304,6 +337,9 @@ export function dashboard(days = 30) {
       appliedWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'job_status' AND detail LIKE 'Applied%' AND at >= ? AND at < ?", 6, -1),
       appliedPrevWeek: week("SELECT COUNT(*) n FROM events WHERE type = 'job_status' AND detail LIKE 'Applied%' AND at >= ? AND at < ?", 13, 6),
       campaigns: one('SELECT COUNT(*) n FROM campaigns WHERE enabled = 1'),
+      signals: one('SELECT COUNT(*) n FROM signals WHERE dismissed = 0'),
+      signalsHot: one("SELECT COUNT(*) n FROM signals WHERE dismissed = 0 AND level = 'hot'"),
+      signalsNew: one('SELECT COUNT(*) n FROM signals WHERE dismissed = 0 AND seen = 0'),
     },
     jobStatus,
     sources: db.prepare("SELECT source, COUNT(*) n FROM leads GROUP BY source ORDER BY n DESC LIMIT 8").all(),

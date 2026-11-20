@@ -35,8 +35,8 @@ export function start(n: Notify) {
   setInterval(() => { void runSearches(); void runEnrichment(); }, 4000);
 }
 
-export function queueSearch(category: string, place: string, sources: string[], campaignId: number | null = null) {
-  const id = db.addSearch(category.trim(), place.trim(), sources, campaignId);
+export function queueSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null) {
+  const id = db.addSearch(category.trim(), place.trim(), sources, campaignId, watchId);
   notify('searches');
   void runSearches();
   return id;
@@ -72,6 +72,7 @@ async function runSearches() {
     const city = await cityAt(mid('lat'), mid('lon')).catch(() => null);
     if (city) where = city;
   };
+  const watchRan = !!(s.watch_id && (db.raw().prepare('SELECT runs FROM watches WHERE id = ?').get(s.watch_id) as { runs: number } | undefined)?.runs);
   const save = (list: Candidate[]) => {
     const tx = db.raw().transaction(() => {
       for (const c of list) {
@@ -79,7 +80,7 @@ async function runSearches() {
         const website = c.website && !isPlatformHost(domainOf(c.website)) ? c.website : '';
         const socials = { ...(c.socials ?? {}) };
         if (c.website && !website) socials[domainOf(c.website).split('.')[0]] = c.website;
-        const [, created] = db.upsertLead({
+        const [id, created] = db.upsertLead({
           name: c.name, category: c.category, address: c.address, city: c.city || where?.city || '', region: c.region || where?.region || '', country,
           postcode: c.postcode, lat: c.lat, lon: c.lon, phone: normalizePhone(c.phone, country), email: c.email?.toLowerCase() ?? '',
           emails: JSON.stringify(c.email ? [c.email.toLowerCase()] : []), website, domain: website ? domainOf(website) : '',
@@ -87,7 +88,14 @@ async function runSearches() {
           tags: c.chain ? 'chain' : '', summary: c.summary ?? '', contact_name: c.contact_name ?? '',
         });
         found++;
-        if (created) { added++; log(s.id, `+ ${c.name}`); }
+        if (created) {
+          added++; log(s.id, `+ ${c.name}`);
+          // A watch that has run before: anything new on the map is a new business, often just opened.
+          if (watchRan) {
+            const fresh = (c.reviews ?? 0) <= 5;
+            db.addSignal({ lead_id: id, type: 'new_listing', level: fresh ? 'hot' : 'warm', title: fresh ? `${c.name} looks newly opened` : `${c.name} newly listed`, detail: `${c.category} in ${c.city || s.place}${c.reviews != null ? `, ${c.reviews} reviews` : ', no reviews yet'}. New businesses need a website, branding and listings set up.`, key: `new:${id}` });
+          }
+        }
       }
     });
     tx();
@@ -146,6 +154,7 @@ async function runSearches() {
     }
   }
   if (cancelSearch !== s.id) db.updateSearch(s.id, { status: errors.length && !found ? 'failed' : 'done', error: errors.join(' · '), finished_at: db.now() });
+  if (s.watch_id) db.raw().prepare('UPDATE watches SET runs = runs + 1 WHERE id = ?').run(s.watch_id);
   running = false;
   notify('searches');
   void runEnrichment();

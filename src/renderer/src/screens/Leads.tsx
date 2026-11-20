@@ -19,7 +19,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [page, setPage] = useState(0);
   const [facets, setFacets] = useState<{ countries: string[]; categories: string[] }>({ countries: [], categories: [] });
   const [sel, setSel] = useState<Set<number>>(new Set());
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(() => { const v = Number(sessionStorage.getItem('quarrix.openLead')) || null; sessionStorage.removeItem('quarrix.openLead'); return v; });
   const [searchId, setSearchId] = useState<number | undefined>(() => Number(sessionStorage.getItem('quarrix.search')) || undefined);
 
   const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist' };

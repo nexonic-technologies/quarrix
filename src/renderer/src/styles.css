@@ -693,3 +693,47 @@ h1, h2, h3, .brand, .topbar h1, .stat b, .big-n, .live-stats b, .camp-stats b, .
 .chips-list b { font-family: var(--display); color: var(--violet-ink); }
 .dash-loading { display: flex; gap: 10px; align-items: center; padding: 40px; color: var(--ink-2); }
 @media (max-width: 1150px) { .dash .kpis { grid-template-columns: repeat(2, 1fr); } .dash-row, .dash-row.three { grid-template-columns: 1fr; } }
+
+/* ---------- 0.11: signals radar ---------- */
+.sig-hero { display: flex; align-items: center; gap: 18px; padding: 18px 22px; background: linear-gradient(110deg, #ecfdf5, #ede9fe 55%, #fdf2f8); border-color: #e2dbff; position: relative; overflow: hidden; }
+.sig-hero h2 { font-size: 22px; margin: 8px 0 2px; font-weight: 600; }
+.sig-hero p { margin: 0; max-width: 640px; }
+.hot-n { color: #e11d48; }
+.sig-radar { position: relative; width: 92px; height: 92px; flex: none; }
+.sig-radar i { position: absolute; border-radius: 50%; border: 1px solid rgba(124, 58, 237, 0.25); }
+.sig-radar i:nth-child(1) { inset: 0; } .sig-radar i:nth-child(2) { inset: 16px; } .sig-radar i:nth-child(3) { inset: 32px; background: rgba(124, 58, 237, 0.12); }
+.sig-radar b { position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(from 0deg, rgba(16, 185, 129, 0.45), transparent 80deg); animation: spin 5s linear infinite; }
+.sig-radar .dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #e11d48; box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.5); animation: sigping 2.4s ease-out infinite; }
+.sig-radar .d1 { left: 64px; top: 20px; } .sig-radar .d2 { left: 22px; top: 58px; animation-delay: 0.8s; background: #f59e0b; } .sig-radar .d3 { left: 58px; top: 66px; animation-delay: 1.6s; background: #16a34a; }
+@keyframes sigping { 0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.45); } 80%, 100% { box-shadow: 0 0 0 10px rgba(225, 29, 72, 0); } }
+.sig-types { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.sig-types button { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); font-size: 12.5px; font-weight: 600; color: var(--ink-2); transition: all 0.2s; }
+.sig-types button b { font-family: var(--display); color: var(--ink); }
+.sig-types button:hover { border-color: #c4b5fd; }
+.sig-types button.on { background: var(--aurora); border-color: #d8ccff; color: var(--ink); }
+.sig-layout { display: grid; grid-template-columns: 1fr 340px; gap: 12px; align-items: start; }
+.sig-list { display: grid; gap: 10px; }
+.sig { display: flex; gap: 14px; padding: 14px 16px; position: relative; animation: rise 0.4s var(--ease) both; border-left: 3px solid var(--line-2); }
+.sig.hot { border-left-color: #e11d48; } .sig.warm { border-left-color: #f59e0b; } .sig.info { border-left-color: #94a3b8; }
+.sig.new::after { content: 'new'; position: absolute; top: -7px; left: 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #fff; background: #7c3aed; padding: 1px 7px; border-radius: 999px; }
+.sig-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; flex: none; background: var(--panel-2); color: var(--ink-2); }
+.sig.hot .sig-icon { background: #fff1f2; color: #e11d48; } .sig.warm .sig-icon { background: #fffbeb; color: #d97706; }
+.sig-top { display: flex; align-items: center; gap: 8px; }
+.lvl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 7px; border-radius: 6px; }
+.lvl.hot { background: #ffe4e6; color: #be123c; } .lvl.warm { background: #fef3c7; color: #b45309; } .lvl.info { background: #f1f5f9; color: #475569; }
+.sig-title { display: block; font-family: var(--display); font-weight: 600; font-size: 14.5px; margin: 5px 0 3px; }
+.sig p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.sig p.why { margin-top: 6px; color: var(--violet-ink); font-size: 12px; }
+.sig-lead { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; padding: 3px 9px 3px 3px; border-radius: 999px; background: var(--panel-2); cursor: pointer; font-size: 12px; font-weight: 600; }
+.sig-lead em { font-style: normal; font-weight: 500; color: var(--ink-3); }
+.sig-lead:hover { background: var(--violet-soft); }
+.sig-actions { display: grid; gap: 6px; align-content: start; flex: none; }
+.watches { position: sticky; top: 76px; display: grid; gap: 10px; }
+.watch-form { display: grid; gap: 7px; padding: 10px; border-radius: 12px; background: var(--panel-2); }
+.watch { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line); }
+.watch b { display: block; font-weight: 600; font-size: 12.5px; }
+.watch .small { display: block; }
+.sig-legend { display: grid; gap: 7px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-3); }
+.sig-legend div { display: flex; gap: 7px; } .sig-legend svg { flex: none; margin-top: 2px; color: var(--violet); } .sig-legend b { color: var(--ink-2); }
+.clickable-row { cursor: pointer; } .clickable-row:hover { color: var(--violet); }
+@media (max-width: 1150px) { .sig-layout { grid-template-columns: 1fr; } }

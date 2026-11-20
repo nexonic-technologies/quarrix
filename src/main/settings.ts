@@ -19,6 +19,7 @@ export type Settings = {
     windowStart: number; windowEnd: number; weekdaysOnly: boolean; followups: number[]; unsubscribeLine: boolean; attachReport: boolean;
   };
   whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
+  signals: { on: boolean; everyDays: number; perRun: number };
 };
 
 export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey'] as const;
@@ -35,6 +36,7 @@ export const defaults: Settings = {
     dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
+  signals: { on: true, everyDays: 7, perRun: 30 },
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');
