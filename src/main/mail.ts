@@ -36,6 +36,9 @@ export async function sendReport(leadId: number) {
   const lead = db.getLead(leadId);
   if (!lead?.email) throw new Error('This lead has no email address.');
   if (!hasReport(leadId)) throw new Error('Make the report first.');
+  if (!sendingAllowed(s.email)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : 'Approve sending in Settings → Email first.');
+  const block = outreachBlock(lead, db.isSuppressed(lead.email, lead.domain));
+  if (block) throw new Error(`Not sent: ${block}.`);
   const first = db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(leadId) as { subject: string; message_id: string } | undefined;
   const firstName = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.split(' ')[0] : '';
   const body = `Hi ${firstName || `${lead.name} team`},\n\nAs promised, here is the one-page review of ${lead.domain || lead.name}. The first two fixes on it are the quickest wins.\n\nHappy to talk it through if useful.\n\nBest,`;
@@ -94,6 +97,15 @@ export function recentHealth() {
   return { sent: sent.length, bounced: q('bounce'), complaints: q('complaint') };
 }
 
+/** A campaign's own daily limit applies across all its sends, not only when drafting. */
+export function campaignFull(lead: db.Lead) {
+  const c = db.raw().prepare('SELECT c.id, c.daily FROM campaigns c JOIN searches s ON s.campaign_id = c.id WHERE s.id = ?').get(lead.search_id ?? -1) as { id: number; daily: number } | undefined;
+  if (!c || !c.daily) return false;
+  const sent = (db.raw().prepare(`SELECT COUNT(*) n FROM messages m JOIN leads l ON l.id = m.lead_id JOIN searches s ON s.id = l.search_id
+    WHERE s.campaign_id = ? AND m.status = 'sent' AND m.sent_at >= ?`).get(c.id, new Date().toISOString().slice(0, 10)) as { n: number }).n;
+  return sent >= c.daily;
+}
+
 /** Same person or company contacted recently by any campaign (QF-074). */
 export function contactedRecently(lead: db.Lead, days: number) {
   if (days <= 0) return false;
@@ -125,6 +137,7 @@ export async function tick(notify: (m: string) => void) {
         if (lead) db.cancelPending(lead.id, `Stopped: ${block}`);
         continue;
       }
+      if (campaignFull(lead)) continue;
       if (m.step === 0 && contactedRecently(lead, s.email.recontactDays)) {
         db.cancelPending(lead.id, `Someone at ${lead.domain || lead.email} was emailed in the last ${s.email.recontactDays} days`);
         continue;

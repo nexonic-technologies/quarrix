@@ -73,3 +73,23 @@ test('diagnostics redaction removes secrets and personal details', async () => {
   for (const bad of ['sk-ant-abcdef', 'hunter2', 'ana@', '555-0142', 'AIzaSyA', 'abcdefghijklmnop']) assert.ok(!out.includes(bad), bad);
   assert.match(out, /\[email\]@acme\.com/);
 });
+
+test('drawn areas: polygon membership, covering circle and grid cells', async () => {
+  const { inPolygon, polygonCircle, gridCells, insideBox, inside } = await import('../src/main/geo');
+  const sq: [number, number][] = [[31.0, 74.0], [31.0, 74.2], [31.2, 74.2], [31.2, 74.0]];
+  assert.equal(inPolygon(sq, { lat: 31.1, lon: 74.1 }), true);
+  assert.equal(inPolygon(sq, { lat: 31.3, lon: 74.1 }), false);
+  const g = { ...polygonCircle(sq), poly: sq };
+  assert.ok(g.km > 10 && g.km < 20);
+  assert.equal(inside(g, { lat: 31.25, lon: 74.1 }), false, 'outside the drawn area even if inside the circle');
+  const cells = gridCells(g, 2.5);
+  assert.ok(cells.length > 20 && cells.every((c) => c.lat > 30.9 && c.lat < 31.3));
+  assert.equal(insideBox([31.0, 31.2, 74.0, 74.2], { lat: 31.1, lon: 74.1 }), true);
+  assert.equal(insideBox([31.0, 31.2, 74.0, 74.2], { lat: 24.8, lon: 67.0 }), false, 'Karachi is not in a Gujranwala box');
+});
+
+test('job duplicates keep the same role in different cities', async () => {
+  const { dedupe } = await import('../src/main/jobsearch');
+  const j = (id: string, location: string) => ({ id, source: 'x', title: 'Sales Manager', company: 'Acme', location, workplace: '' as const, type: '', level: '', salary: '', url: '', posted: '', tags: [], snippet: '' });
+  assert.equal(dedupe([j('1', 'Lahore'), j('2', 'Karachi'), j('3', 'Lahore')]).length, 2);
+});

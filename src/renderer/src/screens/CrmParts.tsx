@@ -39,6 +39,7 @@ export function LeadCrmCard({ lead, onChange }: { lead: Lead; onChange: () => vo
           <button className="btn small" disabled={!task.title} onClick={async () => { await call('tasks:save', { lead_id: lead.id, title: task.title, due_at: task.due ? new Date(task.due).toISOString() : null }); setTask({ title: '', due: '' }); void load(); }}><Plus size={13} /></button>
         </div>
       </div>
+      <label className="switch" style={{ marginTop: 8 }}><input type="checkbox" checked={!!(lead as any).wa_consent} onChange={async (e) => { await call('leads:update', lead.id, { wa_consent: e.target.checked ? 1 : 0 }); onChange(); }} /> They agreed to WhatsApp messages (needed for WhatsApp Cloud API sends)</label>
       {fields.length > 0 && <div className="grid2" style={{ marginTop: 8 }}>{fields.map((f) => (
         <CustomInput key={f.id} field={f} value={custom[f.key]} onChange={async (v) => { try { await call('fields:set', 'lead', lead.id, f.key, v); onChange(); } catch (e: any) { toast.push(e.message, true); } }} />
       ))}</div>}

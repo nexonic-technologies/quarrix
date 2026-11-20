@@ -1,5 +1,6 @@
 import { Notification } from 'electron';
 import { isSafeExternalUrl } from './safety';
+import { lockAll, lockContents } from './guard';
 import * as budget from './budget';
 import { checkSources } from './health';
 import { SOURCES } from './sources/catalog';
@@ -10,6 +11,7 @@ import * as crm from './crm';
 import * as jobstore from './jobstore';
 import * as automation from './automation';
 import * as localapi from './localapi';
+import * as cli from './cli';
 import * as integrations from './integrations';
 import { writeDiagnostics } from './diagnostics';
 import { privacySummary } from './privacy';
@@ -48,7 +50,7 @@ function createWindow() {
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#14201D' : '#EEF2EF',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 18, y: 18 },
-    webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: false },
+    webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true },
   });
   win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternalUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
@@ -67,14 +69,26 @@ const validGeo = (g: any): Geo | null => {
   if (!g) return null;
   const lat = Number(g.lat), lon = Number(g.lon), km = Number(g.km);
   if (![lat, lon, km].every(Number.isFinite) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || km <= 0 || km > 100) throw new Error('The map area is not valid (radius 0.1 to 100 km).');
-  return { lat, lon, km };
+  const poly = Array.isArray(g.poly) && g.poly.length >= 3 && g.poly.length <= 60 ? (g.poly as unknown[]).map((p: any) => [Number(p[0]), Number(p[1])] as [number, number]).filter(([a, b]) => Math.abs(a) <= 90 && Math.abs(b) <= 180) : undefined;
+  return poly && poly.length >= 3 ? { lat, lon, km, poly } : { lat, lon, km };
 };
+
+/** WhatsApp: never to do-not-contact leads; Cloud API sends also need your approval and the lead's recorded opt-in. */
+function waGuard(l: db.Lead, cloud: boolean) {
+  const digits = l.phone.replace(/\D/g, '');
+  if (l.status === 'do_not_contact' || (digits && db.isSuppressed(`tel:${digits}`)) || (l.email && db.isSuppressed(l.email, l.domain))) throw new Error('This lead is on your do-not-contact list.');
+  if (cloud) {
+    if (!load().whatsapp.authorizedAt) throw new Error('Approve WhatsApp sending in Settings → WhatsApp first.');
+    if (!(l as any).wa_consent) throw new Error('WhatsApp requires the person\'s opt-in before a business sends to them. Tick "They agreed to WhatsApp messages" on the lead first.');
+  }
+}
 
 const handle = (ch: string, fn: (...a: any[]) => unknown) =>
   ipcMain.handle(ch, async (e, ...args) => {
     // Only the app's own page may call the main process.
     const from = e.senderFrame?.url ?? '';
     if (!from.startsWith('file:') && !from.startsWith('http://localhost:')) return { ok: false, error: 'Blocked a call from an unknown page.' };
+    try { if (JSON.stringify(args ?? []).length > 5_000_000) return { ok: false, error: 'Request too large.' }; } catch { return { ok: false, error: 'Request not readable.' }; }
     try { return { ok: true, data: await fn(...args) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   });
 
@@ -164,6 +178,10 @@ function registerIpc() {
   handle('auto:runs', () => automation.recentRuns());
   handle('hooks:test', (url: string) => automation.deliver('test', { message: 'Hello from Quarrix' }, String(url)));
   handle('api:apply', () => localapi.start());
+  handle('cli:info', () => cli.info());
+  handle('cli:install', () => cli.install());
+  handle('api:captureToken', () => localapi.captureToken());
+  handle('wa:authorize', (on: boolean) => { save({ whatsapp: { ...load().whatsapp, authorizedAt: on ? db.now() : '' } }); return !!on; });
   handle('api:token', () => ({ token: localapi.ensureToken(), port: load().api.port }));
   handle('api:newToken', () => { save({ api: { ...load().api, token: '' } }); const t = localapi.ensureToken(); localapi.start(); return t; });
   handle('sync:hubspot', (ids: number[]) => integrations.toHubspot((ids ?? []).map(Number)));
@@ -248,7 +266,7 @@ function registerIpc() {
   handle('proof:make', (id: number) => proof.makeReport(id));
   handle('proof:info', (id: number) => proof.reportInfo(id));
   handle('proof:open', (id: number) => shell.openPath(proof.reportPath(id)));
-  handle('proof:send', (id: number) => mail.sendReport(id));
+  handle('proof:send', (id: number) => mail.sendReport(Number(id)));
   handle('proof:save', async (id: number) => {
     const l = db.getLead(id)!;
     const r = await dialog.showSaveDialog(win!, { defaultPath: mail.reportName(l.name, load().profile.company), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
@@ -296,8 +314,8 @@ function registerIpc() {
   handle('mail:checkInbox', () => mail.checkInbox());
   handle('ai:models', () => listModels(load().ai));
 
-  handle('wa:open', async (leadId: number, text: string) => { const l = db.getLead(leadId)!; const n = await wa.openChat(l.phone, l.country, text); db.logEvent(leadId, 'whatsapp', 'Opened WhatsApp with a drafted message'); return n; });
-  handle('wa:cloud', async (leadId: number, body) => { const l = db.getLead(leadId)!; const id = await wa.cloudSend(l.phone, l.country, body); db.logEvent(leadId, 'whatsapp', 'Sent with the WhatsApp Cloud API'); return id; });
+  handle('wa:open', async (leadId: number, text: string) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, false); const n = await wa.openChat(l.phone, l.country, text); db.logEvent(leadId, 'whatsapp', 'Opened WhatsApp with a drafted message'); return n; });
+  handle('wa:cloud', async (leadId: number, body) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, true); const id = await wa.cloudSend(l.phone, l.country, body); db.logEvent(leadId, 'whatsapp', 'Sent with the WhatsApp Cloud API'); return id; });
 
   handle('dnc:list', () => db.suppressedList());
   handle('dnc:add', (v: string) => db.suppress(v, 'added by you'));
@@ -324,6 +342,8 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   app.setAppUserModelId('com.nexonictechnologies.quarrix');
+  lockAll();
+  app.on('web-contents-created', (_e, wc) => lockContents(wc));
   const restored = backup.applyPendingRestore();
   db.openDb();
   db.migrateData();

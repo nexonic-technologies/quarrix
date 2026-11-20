@@ -11,10 +11,14 @@ const rid = () => Math.random().toString(36).slice(2, 10);
 
 export function Connections({ s, set, save }: { s: any; set: (p: string, v: unknown) => void; save: () => Promise<void> }) {
   const [api, setApi] = useState<{ token: string; port: number } | null>(null);
+  const [capture, setCapture] = useState('');
+  const [cliInfo, setCliInfo] = useState<any>(null);
+  useEffect(() => { call('cli:info').then(setCliInfo); }, []);
+  useEffect(() => { if (s.api?.on) call<string>('api:captureToken').then(setCapture); }, [s.api?.on]);
   const hooks: any[] = s.webhooks ?? [];
   const setHook = (i: number, k: string, v: unknown) => set('webhooks', hooks.map((h, j) => (j === i ? { ...h, [k]: v } : h)));
   useEffect(() => { if (s.api?.on) call<any>('api:token').then(setApi); }, [s.api?.on]);
-  const bookmarklet = api ? `javascript:(()=>{fetch('http://127.0.0.1:${api.port}/v1/capture',{method:'POST',headers:{'Authorization':'Bearer ${api.token}','Content-Type':'application/json'},body:JSON.stringify({url:location.href,title:document.title})}).then(r=>r.json()).then(j=>alert(j.error||(j.created?'Saved to Quarrix':'Already in Quarrix'))).catch(()=>alert('Quarrix is not open'))})()` : '';
+  const bookmarklet = api ? `javascript:(()=>{fetch('http://127.0.0.1:${api.port}/v1/capture',{method:'POST',headers:{'Authorization':'Bearer ${capture}','Content-Type':'application/json'},body:JSON.stringify({url:location.href,title:document.title})}).then(r=>r.json()).then(j=>alert(j.error||(j.created?'Saved to Quarrix':'Already in Quarrix'))).catch(()=>alert('Quarrix is not open'))})()` : '';
   return (
     <section>
       <h2>Local API, command line and assistants</h2>
@@ -28,8 +32,9 @@ export function Connections({ s, set, save }: { s: any; set: (p: string, v: unkn
         <div className="row" style={{ gap: 6 }}><b>Token</b><code className="grow" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{api.token.slice(0, 6)}••••••••</code>
           <button className="btn small ghost" onClick={() => copy(api.token)}><Copy size={12} /> Copy</button>
           <button className="btn small ghost" onClick={async () => { if (!confirm('Make a new token? Anything using the old one stops working.')) return; setApi({ ...api, token: await call('api:newToken') }); }}><RefreshCw size={12} /> New token</button></div>
-        <div className="small" style={{ marginTop: 6 }}>Command line: <code>node bin/quarrix.mjs leads --grade A</code> from the Quarrix source folder. MCP: add <code>{'{"command":"node","args":["<path>/bin/quarrix-mcp.mjs"]}'}</code> to your assistant's MCP settings. Full list in docs/INTEGRATIONS.md.</div>
-        <div className="small" style={{ marginTop: 6 }}>Save a business website from your browser: copy this bookmarklet into a new bookmark's address. <button className="btn small ghost" onClick={() => copy(bookmarklet)}><Copy size={12} /> Copy bookmarklet</button></div>
+        <div className="small" style={{ marginTop: 6 }}>Command line: <button className="btn small ghost" onClick={async () => { try { const r = await call<any>('cli:install'); toast.push(`Installed ${r.file}. ${r.hint}`); } catch (e: any) { toast.push(e.message, true); } }}>Install the quarrix command</button> then run <code>quarrix leads --grade A</code>. No Node.js needed.</div>
+        {cliInfo && <div className="small" style={{ marginTop: 6 }}>AI assistants (MCP): <button className="btn small ghost" onClick={() => copy(JSON.stringify({ mcpServers: { quarrix: cliInfo.mcpConfig } }, null, 2))}><Copy size={12} /> Copy MCP settings</button> and paste them into your assistant's MCP configuration. Full list in docs/INTEGRATIONS.md.</div>}
+        <div className="small" style={{ marginTop: 6 }}>Save a business website from your browser: copy this bookmarklet into a new bookmark's address. It uses a capture-only token that can save websites and nothing else. <button className="btn small ghost" onClick={() => copy(bookmarklet)}><Copy size={12} /> Copy bookmarklet</button></div>
       </div>}
 
       <h2 style={{ marginTop: 14 }}>Webhooks</h2>

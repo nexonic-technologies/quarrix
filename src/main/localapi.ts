@@ -16,6 +16,16 @@ import { SOURCES } from './sources/catalog';
 let server: Server | null = null;
 export const tokenFile = () => join(app.getPath('userData'), 'api.json');
 
+/** A second token that can only save websites (/v1/capture). It is the one placed in the bookmarklet and extension,
+ *  because a web page could read a bookmarklet's code; the full token never leaves Quarrix. */
+export function captureToken() {
+  let t = load().api?.captureToken;
+  if (!t) { t = randomBytes(18).toString('base64url'); save({ api: { ...load().api, captureToken: t } }); }
+  return t;
+}
+const hits: number[] = [];
+const rateOk = () => { const now = Date.now(); while (hits.length && now - hits[0] > 60000) hits.shift(); hits.push(now); return hits.length <= 30; };
+
 export function ensureToken() {
   let t = load().api?.token;
   if (!t) { t = randomBytes(24).toString('base64url'); save({ api: { ...(load().api ?? {}), token: t } }); }
@@ -31,11 +41,9 @@ const readBody = (req: IncomingMessage) => new Promise<any>((resolve, reject) =>
   req.on('data', (c: Buffer) => { n += c.length; if (n > 1_000_000) { reject(new Error('Body too large')); req.destroy(); } else parts.push(c); });
   req.on('end', () => { try { resolve(parts.length ? JSON.parse(Buffer.concat(parts).toString()) : {}); } catch { reject(new Error('Body must be JSON')); } });
 });
-const authed = (req: IncomingMessage, token: string) => {
-  const got = Buffer.from((req.headers.authorization ?? '').replace(/^Bearer\s+/i, ''));
-  const want = Buffer.from(token);
-  return got.length === want.length && timingSafeEqual(got, want);
-};
+const same = (a: string, b: string) => { const x = Buffer.from(a), y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); };
+const bearer = (req: IncomingMessage) => (req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+const authed = (req: IncomingMessage, token: string) => same(bearer(req), token);
 
 async function route(req: IncomingMessage, res: ServerResponse, token: string) {
   const u = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -46,7 +54,10 @@ async function route(req: IncomingMessage, res: ServerResponse, token: string) {
     return res.end();
   }
   if (path === '/v1/health') return send(res, 200, { ok: true, app: 'Quarrix', version: app.getVersion() });
-  if (!authed(req, token)) return send(res, 401, { error: 'Missing or wrong token. Copy it from Settings → Connections.' }, path === '/v1/capture');
+  if (path === '/v1/capture') {
+    if (!(authed(req, token) || same(bearer(req), captureToken()))) return send(res, 401, { error: 'Wrong capture token. Copy the bookmarklet again from Settings → Connections.' }, true);
+    if (!rateOk()) return send(res, 429, { error: 'Too many captures, wait a minute.' }, true);
+  } else if (!authed(req, token)) return send(res, 401, { error: 'Missing or wrong token. Copy it from Settings → Connections.' });
   const num = (k: string, d: number, max = 1000) => Math.min(max, Math.max(1, Number(u.searchParams.get(k)) || d));
   if (req.method === 'GET' && path === '/v1/leads') return send(res, 200, db.queryLeads({ q: u.searchParams.get('q') ?? undefined, grade: u.searchParams.get('grade') ?? undefined, status: u.searchParams.get('status') ?? undefined, country: u.searchParams.get('country') ?? undefined, sort: u.searchParams.get('sort') ?? 'grade', limit: num('limit', 50), offset: Number(u.searchParams.get('offset')) || 0 }));
   const lm = path.match(/^\/v1\/leads\/(\d+)$/);

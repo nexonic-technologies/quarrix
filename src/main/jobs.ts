@@ -14,7 +14,7 @@ import { diffSnapshot, scoreLead } from './intel';
 import { searchArcgis, searchNpi, searchSocrata, searchWikidata } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
 import { BudgetError, remaining } from './budget';
-import { bboxOf, gridCells, inside, zoomFor, type Geo } from './geo';
+import { bboxOf, gridCells, inside, insideBox, zoomFor, type Geo } from './geo';
 import { searchPlaces } from './sources/places';
 import { resetMaps, searchMaps, stopMaps } from './sources/gmaps';
 import type { Candidate, Progress } from './sources/types';
@@ -140,6 +140,8 @@ async function runSearches() {
   const watchRan = !!(s.watch_id && (db.raw().prepare('SELECT runs FROM watches WHERE id = ?').get(s.watch_id) as { runs: number } | undefined)?.runs);
   const save = (list: Candidate[]) => {
     if (geo) list = list.filter((c) => inside(geo, c));
+    // Typed place: drop results whose map position is clearly outside it (the bounding box plus a 25% margin).
+    else if (where?.bbox?.length === 4) list = list.filter((c) => insideBox(where!.bbox!, c));
     const tx = db.raw().transaction(() => {
       for (const c of list) {
         const country = c.country || where?.country || '';
@@ -316,7 +318,9 @@ export async function runEnrichment(ids?: number[]) {
   if (!ids && !settings.enrich.auto) return;
   const pick = () => (ids
     ? (ids.length ? db.getLead(ids.shift()!) : undefined)
-    : (db.raw().prepare("SELECT * FROM leads WHERE enriched_at IS NULL AND source <> 'reddit' ORDER BY id LIMIT 1").get() as db.Lead | undefined));
+    : (db.raw().prepare(`SELECT * FROM leads WHERE source <> 'reddit' AND (enriched_at IS NULL
+        OR (enrich_tries BETWEEN 1 AND 2 AND audit LIKE '{"error"%' AND enriched_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || (enrich_tries * 6) || ' hours')))
+      ORDER BY enriched_at IS NOT NULL, id LIMIT 1`).get() as db.Lead | undefined));
   while (enriching < 6) {
     const lead = pick();
     if (!lead) break;
@@ -348,7 +352,8 @@ export async function enrichOne(lead: db.Lead) {
   }
   const r = await enrichWebsite(lead.website, lead.country, settings.enrich.pages).catch((e) => ({ ok: false as const, error: String(e.message ?? e) }));
   if (!r.ok) {
-    db.updateLead(lead.id, { audit: JSON.stringify({ error: r.error }) });
+    // Website did not load: try again after 6 and 12 hours before giving up (sites are often down briefly).
+    db.updateLead(lead.id, { audit: JSON.stringify({ error: r.error, tries: (lead.enrich_tries ?? 0) + 1 }), enrich_tries: (lead.enrich_tries ?? 0) + 1 });
     rescore(lead.id);
     return;
   }

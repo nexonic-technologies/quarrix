@@ -9,6 +9,8 @@ import { decryptBackup, encryptBackup } from './backupcrypto';
 
 const dbFile = () => join(app.getPath('userData'), 'quarrix.db');
 const pending = () => join(app.getPath('userData'), 'restore-pending.db');
+const pendingSettings = () => join(app.getPath('userData'), 'restore-pending-settings.json');
+const settingsFile = () => join(app.getPath('userData'), 'settings.json');
 
 export async function makeBackup(dest: string, pass: string) {
   const tmp = join(app.getPath('temp'), `quarrix-backup-${Date.now()}.db`);
@@ -28,7 +30,10 @@ export function prepareRestore(src: string, pass: string) {
   const plain = decryptBackup(readFileSync(src), pass);
   const n = plain.readUInt32BE(0);
   const dbBuf = plain.subarray(4, 4 + n);
+  const settings = plain.subarray(4 + n);
   writeFileSync(pending(), dbBuf);
+  // Settings come back too (keys inside are encrypted with the original computer's keychain; on another computer they must be re-entered).
+  try { JSON.parse(settings.toString('utf8') || '{}'); writeFileSync(pendingSettings(), settings); } catch { rmSync(pendingSettings(), { force: true }); }
   const check = new Database(pending(), { readonly: true });
   try {
     const ok = (check.pragma('integrity_check', { simple: true }) as string) === 'ok';
@@ -36,7 +41,7 @@ export function prepareRestore(src: string, pass: string) {
     if (!ok || !hasLeads) throw new Error('The backup decrypted but its database is damaged. Nothing was changed.');
     const leads = (check.prepare('SELECT COUNT(*) n FROM leads').get() as { n: number }).n;
     return { leads };
-  } catch (e) { check.close(); rmSync(pending(), { force: true }); throw e; }
+  } catch (e) { check.close(); rmSync(pending(), { force: true }); rmSync(pendingSettings(), { force: true }); throw e; }
   finally { if (check.open) check.close(); }
 }
 
@@ -46,5 +51,9 @@ export function applyPendingRestore() {
   if (existsSync(dbFile())) copyFileSync(dbFile(), join(app.getPath('userData'), `quarrix-before-restore-${Date.now()}.db`));
   for (const x of ['-wal', '-shm']) rmSync(dbFile() + x, { force: true });
   renameSync(pending(), dbFile());
+  if (existsSync(pendingSettings())) {
+    if (existsSync(settingsFile())) copyFileSync(settingsFile(), join(app.getPath('userData'), `settings-before-restore-${Date.now()}.json`));
+    renameSync(pendingSettings(), settingsFile());
+  }
   return true;
 }

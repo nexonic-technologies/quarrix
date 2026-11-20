@@ -14,7 +14,7 @@ export type Lead = {
   source: string; source_ref: string; search_id: number | null;
   status: string; score: number | null; audit: string; tags: string; notes: string;
   enriched_at: string | null;
-  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string; relevance: number | null; evidence: number | null; grade: string; reasons: string; details: string; email_checked_at: string | null;
+  contact_name: string; contact_role: string; email_status: string; summary: string; fit: number | null; needs: string; provenance: string; relevance: number | null; evidence: number | null; grade: string; reasons: string; details: string; email_checked_at: string | null; wa_consent: number; enrich_tries: number; client: string;
 };
 
 export const STATUSES = ['new', 'contacted', 'replied', 'interested', 'won', 'lost', 'do_not_contact'] as const;
@@ -78,7 +78,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT']]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -89,7 +89,7 @@ export const raw = () => db;
 
 /* ---------- Leads ---------- */
 
-const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance', 'relevance', 'evidence', 'grade', 'reasons', 'details', 'email_checked_at'];
+const LEAD_COLS = ['name', 'category', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'phone', 'email', 'emails', 'website', 'domain', 'socials', 'rating', 'reviews', 'source', 'source_ref', 'search_id', 'status', 'score', 'audit', 'tags', 'notes', 'enriched_at', 'contact_name', 'contact_role', 'email_status', 'summary', 'fit', 'needs', 'checked_at', 'provenance', 'relevance', 'evidence', 'grade', 'reasons', 'details', 'email_checked_at', 'wa_consent', 'enrich_tries', 'client'];
 
 export function findDuplicate(l: Partial<Lead>): Lead | undefined {
   if (l.source && l.source_ref) {

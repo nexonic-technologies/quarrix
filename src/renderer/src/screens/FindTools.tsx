@@ -14,7 +14,8 @@ function useEscape(onClose: () => void) {
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
 }
 
-export type Geo = { lat: number; lon: number; km: number };
+export type Geo = { lat: number; lon: number; km: number; poly?: [number, number][] };
+const hav = (a: [number, number], b: [number, number]) => { const r = Math.PI / 180, dl = (b[0] - a[0]) * r, dn = (b[1] - a[1]) * r; const h = Math.sin(dl / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dn / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
 const TILES = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const dotIcon = (color = '#7c3aed') => L.divIcon({ className: '', html: `<span style="display:block;width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)"></span>`, iconSize: [12, 12] });
@@ -36,13 +37,19 @@ export function MapPicker({ value, onChange, onClose }: { value: Geo | null; onC
   useEscape(onClose);
   const box = useRef<HTMLDivElement>(null);
   const [g, setG] = useState<Geo | null>(value);
+  const [mode, setMode] = useState<'circle' | 'area'>(value?.poly ? 'area' : 'circle');
+  const [pts, setPts] = useState<[number, number][]>(value?.poly ?? []);
+  const polyLayer = useRef<L.Polygon | null>(null);
+  const modeRef = useRef(mode); modeRef.current = mode;
   const map = useMap(box, value ? [value.lat, value.lon] : [30, 0], value ? 12 : 2);
   const circle = useRef<L.Circle | null>(null);
   const marker = useRef<L.Marker | null>(null);
   useEffect(() => {
     const m = map.current;
     if (!m) return;
-    const click = (e: L.LeafletMouseEvent) => setG((o) => ({ lat: +e.latlng.lat.toFixed(5), lon: +e.latlng.lng.toFixed(5), km: o?.km ?? 3 }));
+    const click = (e: L.LeafletMouseEvent) => modeRef.current === 'area'
+      ? setPts((p) => (p.length < 60 ? [...p, [+e.latlng.lat.toFixed(5), +e.latlng.lng.toFixed(5)]] : p))
+      : setG((o) => ({ lat: +e.latlng.lat.toFixed(5), lon: +e.latlng.lng.toFixed(5), km: o?.km ?? 3 }));
     m.on('click', click);
     return () => { m.off('click', click); };
   }, [map]);
@@ -54,6 +61,18 @@ export function MapPicker({ value, onChange, onClose }: { value: Geo | null; onC
     circle.current = L.circle([g.lat, g.lon], { radius: g.km * 1000, color: '#7c3aed', weight: 2, fillOpacity: 0.08 }).addTo(m);
     marker.current = L.marker([g.lat, g.lon], { icon: dotIcon(), keyboard: false }).addTo(m);
   }, [g, map]);
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    polyLayer.current?.remove();
+    if (mode === 'area' && pts.length) polyLayer.current = L.polygon(pts, { color: '#7c3aed', weight: 2, fillOpacity: 0.08 }).addTo(m);
+    if (mode === 'area') { circle.current?.remove(); marker.current?.remove(); }
+  }, [pts, mode, map]);
+  const areaGeo = (): Geo | null => {
+    if (pts.length < 3) return null;
+    const c: [number, number] = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+    return { lat: +c[0].toFixed(5), lon: +c[1].toFixed(5), km: Math.max(0.5, Math.min(100, +Math.max(...pts.map((p) => hav(c, p))).toFixed(1))), poly: pts };
+  };
   const find = async (q: string) => {
     if (!q.trim()) return;
     try {
@@ -70,15 +89,20 @@ export function MapPicker({ value, onChange, onClose }: { value: Geo | null; onC
         <div style={{ padding: 14, display: 'grid', gap: 10, overflow: 'auto' }}>
           <input className="input" placeholder="Jump to a place, then press Enter" onKeyDown={(e) => e.key === 'Enter' && find((e.target as HTMLInputElement).value)} aria-label="Jump to a place" />
           <div ref={box} className="mapbox" />
-          <label className="row" style={{ gap: 10 }}>
+          <div className="row" style={{ gap: 6 }}>
+            <button className={`btn small ${mode === 'circle' ? 'primary' : 'ghost'}`} aria-pressed={mode === 'circle'} onClick={() => setMode('circle')}>Circle</button>
+            <button className={`btn small ${mode === 'area' ? 'primary' : 'ghost'}`} aria-pressed={mode === 'area'} onClick={() => setMode('area')}>Draw an area</button>
+            {mode === 'area' && <><span className="muted small">Click the map to add corners ({pts.length}).</span><button className="btn small ghost" disabled={!pts.length} onClick={() => setPts((p) => p.slice(0, -1))}>Undo</button><button className="btn small ghost" disabled={!pts.length} onClick={() => setPts([])}>Clear</button></>}
+          </div>
+          {mode === 'circle' && <label className="row" style={{ gap: 10 }}>
             <span className="small">Radius</span>
             <input type="range" min={0.5} max={50} step={0.5} value={g?.km ?? 3} disabled={!g} onChange={(e) => setG((o) => (o ? { ...o, km: +e.target.value } : o))} style={{ flex: 1 }} aria-label="Radius in kilometres" />
             <b style={{ width: 64, textAlign: 'right' }}>{g ? `${g.km} km` : '—'}</b>
-          </label>
+          </label>}
         </div>
         <footer className="row" style={{ justifyContent: 'flex-end' }}>
           {value && <button className="btn ghost" onClick={() => { onChange(null); onClose(); }}>Clear area</button>}
-          <button className="btn primary" disabled={!g} onClick={() => { onChange(g); onClose(); }}>Use this area</button>
+          <button className="btn primary" disabled={mode === 'area' ? pts.length < 3 : !g} onClick={() => { onChange(mode === 'area' ? areaGeo() : g && { lat: g.lat, lon: g.lon, km: g.km }); onClose(); }}>Use this area</button>
         </footer>
       </div>
     </>

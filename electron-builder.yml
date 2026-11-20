@@ -6,9 +6,11 @@ directories:
   buildResources: build
 files:
   - out/**
+  - bin/**
   - package.json
 asarUnpack:
   - node_modules/better-sqlite3/**
+  - bin/**
 publish:
   provider: github
   owner: nexonic-technologies

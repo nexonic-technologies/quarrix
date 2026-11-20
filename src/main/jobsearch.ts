@@ -269,7 +269,9 @@ export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Jo
 export function dedupe(list: Job[]) {
   const seen = new Set<string>();
   return list.filter((j) => {
-    const key = `${j.title}|${j.company}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+    // Same role at the same employer in another city is a different job; only exact repeats are merged.
+    const loc = j.location.toLowerCase().replace(/remote|anywhere|worldwide|[^a-z]/g, '');
+    const key = `${j.title}|${j.company}|${loc}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
     if (!j.title || seen.has(key)) return false;
     seen.add(key);
     return true;

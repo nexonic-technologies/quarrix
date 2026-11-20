@@ -24,7 +24,7 @@ export type Settings = {
     authorizedAt: string; authorizedFrom: string;
     recontactDays: number; bouncePct: number; pausedReason: string; senderTimezone: string;
   };
-  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string };
+  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string; authorizedAt: string };
   signals: { on: boolean; everyDays: number; perRun: number };
   /** Daily request ceilings per source; 0 = no limit. */
   budgets: Record<string, number>;
@@ -40,7 +40,7 @@ export type Settings = {
   crm: { stages: { key: string; label: string; probability: number }[]; currency: string };
   automations: import('./automation').Rule[];
   webhooks: { url: string; events: string[]; secret: string; on: boolean }[];
-  api: { on: boolean; port: number; token: string };
+  api: { on: boolean; port: number; token: string; captureToken: string };
   hubspot: { token: string };
   notion: { token: string; databaseId: string };
   sheets: { spreadsheetId: string; refresh: string; user: string };
@@ -49,7 +49,7 @@ export type Settings = {
   workspace: 'both' | 'business' | 'career';
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'hubspot.token', 'notion.token', 'sheets.refresh'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -63,7 +63,7 @@ export const defaults: Settings = {
     dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
     auth: 'password', oauthClientId: '', oauthClientSecret: '', oauthRefresh: '', oauthUser: '', authorizedAt: '', authorizedFrom: '', recontactDays: 90, bouncePct: 5, pausedReason: '', senderTimezone: '',
   },
-  whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US' },
+  whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US', authorizedAt: '' },
   signals: { on: true, everyDays: 7, perRun: 30 },
   budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0, hunter: 25, zerobounce: 50 },
   openFeeds: [],
@@ -76,7 +76,7 @@ export const defaults: Settings = {
   crm: { stages: [], currency: 'USD' },
   automations: [],
   webhooks: [],
-  api: { on: false, port: 47811, token: '' },
+  api: { on: false, port: 47811, token: '', captureToken: '' },
   hubspot: { token: '' },
   notion: { token: '', databaseId: '' },
   sheets: { spreadsheetId: '', refresh: '', user: '' },
@@ -152,6 +152,7 @@ export function saveFromUi(patch: Record<string, any>) {
   }
   // Fields only the main process may change: sending approval, the safety pause and the OAuth session.
   if (p.email) for (const k of ['authorizedAt', 'authorizedFrom', 'pausedReason', 'oauthRefresh', 'oauthUser', 'auth']) delete p.email[k];
+  if (p.whatsapp) delete p.whatsapp.authorizedAt;
   save(p);
   return publicSettings();
 }

@@ -113,6 +113,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'whatsapp' && <section>
+            <div className="note">{s.whatsapp.authorizedAt ? <>WhatsApp Cloud API sending is approved. <button className="btn small ghost" onClick={async () => { await call('wa:authorize', false); setS(await call('settings:get')); }}>Turn off</button></> : <>WhatsApp Cloud API messages only go out after you approve sending here, and only to leads marked as having agreed to WhatsApp messages. <button className="btn small primary" onClick={async () => { await call('wa:authorize', true); setS(await call('settings:get')); }}>Approve WhatsApp sending</button></>}</div>
             <label className="field"><span>How to send</span>
               <select className="select" value={s.whatsapp.mode} onChange={(e) => set('whatsapp.mode', e.target.value)}>
                 <option value="assisted">Open WhatsApp with the message ready (you press Send)</option>

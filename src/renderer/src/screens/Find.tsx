@@ -68,7 +68,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
     if (!ready()) return;
     const where = whereText();
     const id = geo
-      ? await call<number>('search:geo', category, `within ${geo.km} km of ${where || `${geo.lat}, ${geo.lon}`}`, geo, sources)
+      ? await call<number>('search:geo', category, geo.poly ? `drawn area near ${where || `${geo.lat}, ${geo.lon}`}` : `within ${geo.km} km of ${where || `${geo.lat}, ${geo.lon}`}`, geo, sources)
       : await call<number>('search:start', category, where, sources);
     const list = await call<Search[]>('search:list');
     setSearches(list);
@@ -114,7 +114,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>
         <div className="finder-foot">
-          <span className="chip" role="button" tabIndex={0} aria-pressed={!!geo} onClick={() => setTool('map')} onKeyDown={(e) => e.key === 'Enter' && setTool('map')} title="Search a radius on the map"><Crosshair size={13} /> {geo ? `${geo.km} km area` : 'Map area'}</span>
+          <span className="chip" role="button" tabIndex={0} aria-pressed={!!geo} onClick={() => setTool('map')} onKeyDown={(e) => e.key === 'Enter' && setTool('map')} title="Search a radius on the map"><Crosshair size={13} /> {geo ? (geo.poly ? 'Drawn area' : `${geo.km} km area`) : 'Map area'}</span>
           <span className="chip" role="button" tabIndex={0} onClick={() => ready() && setTool('preview')} onKeyDown={(e) => e.key === 'Enter' && ready() && setTool('preview')} title="See a few real results and an estimate first"><Eye size={13} /> Preview</span>
           <span className="chip" role="button" tabIndex={0} onClick={() => setTool('batch')} onKeyDown={(e) => e.key === 'Enter' && setTool('batch')} title="Many business types in many places"><Layers size={13} /> Batch</span>
           <span className="muted small" style={{ marginLeft: 6 }}>Sources</span>
