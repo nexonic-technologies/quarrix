@@ -33,10 +33,9 @@ async function tokenRequest(p: OAuthProvider, body: Record<string, string>) {
   return j as { access_token: string; refresh_token?: string; expires_in: number; id_token?: string };
 }
 
-/** Opens the browser, waits for the user to approve, saves the refresh token. Returns the signed-in address. */
-export async function connect(p: OAuthProvider): Promise<string> {
-  const e = load().email;
-  if (!e.oauthClientId) throw new Error('Paste your OAuth client ID first (see the steps under the button).');
+/** Browser sign-in with PKCE through a one-time local page; returns the tokens. */
+export async function authorize(p: OAuthProvider, scope: string, clientId: string, clientSecret = '') {
+  const e = { oauthClientId: clientId, oauthClientSecret: clientSecret };
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash('sha256').update(verifier).digest());
   const state = b64url(randomBytes(16));
@@ -53,11 +52,22 @@ export async function connect(p: OAuthProvider): Promise<string> {
     const timer = setTimeout(() => { server.close(); reject(new Error('Sign-in timed out after 5 minutes.')); }, 5 * 60000);
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as any).port;
-      const q = new URLSearchParams({ client_id: e.oauthClientId, redirect_uri: `http://127.0.0.1:${port}/callback`, response_type: 'code', scope: PROVIDERS[p].scope, state, code_challenge: challenge, code_challenge_method: 'S256', ...(p === 'google' ? { access_type: 'offline', prompt: 'consent' } : { prompt: 'select_account' }) });
+      const q = new URLSearchParams({ client_id: e.oauthClientId, redirect_uri: `http://127.0.0.1:${port}/callback`, response_type: 'code', scope, state, code_challenge: challenge, code_challenge_method: 'S256', ...(p === 'google' ? { access_type: 'offline', prompt: 'consent' } : { prompt: 'select_account' }) });
       void shell.openExternal(`${PROVIDERS[p].auth}?${q}`);
     });
   });
-  const t = await tokenRequest(p, { grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: e.oauthClientId, code_verifier: verifier, ...(e.oauthClientSecret ? { client_secret: e.oauthClientSecret } : {}) });
+  return tokenRequest(p, { grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: e.oauthClientId, code_verifier: verifier, ...(e.oauthClientSecret ? { client_secret: e.oauthClientSecret } : {}) });
+}
+
+/** Refresh any stored token (used by Google Sheets). */
+export const refresh = (p: OAuthProvider, refreshToken: string, scope: string, clientId: string, clientSecret = '') =>
+  tokenRequest(p, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, scope, ...(clientSecret ? { client_secret: clientSecret } : {}) });
+
+/** Opens the browser, waits for the user to approve, saves the refresh token. Returns the signed-in address. */
+export async function connect(p: OAuthProvider): Promise<string> {
+  const e = load().email;
+  if (!e.oauthClientId) throw new Error('Paste your OAuth client ID first (see the steps under the button).');
+  const t = await authorize(p, PROVIDERS[p].scope, e.oauthClientId, e.oauthClientSecret);
   if (!t.refresh_token) throw new Error('The provider did not return a long-lived token. Remove Quarrix from your account\'s connected apps and try again.');
   const user = emailFromIdToken(t.id_token) || e.fromEmail;
   access = { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 };

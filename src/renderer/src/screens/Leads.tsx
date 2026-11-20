@@ -59,6 +59,10 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       const r = await call<{ checked: number; verified: number; invalid: number; errors: string[] }>('email:verify', ids);
       toast.push(`${r.checked} checked: ${r.verified} confirmed, ${r.invalid} not deliverable${r.errors.length ? `. ${r.errors[0]}` : ''}`, r.errors.length > 0 && !r.checked);
     }
+    if (what.startsWith('sync:')) {
+      try { const r = await call<{ sent: number; updated: number; skipped: number; errors: string[] }>(what, ids); toast.push(`${r.sent} sent${r.updated ? `, ${r.updated} updated` : ''}${r.skipped ? `, ${r.skipped} skipped (do not contact)` : ''}${r.errors.length ? `. ${r.errors[0]}` : ''}`, r.errors.length > 0 && !r.sent); }
+      catch (e: any) { toast.push(e.message, true); }
+    }
     if (what === 'enrich') { await call('leads:enrich', ids); toast.push('Checking websites for emails and social links'); }
     if (what === 'delete') { if (!confirm(`Delete ${ids.length} leads? This cannot be undone.`)) return; await call('leads:delete', ids); toast.push('Deleted'); }
     if (what.startsWith('status:')) { for (const id of ids) await call('leads:update', id, { status: what.slice(7) }); toast.push('Status changed'); }
@@ -149,6 +153,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <button className="btn small" onClick={() => bulk('verify')} title="Syntax and mail server for free; mailbox check if you added a verifier key">Check emails</button>
           <button className="btn small" onClick={() => bulk('proof')}>Make reports</button>
           <button className="btn small" onClick={() => bulk('export:xlsx')}>Export</button>
+          <select className="select" value="" onChange={(e) => e.target.value && bulk(e.target.value)} aria-label="Send to another tool"><option value="">Send to…</option><option value="sync:hubspot">HubSpot</option><option value="sync:notion">Notion</option><option value="sync:sheets">Google Sheets</option></select>
           <select className="btn small" value="" onChange={(e) => e.target.value && bulk('status:' + e.target.value)} aria-label="Set status">
             <option value="">Set status</option>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>

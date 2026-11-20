@@ -156,7 +156,7 @@ async function runSearches() {
         });
         found++;
         if (created) {
-          added++; log(s.id, `+ ${c.name}`); rescore(id);
+          added++; log(s.id, `+ ${c.name}`); rescore(id); db.emit(id, 'lead_created', `${c.name} from ${c.source}`);
           // A watch that has run before: anything new on the map is a new business, often just opened.
           if (watchRan) {
             const fresh = (c.reviews ?? 0) <= 5;
@@ -225,7 +225,7 @@ async function runSearches() {
       errors.push(String(e.message ?? e));
     }
   }
-  if (cancelSearch !== s.id) db.updateSearch(s.id, { status: errors.length && !found ? 'failed' : 'done', error: errors.join(' · '), finished_at: db.now() });
+  if (cancelSearch !== s.id) { db.updateSearch(s.id, { status: errors.length && !found ? 'failed' : 'done', error: errors.join(' · '), finished_at: db.now() }); db.emit(null, 'search_done', `${s.category} in ${s.place}: ${added} new`); }
   if (s.watch_id && cancelSearch !== s.id) db.raw().prepare('UPDATE watches SET runs = runs + 1 WHERE id = ?').run(s.watch_id);
   running = false;
   notify('searches');
@@ -397,6 +397,7 @@ export async function enrichOne(lead: db.Lead) {
   });
   snapshotAndDiff(lead.id);
   rescore(lead.id);
+  db.emit(lead.id, 'lead_enriched', r.website);
 }
 
 /** Recompute relevance, evidence and grade from the user's ideal customer profile. */

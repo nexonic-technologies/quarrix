@@ -79,21 +79,21 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-073 | Campaign attention center | P1 | Built | db.attention; Outreach → Needs attention | typecheck |
 | QF-074 | Cross-campaign contact exclusion rules | P1 | Built | mail.contactedRecently (same email or domain, any campaign) | typecheck |
 | QF-075 | Optional transactional email provider adapter | P3 | To do |  |  |
-| QF-076 | No-code automation builder | P2 | To do |  |  |
-| QF-077 | Workflow templates | P2 | To do |  |  |
-| QF-078 | Conditional routing | P2 | To do |  |  |
+| QF-076 | No-code automation builder | P2 | Built | automation.ts rules (trigger → conditions → actions); Settings → Automations editor | test/integrations.test.ts (conditions) |
+| QF-077 | Workflow templates | P2 | Done | automation.TEMPLATES (5, off by default) | test/integrations.test.ts |
+| QF-078 | Conditional routing | P2 | Done | automation.matches (eq, neq, in, contains, gte, lte, empty, notempty) | test/integrations.test.ts |
 | QF-079 | Formula and computed-field engine | P3 | To do |  |  |
-| QF-080 | Normalized source plugin SDK | P2 | To do |  |  |
-| QF-081 | Local REST API (opt-in) | P2 | To do |  |  |
-| QF-082 | Command-line interface | P2 | To do |  |  |
-| QF-083 | Optional MCP server | P3 | To do |  |  |
-| QF-084 | Generic webhook actions | P2 | To do |  |  |
-| QF-085 | HubSpot adapter | P3 | To do |  |  |
-| QF-086 | Google Sheets connector | P3 | To do |  |  |
-| QF-087 | Notion connector | P3 | To do |  |  |
-| QF-088 | n8n/Zapier adapters | P3 | To do |  |  |
+| QF-080 | Normalized source plugin SDK | P2 | Partial | Declarative Socrata/ArcGIS feeds only; no code plugins (avoids running third-party code) | — |
+| QF-081 | Local REST API (opt-in) | P2 | Built | localapi.ts (127.0.0.1, bearer token, host check); docs/INTEGRATIONS.md | typecheck; needs live run |
+| QF-082 | Command-line interface | P2 | Done | bin/quarrix.mjs | test/integrations.test.ts (help, no-app error) |
+| QF-083 | Optional MCP server | P3 | Done | bin/quarrix-mcp.mjs (stdio JSON-RPC, read tools, confirm-gated search) | test/integrations.test.ts (protocol) |
+| QF-084 | Generic webhook actions | P2 | Done | automation.deliver: HMAC-SHA256 signature, 3 retries, delivery log | test/integrations.test.ts (signature) |
+| QF-085 | HubSpot adapter | P3 | Built | integrations.toHubspot (companies by domain, contacts by email, association) | typecheck; needs a HubSpot token |
+| QF-086 | Google Sheets connector | P3 | Built | integrations.toSheets (own Google OAuth client, append rows) | typecheck; needs an OAuth client |
+| QF-087 | Notion connector | P3 | Built | integrations.toNotion (property matching by name and type) | typecheck; needs a Notion token |
+| QF-088 | n8n/Zapier adapters | P3 | Built | Signed webhooks + setup notes for Zapier, Make and n8n (docs/INTEGRATIONS.md) | typecheck |
 | QF-089 | Structured export adapters | P3 | To do |  |  |
-| QF-090 | Approved-source browser extension | P3 | To do |  |  |
+| QF-090 | Approved-source browser extension | P3 | Partial | Capture bookmarklet → /v1/capture (with Private Network Access headers); not a store-listed extension | typecheck |
 | QF-091 | Greenhouse company jobs connector | P1 | Done | ats.ts employerJobs (Greenhouse board API) | test/jobs.test.ts (recorded shape) |
 | QF-092 | Lever jobs connector | P1 | Done | ats.ts (Lever postings API, US and EU) | test/jobs.test.ts (recorded shape) |
 | QF-093 | Ashby jobs connector | P1 | Built | ats.ts (Ashby posting API) | typecheck; needs live run |

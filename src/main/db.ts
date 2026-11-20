@@ -357,7 +357,16 @@ export function isSuppressed(email: string, domain = '') {
   const d = (domain || e.split('@')[1] || '').toLowerCase();
   return !!db.prepare('SELECT 1 FROM suppress WHERE value IN (?, ?)').get(e, d);
 }
-export const logEvent = (leadId: number | null, type: string, detail = '') => db.prepare('INSERT INTO events (lead_id, at, type, detail) VALUES (?, ?, ?, ?)').run(leadId, now(), type, detail.slice(0, 2000));
+let eventHook: (leadId: number | null, type: string, detail: string) => void = () => undefined;
+/** Automations and webhooks listen here (phase 7). Errors in listeners never break the caller. */
+export const onEvent = (fn: typeof eventHook) => { eventHook = fn; };
+/** Tell automations about something without adding it to the activity log. */
+export const emit = (leadId: number | null, type: string, detail = '') => { try { eventHook(leadId, type, detail); } catch { /* listener error */ } };
+export const logEvent = (leadId: number | null, type: string, detail = '') => {
+  const r = db.prepare('INSERT INTO events (lead_id, at, type, detail) VALUES (?, ?, ?, ?)').run(leadId, now(), type, detail.slice(0, 2000));
+  try { eventHook(leadId, type, detail); } catch { /* listener error */ }
+  return r;
+};
 export const eventsFor = (leadId: number) => db.prepare('SELECT * FROM events WHERE lead_id = ? ORDER BY id DESC LIMIT 100').all(leadId);
 export const recentEvents = (limit = 100) => db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit);
 

@@ -8,6 +8,9 @@ import { hunterDomain, verifyLeads } from './verify';
 import * as oauth from './oauth';
 import * as crm from './crm';
 import * as jobstore from './jobstore';
+import * as automation from './automation';
+import * as localapi from './localapi';
+import * as integrations from './integrations';
 import * as backup from './backup';
 import { checkDomain, dryRunPlan } from './deliverability';
 import { onMapsLoad } from './sources/gmaps';
@@ -155,6 +158,16 @@ function registerIpc() {
     return backup.prepareRestore(r.filePaths[0], String(pass ?? ''));
   });
   handle('app:restart', () => { app.relaunch(); app.exit(0); });
+  handle('auto:templates', () => ({ templates: automation.TEMPLATES, triggers: automation.TRIGGERS, fields: automation.FIELDS }));
+  handle('auto:runs', () => automation.recentRuns());
+  handle('hooks:test', (url: string) => automation.deliver('test', { message: 'Hello from Quarrix' }, String(url)));
+  handle('api:apply', () => localapi.start());
+  handle('api:token', () => ({ token: localapi.ensureToken(), port: load().api.port }));
+  handle('api:newToken', () => { save({ api: { ...load().api, token: '' } }); const t = localapi.ensureToken(); localapi.start(); return t; });
+  handle('sync:hubspot', (ids: number[]) => integrations.toHubspot((ids ?? []).map(Number)));
+  handle('sync:notion', (ids: number[]) => integrations.toNotion((ids ?? []).map(Number)));
+  handle('sync:sheets', (ids: number[]) => integrations.toSheets((ids ?? []).map(Number)));
+  handle('sheets:connect', () => integrations.connectSheets());
   handle('icp:rescore', () => jobs.rescoreAll());
   handle('leads:intel', (id: number) => {
     const l = db.getLead(Number(id));
@@ -303,6 +316,10 @@ app.whenReady().then(() => {
   db.migrateData();
   crm.migrate();
   jobstore.migrate();
+  automation.migrate();
+  automation.setDrafter((ids) => createDrafts(ids));
+  db.onEvent((leadId, type, detail) => void automation.handle(leadId, type, detail).catch(() => undefined));
+  localapi.start();
   if (restored) setTimeout(() => send('toast', 'Backup restored. Your previous data was kept as a safety copy in the app folder.'), 3000);
   registerIpc();
   createWindow();

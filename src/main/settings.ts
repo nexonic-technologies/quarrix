@@ -38,9 +38,15 @@ export type Settings = {
   freshDays: number;
   jobs: { hideCompanies: string[]; preferCompanies: string[]; hideRecruiters: boolean };
   crm: { stages: { key: string; label: string; probability: number }[]; currency: string };
+  automations: import('./automation').Rule[];
+  webhooks: { url: string; events: string[]; secret: string; on: boolean }[];
+  api: { on: boolean; port: number; token: string };
+  hubspot: { token: string };
+  notion: { token: string; databaseId: string };
+  sheets: { spreadsheetId: string; refresh: string; user: string };
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'hubspot.token', 'notion.token', 'sheets.refresh'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -65,6 +71,12 @@ export const defaults: Settings = {
   freshDays: 90,
   jobs: { hideCompanies: [], preferCompanies: [], hideRecruiters: false },
   crm: { stages: [], currency: 'USD' },
+  automations: [],
+  webhooks: [],
+  api: { on: false, port: 47811, token: '' },
+  hubspot: { token: '' },
+  notion: { token: '', databaseId: '' },
+  sheets: { spreadsheetId: '', refresh: '', user: '' },
 };
 
 const file = () => join(app.getPath('userData'), 'settings.json');
