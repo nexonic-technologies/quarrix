@@ -130,3 +130,16 @@ export async function saveDocx(path: string, text: string) {
   const doc = new Document({ styles: { default: { document: { run: { font: 'Calibri', size: 22 } } } }, sections: [{ children: paras }] });
   writeFileSync(path, await Packer.toBuffer(doc));
 }
+
+/** Everything the job page says, for the job detail panel. */
+export async function jobDetail(job: Job) {
+  const text = await jobText(job);
+  const pick = (re: RegExp) => (text.match(re) ?? [])[1]?.trim() ?? '';
+  return {
+    text,
+    seniority: pick(/Seniority level\s*([A-Za-z -]{3,30}?)(?=\s{1,}Employment type|$)/i),
+    employment: pick(/Employment type\s*([A-Za-z -]{3,30}?)(?=\s{1,}Job function|$)/i),
+    func: pick(/Job function\s*([A-Za-z ,&-]{3,60}?)(?=\s{1,}Industries|$)/i),
+    industries: pick(/Industries\s*([A-Za-z ,&-]{3,80})/i),
+  };
+}

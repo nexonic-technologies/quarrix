@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
+import { NEXONIC, NEXONIC_LOGO } from '../brand';
+import { Logo } from '../Art';
+import { Mail, Globe, ExternalLink } from 'lucide-react';
 
 const SECTIONS = [['profile', 'You and your offer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
 
@@ -33,7 +36,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
       <div className="page-head"><div className="grow"><p>Everything is stored on this computer. Passwords and keys are encrypted with your system keychain.</p></div><button className="btn primary" onClick={save}>Save settings</button></div>
       <div className="settings">
         <nav>{SECTIONS.map(([k, v]) => <button key={k} aria-current={sec === k} onClick={() => setSec(k)}>{v}</button>)}</nav>
-        <div className="panel panel-pad">
+        <div className="settings-body">
           {sec === 'profile' && <section>
             <div className="grid2">{T('profile.name', 'Your name')}{T('profile.title', 'Your title')}{T('profile.company', 'Company')}{T('profile.website', 'Website')}{T('profile.phone', 'Phone or WhatsApp')}{T('profile.language', 'Email language')}</div>
             {T('profile.address', 'Postal address', 'Shown under every email. US and Canadian law require a real postal address in sales emails.')}
@@ -47,7 +50,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
                 <ul><li>Emails from clean templates</li><li>Owner names from simple page patterns</li><li>PDF import picks out emails and phones</li></ul></div>
               <div className="ai-col mid"><b>Free model</b><small>OpenRouter free models, Groq, or Ollama on this computer</small>
                 <ul><li>A personal email for every business, using its website, rating and gaps</li><li>Reads each website to find the owner and write a 2-line summary</li><li>Reads whole business lists from PDFs</li><li>Slower; free models have daily limits</li></ul></div>
-              <div className="ai-col top"><b>Paid key</b><small>Anthropic, OpenAI or Gemini</small>
+              <div className="ai-col paid"><b>Paid key</b><small>Anthropic, OpenAI or Gemini</small>
                 <ul><li>Everything in Free, with better writing and fewer rewrites</li><li>More accurate owner names and summaries</li><li>Fast enough for autopilot at full volume</li><li>Costs about 1 cent or less per lead</li></ul></div>
             </div>
             <p className="muted small">The model never finds the businesses. Searching uses the maps, web and directories either way. It changes how well Quarrix understands each business and how personal the emails are, and that is what gets replies.</p>
@@ -132,7 +135,27 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'app' && <section>
-            <p className="muted">Quarrix {info?.version}. Your data is in {info?.dataPath}.</p>
+            <div className="about-hero">
+              <img src={NEXONIC_LOGO} alt="Nexonic Technologies" />
+              <div className="grow"><h2>{NEXONIC.name}</h2><p className="muted">{NEXONIC.tagline}</p></div>
+            </div>
+            <p className="about-text">{NEXONIC.about}</p>
+            <div className="grid2">
+              <div className="about-card"><b>What we do</b><ul>{NEXONIC.services.map((x) => <li key={x}>{x}</li>)}</ul></div>
+              <div className="about-card"><b>Contact</b>
+                <a href={`mailto:${NEXONIC.email}`}><Mail size={14} /> {NEXONIC.email}</a>
+                <a href={NEXONIC.website} target="_blank" rel="noreferrer"><Globe size={14} /> nexonictechnologies.com</a>
+                <div className="about-links">{NEXONIC.links.slice(1).map(([k, v]) => <a key={k} className="btn small" href={v} target="_blank" rel="noreferrer">{k}</a>)}</div>
+              </div>
+            </div>
+            <div className="about-card"><b>Our open-source apps</b>
+              <div className="about-apps">{NEXONIC.apps.map(([n, d, u]) => <a key={n} href={u} target="_blank" rel="noreferrer"><span>{n}</span>{d && <small>{d}</small>}<ExternalLink size={12} /></a>)}</div>
+            </div>
+            <div className="about-app">
+              <Logo size={34} />
+              <div className="grow"><b>Quarrix {info?.version}</b><span className="muted small">Free and open source (MIT). Your data stays on this computer: {info?.dataPath}</span></div>
+              <a className="btn small" href="https://github.com/nexonic-technologies/quarrix/issues" target="_blank" rel="noreferrer">Report a problem</a>
+            </div>
           </section>}
         </div>
       </div>

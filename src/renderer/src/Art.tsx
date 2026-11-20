@@ -133,3 +133,29 @@ export function EmptyArt({ size = 132 }: { size?: number }) {
     </svg>
   );
 }
+
+/* Hero art for the search banners: a radar around the Nexonic mark, with leads or jobs orbiting and popping in. */
+import { Building2 as IBuilding, Mail as IMail, MapPin as IPin, Globe as IGlobe, Briefcase as IBag, FileText as IDoc, BadgeCheck as ICheck, Star as IStar } from 'lucide-react';
+import { NEXONIC_LOGO } from './brand';
+export function HeroArt({ kind = 'leads' }: { kind?: 'leads' | 'jobs' }) {
+  const icons = kind === 'leads' ? [IBuilding, IMail, IPin, IGlobe] : [IBag, IDoc, ICheck, IStar];
+  return (
+    <div className={`hero-art ${kind}`} aria-hidden>
+      <div className="ring r1" /><div className="ring r2" /><div className="ring r3" />
+      <div className="sweep" />
+      <div className="core"><img src={NEXONIC_LOGO} alt="" /></div>
+      {icons.map((I, i) => <span key={i} className={`orbit ob${i}`}><span className="bubble"><I size={15} /></span></span>)}
+      {Array.from({ length: 6 }, (_, i) => <i key={i} className="blip" style={{ ['--i' as string]: i }} />)}
+    </div>
+  );
+}
+
+/** Animated banner background with a soft light that follows the mouse. */
+export function HeroBg() {
+  return <div className="hero-bg" aria-hidden><i /><i /><i /><b className="spot" /></div>;
+}
+export const spotlight = (e: React.MouseEvent<HTMLElement>) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`);
+  e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
+};

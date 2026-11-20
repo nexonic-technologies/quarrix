@@ -76,6 +76,7 @@ function registerIpc() {
     return r.canceled || !r.filePaths[0] ? null : cv.loadCv(r.filePaths[0]);
   });
   handle('cv:profile', (p) => cv.saveProfile(p));
+  handle('jobs:detail', (job) => cv.jobDetail(job));
   handle('jobs:letter', (job) => cv.coverLetter(job));
   handle('jobs:tailor', (job) => cv.tailorCv(job));
   handle('jobs:saveDoc', async (text: string, name: string) => {

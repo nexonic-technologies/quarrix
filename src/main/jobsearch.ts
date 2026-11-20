@@ -65,7 +65,9 @@ const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
       type: typeOf(x.job_type ?? ''), level: levelOf(x.title), salary: x.salary ?? '', url: x.url, posted: iso(x.publication_date), tags: x.tags ?? [], snippet: strip(x.description).slice(0, 400) }));
   },
   async remoteok(q) {
-    const j = await getJson('https://remoteok.com/api');
+    const r = await fetchText('https://remoteok.com/api', { ua: UA, timeout: 25000, headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = JSON.parse(r.text);
     const kw = q.keywords.toLowerCase().split(/\s+/).filter(Boolean);
     return (j as any[]).filter((x) => x.position && kw.every((k) => `${x.position} ${(x.tags ?? []).join(' ')} ${x.company}`.toLowerCase().includes(k)))
       .map((x): Job => ({ id: `remoteok:${x.id}`, source: 'RemoteOK', title: x.position, company: x.company, location: x.location || 'Worldwide', workplace: 'remote', type: 'Full-time', level: levelOf(x.position),
@@ -105,11 +107,18 @@ const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
     return out;
   },
   async reddit(q) {
-    const j = await getJson(`https://www.reddit.com/r/forhire+hiring+jobbit+remotejs+RemoteJobs+freelance_forhire/search.json?q=${encodeURIComponent(`${q.keywords} hiring`)}&restrict_sr=1&sort=new&t=month&limit=100`);
-    return (j.data?.children ?? []).map((c: any) => c.data).filter((p: any) => !/for hire/i.test(p.title)).map((p: any): Job => ({
-      id: `reddit:${p.id}`, source: 'Reddit', title: p.title, company: `u/${p.author}`, location: /remote/i.test(p.title + p.selftext) ? 'Remote' : '', workplace: /remote/i.test(p.title + p.selftext) ? 'remote' : '',
-      type: typeOf(p.title), level: levelOf(p.title), salary: (String(p.title + ' ' + p.selftext).match(/\$\s?\d[\d,.]*k?(?:\s?[-–]\s?\$?\d[\d,.]*k?)?(?:\s?\/\s?(?:hr|hour|year|yr|month))?/i) ?? [''])[0],
-      url: `https://www.reddit.com${p.permalink}`, posted: iso(p.created_utc), tags: [], snippet: String(p.selftext ?? '').slice(0, 400) }));
+    // The RSS feed works without an account, unlike the JSON API.
+    const r = await fetchText(`https://www.reddit.com/r/forhire+hiring+jobbit+remotejs+RemoteJobs+freelance_forhire/search.rss?q=${encodeURIComponent(`${q.keywords} hiring`)}&restrict_sr=1&sort=new&t=month&limit=100`, { ua: UA, timeout: 20000 });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const $ = cheerio.load(r.text, { xmlMode: true });
+    return $('entry').map((_, e) => {
+      const title = $(e).find('title').text().trim();
+      const body = strip($(e).find('content').text());
+      const remote = /remote/i.test(title + body);
+      return { id: `reddit:${$(e).find('id').text()}`, source: 'Reddit', title, company: $(e).find('author name').text().replace(/^\/u\//, 'u/'), location: remote ? 'Remote' : '', workplace: remote ? 'remote' : '',
+        type: typeOf(title), level: levelOf(title), salary: ((title + ' ' + body).match(/\$\s?\d[\d,.]*k?(?:\s?[-–]\s?\$?\d[\d,.]*k?)?(?:\s?\/\s?(?:hr|hour|year|yr|month))?/i) ?? [''])[0],
+        url: $(e).find('link').attr('href') ?? '', posted: iso($(e).find('updated').text()), tags: [], snippet: body.slice(0, 400) } as Job;
+    }).get().filter((j) => j.title && !/for hire/i.test(j.title));
   },
 };
 
@@ -120,21 +129,21 @@ const inBrowser = <T>(fn: () => Promise<T>) => { const run = browserBusy.then(fn
 
 Object.assign(SOURCES, {
   google: (q: JobQuery) => inBrowser(async () => {
-    const where = [q.city, q.countryName].filter(Boolean).join(' ');
-    const html = await pageHtml(`https://www.google.com/search?q=${encodeURIComponent(`${q.keywords} jobs ${where}`.trim())}&ibp=htl;jobs&hl=en`, 'body', 2500);
+    const what = `${q.keywords} jobs ${[q.city, q.countryName].filter(Boolean).join(' ')}`.trim();
+    const html = await pageHtml(`https://www.google.com/search?q=${encodeURIComponent(what)}&udm=8&hl=en`, '.tNxQIb', 2000);
     const $ = cheerio.load(html);
     const out: Job[] = [];
-    $('[role="treeitem"], li[data-ved], div[data-share-url]').each((_, el) => {
+    $('[data-preview-id], [jscontroller="qodLAe"]').each((_, el) => {
       const c = $(el);
-      const title = c.find('[role="heading"], .BjJfJf, .tNxQIb').first().text().trim();
-      if (!title || title.length > 160) return;
-      const lines = c.find('div').map((_, d) => $(d).children().length ? '' : $(d).text().trim()).get().filter(Boolean);
-      const via = lines.find((l) => /^via /i.test(l)) ?? '';
-      const company = c.find('.vNEEBe, .nJlQNd').first().text().trim() || lines[1] || '';
-      const location = c.find('.Qk80Jf').first().text().trim() || lines[2] || '';
-      const link = c.attr('data-share-url') || c.find('a[href^="http"]').attr('href') || `https://www.google.com/search?q=${encodeURIComponent(`${title} ${company} job`)}&ibp=htl;jobs`;
-      out.push({ id: `google:${title}|${company}`, source: `Google Jobs${via ? ` (${via.replace(/^via /i, '')})` : ''}`, title, company, location, workplace: /remote|work from home/i.test(c.text()) ? 'remote' : '',
-        type: typeOf(c.text()), level: levelOf(title), salary: (c.text().match(/[$£€₹]\s?\d[\d,.]*k?(?:\s?[-–]\s?[$£€₹]?\d[\d,.]*k?)?(?:\s?(?:a|per)\s(?:year|hour|month))?/i) ?? [''])[0], url: link, posted: '', tags: [], snippet: '' });
+      const title = c.find('.tNxQIb').first().text().trim();
+      if (!title) return;
+      const company = c.find('.a3jPc').first().text().trim();
+      const [location, via] = c.find('.FqK3wc').first().text().trim().split(/\s*•\s*/);
+      const text = c.text();
+      out.push({ id: `google:${title}|${company}`, source: `Google Jobs${via ? ` (${via.replace(/^via\s+/i, '')})` : ''}`, title, company, location: location ?? '',
+        workplace: /remote|work from home/i.test(text) ? 'remote' : /hybrid/i.test(text) ? 'hybrid' : '', type: typeOf(text), level: levelOf(title),
+        salary: (text.match(/[$£€₹]\s?\d[\d,.]*K?(?:\s?[-–]\s?[$£€₹]?\d[\d,.]*K?)?(?:\s?(?:a|per)\s(?:year|hour|month))?/i) ?? [''])[0],
+        url: `https://www.google.com/search?q=${encodeURIComponent(`${title} ${company}`)}&udm=8&hl=en`, posted: '', tags: [], snippet: '' });
     });
     if (!out.length) throw new Error('no results were readable');
     return out;
@@ -161,18 +170,25 @@ Object.assign(SOURCES, {
     return out;
   }),
   rozee: (q: JobQuery) => inBrowser(async () => {
-    const $ = cheerio.load(await pageHtml(`https://www.rozee.pk/job/jsearch/q/${encodeURIComponent(q.keywords)}${q.city ? `/fc/${encodeURIComponent(q.city)}` : ''}`, 'body', 2500));
     const out: Job[] = [];
-    $('.job, .jlist .row, [class*="job-listing"]').each((_, el) => {
-      const c = $(el);
-      const a = c.find('h3 a, .jobt a, a[href*="/job/"]').first();
-      const title = a.text().trim();
-      if (!title) return;
-      const href = a.attr('href') ?? '';
-      out.push({ id: `rozee:${href || title}`, source: 'Rozee.pk', title, company: c.find('.cname a, .cname, bdi').first().text().trim(), location: c.find('.city, .loc, .float-left a').first().text().trim() || 'Pakistan',
-        workplace: /remote|work from home/i.test(c.text()) ? 'remote' : '', type: typeOf(c.text()), level: levelOf(title), salary: (c.text().match(/(?:PKR|Rs\.?)\s?[\d,]+(?:\s?-\s?[\d,]+)?/i) ?? [''])[0],
-        url: href.startsWith('http') ? href : `https://www.rozee.pk${href.startsWith('/') ? '' : '/'}${href}`, posted: '', tags: [], snippet: c.find('.jbody, p').first().text().trim().slice(0, 300) });
-    });
+    for (let page = 0; page < 3; page++) {
+      const $ = cheerio.load(await pageHtml(`https://www.rozee.pk/job/jsearch/q/${encodeURIComponent(q.keywords)}${q.city ? `/fc/${encodeURIComponent(q.city)}` : ''}${page ? `/fpn/${page * 20}` : ''}`, '.job h3 a', 1500));
+      let n = 0;
+      $('.job').each((_, el) => {
+        const c = $(el);
+        const a = c.find('h3 a').first();
+        const title = a.text().trim();
+        if (!title) return;
+        n++;
+        const parts = c.find('.cname a').map((_, x) => $(x).text().replace(/^,\s*|,\s*$/g, '').trim()).get().filter(Boolean);
+        const href = a.attr('href') ?? '';
+        const posted = c.find('.rz-calendar').parent().text().trim();
+        out.push({ id: `rozee:${href.split('?')[0]}`, source: 'Rozee.pk', title, company: parts[0] ?? '', location: parts.slice(1).join(', ') || 'Pakistan',
+          workplace: /remote|work from home/i.test(c.text()) ? 'remote' : '', type: typeOf(c.text()), level: levelOf(title), salary: '',
+          url: (href.startsWith('//') ? 'https:' : '') + href.split('?')[0], posted: iso(posted), tags: [c.find('.func-area-drn').text().trim()].filter(Boolean), snippet: c.find('.jbody').text().trim().slice(0, 400) });
+      });
+      if (n < 15) break;
+    }
     if (!out.length) throw new Error('no results were readable');
     return out;
   }),
@@ -257,16 +273,29 @@ export async function matchJobs(settings: Settings, jobs: Job[], profile: string
   return Object.fromEntries(out);
 }
 
-/** Cities and towns of a country, largest first, for the city picker. */
+/** Cities and towns of a country, largest first, for the city picker. Cached on disk after the first load. */
 const cityCache = new Map<string, string[]>();
 export async function citiesOf(cc: string): Promise<string[]> {
   if (cityCache.has(cc)) return cityCache.get(cc)!;
-  const q = `[out:json][timeout:60];area["ISO3166-1"="${cc}"][admin_level=2]->.a;node["place"~"^(city|town)$"]["population"](area.a);out tags 3000;`;
-  const r = await fetchText('https://overpass-api.de/api/interpreter', { method: 'POST', ua: BOT_UA, timeout: 70000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-  if (!r.ok) throw new Error('The city list is not available right now. You can type the city instead.');
-  const els = (JSON.parse(r.text).elements ?? []) as any[];
-  const list = [...new Set(els.map((e) => ({ n: String(e.tags['name:en'] ?? e.tags.name), p: parseInt(String(e.tags.population).replace(/\D/g, ''), 10) || 0 }))
-    .filter((x) => /[a-z]/i.test(x.n)).sort((a, b) => b.p - a.p).map((x) => x.n))].slice(0, 400);
+  const { app } = await import('electron');
+  const { existsSync, readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
+  const dir = (await import('node:path')).join(app.getPath('userData'), 'cities');
+  const f = `${dir}/${cc}.json`;
+  if (existsSync(f)) { const l = JSON.parse(readFileSync(f, 'utf8')); cityCache.set(cc, l); return l; }
+  const ask = async (types: string) => {
+    const q = `[out:json][timeout:45];area["ISO3166-1"="${cc}"]["admin_level"="2"]->.a;node(area.a)["place"~"^(${types})$"];out tags;`;
+    for (const host of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']) {
+      const r = await fetchText(host, { method: 'POST', ua: BOT_UA, timeout: 55000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }).catch(() => null);
+      if (r?.ok) return (JSON.parse(r.text).elements ?? []) as any[];
+    }
+    return null;
+  };
+  let els = await ask('city');
+  if (els && els.length < 25) els = [...els, ...((await ask('town')) ?? [])];
+  if (!els) throw new Error('The city list is not available right now. You can type the city instead.');
+  const list = [...new Set(els.map((e) => ({ n: String(e.tags['name:en'] ?? e.tags.name), p: parseInt(String(e.tags.population ?? '0').replace(/\D/g, ''), 10) || 0, cap: e.tags.capital ? 1 : 0 }))
+    .filter((x) => /[a-z]/i.test(x.n)).sort((a, b) => b.cap - a.cap || b.p - a.p).map((x) => x.n))].slice(0, 500);
   cityCache.set(cc, list);
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(f, JSON.stringify(list)); } catch { /* cache is optional */ }
   return list;
 }

@@ -56,7 +56,7 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket], ['jobs', 'Job search', Briefcase],
+    ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
 
@@ -88,7 +88,7 @@ export function App() {
         </button>
       </aside>
       <main className="main">
-        <header className="top">
+        <header className="topbar">
           <div className="grow">
             <h1>{TITLES[screen][0]}</h1>
             <p>{TITLES[screen][1]}</p>

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
-import { Orbs, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { HeroArt, HeroBg, spotlight, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { CityInput } from '../CityInput';
 import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
 import { COUNTRIES } from '../countries';
 import { LiveSearch } from './LiveSearch';
@@ -60,8 +61,9 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
 
   return (
     <div className="page">
-      <div className="finder">
-        <div className="finder-art"><Orbs size={150} /></div>
+      <div className="finder" onMouseMove={spotlight}>
+        <HeroBg />
+        <div className="finder-art"><HeroArt kind="leads" /></div>
         <div className="finder-text">
           <span className="eyebrow"><Sparkles size={13} /> New search</span>
           <h2>Who are you looking for?</h2>
@@ -97,10 +99,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               {COUNTRIES.map(([code, name, flag]) => <option key={code} value={code}>{flag} {name}</option>)}
             </select>
           </label>
-          <label className="fbox">
-            <MapPin size={16} />
-            <input ref={placeRef} aria-label="City or area" placeholder={country ? 'City or area (empty = whole country)' : 'City or area, e.g. Austin, Texas'} value={place} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
-          </label>
+          <CityInput country={country} value={place} onChange={setPlace} onEnter={start} placeholder={country ? 'City or area (empty = whole country)' : 'City or area, e.g. Austin, Texas'} />
           <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>
         <div className="finder-foot">

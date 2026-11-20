@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search as SearchIcon, MapPin, Flag, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
+import { Search as SearchIcon, Flag, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
 import { call } from '../api';
 import { toast } from '../App';
-import { Avatar, EmptyArt } from '../Art';
+import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight } from '../Art';
+import { CityInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -48,7 +49,6 @@ export function Jobs() {
   const [kw, setKw] = useState('');
   const [country, setCountry] = useState('');
   const [city, setCity] = useState('');
-  const [cities, setCities] = useState<string[]>([]);
   const [posted, setPosted] = useState<string[]>(['']);
   const [workplace, setWorkplace] = useState<string[]>([]);
   const [level, setLevel] = useState<string[]>([]);
@@ -70,10 +70,7 @@ export function Jobs() {
     call<Cv | null>('cv:get').then(setCv);
     call('settings:get').then((s) => setAi(s.ai?.provider === 'none' ? 'none' : s.ai?.model || s.ai?.provider));
   }, []);
-  useEffect(() => {
-    setCity(''); setCities([]);
-    if (country) call<string[]>('geo:cities', country).then(setCities).catch(() => setCities([]));
-  }, [country]);
+  useEffect(() => { setCity(''); }, [country]);
 
   const query = (keywords: string) => ({ keywords, country, countryName: COUNTRIES.find((c) => c[0] === country)?.[1] ?? '', city, posted: posted[0] ?? '', workplace, level, type, sources });
   const rank = async (list: Job[], quiet = false) => {
@@ -131,22 +128,20 @@ export function Jobs() {
 
   return (
     <div className="page">
-      <div className="finder jobs-hero">
+      <div className="finder jobs-hero" onMouseMove={spotlight}>
+        <HeroBg />
+        <div className="finder-art"><HeroArt kind="jobs" /></div>
         <div className="finder-text">
           <span className="eyebrow"><Briefcase size={13} /> Job search</span>
           <h2>Find your next job, from every board at once</h2>
-          <p>LinkedIn, remote job boards and hiring posts, searched together and filtered your way.</p>
+          <p>LinkedIn, Indeed, Google Jobs, Rozee and remote boards, searched together and matched to your CV.</p>
         </div>
-        <div className="finder-form" style={{ maxWidth: '100%' }}>
+        <div className="finder-form">
           <label className="fbox"><SearchIcon size={16} /><input placeholder="Job title or skill, e.g. Web developer" value={kw} onChange={(e) => setKw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} /></label>
           <label className="fbox country"><Flag size={16} />
             <select value={country} onChange={(e) => setCountry(e.target.value)} aria-label="Country"><option value="">Any country</option>{COUNTRIES.map(([c, n, f]) => <option key={c} value={c}>{f} {n}</option>)}</select>
           </label>
-          <label className="fbox country"><MapPin size={16} />
-            {cities.length ? (
-              <select value={city} onChange={(e) => setCity(e.target.value)} aria-label="City"><option value="">Any city</option>{cities.map((c) => <option key={c}>{c}</option>)}</select>
-            ) : <input placeholder={country ? 'Loading cities… or type one' : 'City (optional)'} value={city} onChange={(e) => setCity(e.target.value)} />}
-          </label>
+          <CityInput country={country} value={city} onChange={setCity} onEnter={() => run()} placeholder="City (optional)" />
           <button className="btn primary go" onClick={() => run()} disabled={busy}>{busy ? 'Searching…' : 'Search jobs'}</button>
         </div>
       </div>
@@ -193,7 +188,7 @@ export function Jobs() {
       ) : (
         <div className="joblist">
           {list.map((j) => (
-            <div key={j.id} className={`panel job ${open === j.id ? 'open' : ''}`} onClick={() => setOpen(open === j.id ? null : j.id)}>
+            <div key={j.id} className="panel job" onClick={() => setOpen(j.id)}>
               <Avatar name={j.company || j.title} size={40} />
               <div className="grow">
                 <div className="job-title">{j.title}{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
@@ -206,7 +201,7 @@ export function Jobs() {
                   <span className="muted small">{j.source}{j.posted ? ` · ${ago(j.posted)}` : ''}</span>
                 </div>
                 {j.why && <div className="why">{j.why}</div>}
-                {open === j.id && j.snippet && <p className="snippet">{j.snippet}…</p>}
+                {j.snippet && <p className="snippet">{j.snippet.slice(0, 170)}…</p>}
               </div>
               <div className="job-actions" onClick={(e) => e.stopPropagation()}>
                 <button className="round" title={isSaved(j.id) ? 'Remove from saved' : 'Save'} onClick={() => toggleSave(j)}>{isSaved(j.id) ? <BookmarkCheck size={16} color="var(--violet)" /> : <Bookmark size={16} />}</button>
@@ -223,6 +218,7 @@ export function Jobs() {
           ))}
         </div>
       )}
+      {open && (() => { const j = list.find((x) => x.id === open) ?? saved.find((x) => x.id === open); return j ? <JobDetail job={j} onClose={() => setOpen(null)} onApply={() => apply(j)} onLetter={() => makeDoc(j, 'letter')} onTailor={() => makeDoc(j, 'cv')} saved={isSaved(j.id)} onSave={() => toggleSave(j)} /> : null; })()}
       {doc && (
         <>
           <div className="scrim" onClick={() => !doc.busy && setDoc(null)} />
@@ -240,5 +236,54 @@ export function Jobs() {
         </>
       )}
     </div>
+  );
+}
+
+function JobDetail({ job, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
+  const [d, setD] = useState<{ text: string; seniority: string; employment: string; func: string; industries: string } | null>(null);
+  const [err, setErr] = useState(false);
+  useEffect(() => { setD(null); setErr(false); call('jobs:detail', job).then(setD).catch(() => setErr(true)); }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [onClose]);
+  const parts = job.location.split(',').map((x) => x.trim()).filter((x) => x && !/^(remote|hybrid|on-?site)$/i.test(x));
+  const facts: [string, string][] = [
+    ['Company', job.company], ['City', parts.length > 1 ? parts[0] : /remote|worldwide|anywhere/i.test(job.location) ? '' : parts[0] ?? ''], ['Country / region', parts.length > 1 ? parts.slice(1).join(', ') : /remote|worldwide|anywhere/i.test(job.location) ? job.location : ''],
+    ['Workplace', job.workplace === 'onsite' ? 'On-site' : job.workplace ? job.workplace[0].toUpperCase() + job.workplace.slice(1) : ''], ['Employment type', d?.employment || job.type], ['Experience level', d?.seniority || job.level],
+    ['Salary', job.salary], ['Job function', d?.func ?? ''], ['Industry', d?.industries ?? ''], ['Posted', job.posted ? new Date(job.posted).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : ''], ['Found on', job.source],
+  ];
+  const q = encodeURIComponent(job.company);
+  return (
+    <>
+      <div className="scrim" onClick={onClose} />
+      <aside className="drawer jobdetail" role="dialog" aria-label={job.title}>
+        <header>
+          <div className="drawer-banner"><button className="btn ghost close" onClick={onClose} aria-label="Close"><X size={16} /></button></div>
+          <div className="drawer-id"><Avatar name={job.company || job.title} size={64} />
+            <div className="drawer-quick"><button className="round" title={saved ? 'Saved' : 'Save'} onClick={onSave}>{saved ? <BookmarkCheck size={16} color="var(--violet)" /> : <Bookmark size={16} />}</button></div>
+          </div>
+          <h2>{job.title}</h2>
+          <div className="muted">{job.company}{job.location ? ` · ${job.location}` : ''}</div>
+          {job.match != null && <div className="why" style={{ marginTop: 6 }}><span className={`match ${job.match >= 70 ? 'hi' : job.match >= 45 ? 'mid' : ''}`}>{job.match}% match</span> {job.why}</div>}
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn primary" onClick={onApply}>Apply <ExternalLink size={13} /></button>
+            <button className="btn" onClick={onLetter}><PenLine size={14} /> Cover letter</button>
+            <button className="btn" onClick={onTailor}><FileText size={14} /> Tailor CV</button>
+          </div>
+        </header>
+        <div className="body">
+          <dl className="kv">{facts.filter(([, v]) => v).flatMap(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
+          <div className="row">
+            <a className="btn small" href={`https://www.google.com/search?q=${q}`} target="_blank" rel="noreferrer">Company on Google</a>
+            <a className="btn small" href={`https://www.linkedin.com/company/${q}`} target="_blank" rel="noreferrer">Company on LinkedIn</a>
+            <a className="btn small" href={`https://www.glassdoor.com/Search/results.htm?keyword=${q}`} target="_blank" rel="noreferrer">Reviews on Glassdoor</a>
+          </div>
+          <div>
+            <h3 className="sec">Job description</h3>
+            {!d && !err && <div className="doc-wait inline"><span className="spinner" />Loading the full job post…</div>}
+            {(d || err) && <div className="jd">{(d?.text || job.snippet || 'The full description is on the job page. Press Apply to open it.').split(/(?<=[.!?])\s+(?=[A-Z])/).reduce<string[][]>((acc, sentence, i) => { if (i % 3 === 0) acc.push([]); acc[acc.length - 1].push(sentence); return acc; }, []).map((p, i) => <p key={i}>{p.join(' ')}</p>)}</div>}
+            {job.tags.length > 0 && <div className="cv-skills">{job.tags.slice(0, 12).map((t) => <span key={t} className="tag">{t}</span>)}</div>}
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
