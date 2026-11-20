@@ -1,3 +1,38 @@
 # Quarrix
 
-Find businesses, build your lead database and reach out, from a local desktop app for macOS, Windows and Linux.
+Find businesses, build your own lead database and reach out to them, from a desktop app that keeps everything on your computer.
+
+**Download:** [latest release](https://github.com/nexonic-technologies/quarrix/releases/latest) for macOS (Apple silicon and Intel), Windows and Linux.
+
+## What it does
+
+- **Find businesses anywhere.** Type a kind of business and a place, for example *dentists in Austin, Texas*. Quarrix searches Google Maps, OpenStreetMap and, with your own key, the Google Places API. Over 140 categories, or type your own.
+- **Fill in the details.** For each business it visits the business's own website for published email addresses, phone numbers and social profiles, reads its address details, and checks the site (HTTPS, mobile-ready, outdated footer, contact form, optional Google PageSpeed score).
+- **Your database, on your computer.** Search, filter, tag, add notes and track each lead from New to Won. Duplicates are merged automatically.
+- **Import and export.** Bring in CSV, Excel, JSON or PDF lists; export to Excel, CSV or JSON.
+- **Personal emails.** Describe what you offer once. Quarrix drafts an email and follow-ups for each business, using any model you choose (Anthropic, OpenAI, Gemini, OpenRouter, Groq) or a free model running on your own computer (Ollama, LM Studio). No model? It uses clean built-in templates.
+- **Careful sending.** Emails go from your own Gmail, Outlook or SMTP mailbox, in the recipient's working hours, with a daily limit that grows slowly. Follow-ups stop by themselves when someone replies, bounces or asks to stop.
+- **WhatsApp, safely.** Open WhatsApp with the drafted message ready to send, or use Meta's official WhatsApp Business Cloud API for contacts who opted in. Quarrix never automates a personal WhatsApp account.
+
+## Privacy
+
+Leads, settings and messages are stored only on your computer. Passwords and API keys are encrypted with your system keychain. Quarrix sends nothing to Nexonic Technologies.
+
+## Use it responsibly
+
+Contact businesses about their business, include a way to opt out, honour every opt-out, and follow the rules of the countries you contact (for example CAN-SPAM in the US, CASL in Canada and PECR in the UK). Scraping some sites may conflict with their terms; Google Maps searches run slowly on your own computer, and the Places API and OpenStreetMap are available as alternatives.
+
+## Build from source
+
+```bash
+npm install
+npm run dev        # run the app
+npm test           # tests
+npm run dist       # installers for this computer, in dist/
+```
+
+Releases are built by GitHub Actions for macOS, Windows and Linux whenever the version in `package.json` changes on `main`.
+
+## Licence
+
+MIT. Made by [Nexonic Technologies](https://nexonictechnologies.com).
