@@ -1,4 +1,5 @@
 // Local SQLite database: everything stays on this computer.
+import { DUE_SQL, sameBusiness } from './safety';
 import Database from 'better-sqlite3';
 import { app } from 'electron';
 import { join } from 'node:path';
@@ -88,7 +89,9 @@ export function findDuplicate(l: Partial<Lead>): Lead | undefined {
     if (hit) return hit;
   }
   if (l.domain) {
-    const hit = db.prepare('SELECT * FROM leads WHERE domain = ? LIMIT 1').get(l.domain) as Lead | undefined;
+    // Chains share one website across branches, so a domain match must also agree on place (see safety.sameBusiness).
+    const hits = db.prepare('SELECT * FROM leads WHERE domain = ? LIMIT 50').all(l.domain) as Lead[];
+    const hit = hits.find((h) => sameBusiness(l, h));
     if (hit) return hit;
   }
   if (l.phone && l.name) {
@@ -264,7 +267,8 @@ export const messagesFor = (leadId: number) => db.prepare('SELECT * FROM message
 export function listMessages(status: string, limit = 200) {
   return db.prepare(`SELECT m.*, l.name lead_name, l.email lead_email, l.city lead_city, l.country lead_country FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = ? ORDER BY COALESCE(m.due_at, m.created_at) LIMIT ?`).all(status, limit);
 }
-export const dueMessages = () => db.prepare("SELECT * FROM messages WHERE status = 'scheduled' AND channel = 'email' AND (due_at IS NULL OR due_at <= ?) ORDER BY step DESC, due_at LIMIT 20").all(now()) as Message[];
+/** Due emails, oldest first. A follow-up is never due while an earlier step of the same lead is unsent. */
+export const dueMessages = () => db.prepare(DUE_SQL).all(now()) as Message[];
 export const deleteMessage = (id: number) => db.prepare('DELETE FROM messages WHERE id = ?').run(id);
 /** Stop every unsent message to a lead (reply, bounce or opt-out). */
 export const cancelPending = (leadId: number, why: string) =>

@@ -1,6 +1,7 @@
 // Drafting and approving email sequences, shared by the Leads screen and the autopilot.
 import * as db from './db';
 import { draftFor } from './ai';
+import { outreachBlock } from './safety';
 import { load } from './settings';
 
 export async function createDrafts(ids: number[], onDraft: () => void = () => undefined) {
@@ -10,7 +11,8 @@ export async function createDrafts(ids: number[], onDraft: () => void = () => un
   for (const id of ids) {
     const lead = db.getLead(id);
     if (!lead) continue;
-    if (lead.email && db.isSuppressed(lead.email, lead.domain)) { errors.push(`${lead.name}: on the do-not-contact list`); continue; }
+    const block = outreachBlock({ ...lead, email: lead.email || 'none', status: '' }, !!lead.email && db.isSuppressed(lead.email, lead.domain));
+    if (block) { errors.push(`${lead.name}: ${block}`); continue; }
     try {
       const d = await draftFor(s, lead, s.email.followups.length);
       db.raw().prepare("DELETE FROM messages WHERE lead_id = ? AND status = 'draft'").run(id);
@@ -26,7 +28,9 @@ export async function createDrafts(ids: number[], onDraft: () => void = () => un
 
 export function approve(leadId: number, by = 'you') {
   const lead = db.getLead(leadId);
-  if (!lead?.email) throw new Error('This lead has no email address.');
+  if (!lead) throw new Error('Lead not found.');
+  const block = outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain));
+  if (block) throw new Error(`Not approved: ${block}.`);
   db.raw().prepare("UPDATE messages SET status = 'scheduled', due_at = CASE WHEN step = 0 THEN ? ELSE NULL END WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").run(db.now(), leadId);
   db.logEvent(leadId, 'approved', by === 'you' ? 'Email sequence approved' : `Email sequence approved by ${by}`);
   return true;
@@ -34,6 +38,7 @@ export function approve(leadId: number, by = 'you') {
 
 export function approveAll() {
   const ids = (db.raw().prepare("SELECT DISTINCT m.lead_id id FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'draft' AND m.channel = 'email' AND l.email <> ''").all() as { id: number }[]).map((r) => r.id);
-  for (const id of ids) approve(id);
-  return ids.length;
+  let n = 0;
+  for (const id of ids) { try { approve(id); n++; } catch { /* blocked lead stays a draft */ } }
+  return n;
 }

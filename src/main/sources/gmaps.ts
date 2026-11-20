@@ -1,7 +1,7 @@
 // Google Maps through a hidden browser window on this computer, at a human pace.
 // Google changes its page often; every selector here has a fallback, and failures are reported, not hidden.
 import { BrowserWindow } from 'electron';
-import { countryCode, sleep } from '../util';
+import { assertPublicUrl, countryCode, sleep } from '../util';
 import type { Candidate, Progress } from './types';
 
 let win: BrowserWindow | null = null;
@@ -123,14 +123,36 @@ export function closeMaps() {
   win = null;
 }
 
-/** Open any page in the hidden browser (real Chrome engine, so pages that need scripts work) and return its HTML. */
-export async function pageHtml(url: string, waitSelector = 'body', settleMs = 1200): Promise<string> {
-  await load(url);
-  // Cloudflare-style "Just a moment" pages often clear by themselves in a real browser.
-  for (let i = 0; i < 8 && (await js<boolean>(`/just a moment|checking your browser/i.test(document.title)`)); i++) await sleep(2000);
-  if (await js<boolean>(`/just a moment|checking your browser/i.test(document.title)`)) throw new Error('The site is behind a bot check right now.');
-  await waitFor(waitSelector, 12000);
-  await sleep(settleMs);
-  if (await js<boolean>(`/unusual traffic|not a robot|verify you are human|access denied|captcha/i.test(document.title + ' ' + document.body.innerText.slice(0, 600))`)) throw new Error('The site asked for a captcha.');
-  return js<string>('document.documentElement.outerHTML');
+let pageQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Open any page in its own hidden browser (real Chrome engine, so pages that need scripts work) and return its HTML.
+ * Each call gets a fresh window in a separate session and calls run one at a time, so job and directory pages never
+ * navigate the Google Maps window while a Maps search is running.
+ */
+export function pageHtml(url: string, waitSelector = 'body', settleMs = 1200): Promise<string> {
+  const run = pageQueue.then(() => openPage(url, waitSelector, settleMs));
+  pageQueue = run.catch(() => undefined);
+  return run;
+}
+
+async function openPage(url: string, waitSelector: string, settleMs: number): Promise<string> {
+  await assertPublicUrl(url);
+  const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { partition: 'persist:quarrix-pages', sandbox: true, backgroundThrottling: false } });
+  w.webContents.setAudioMuted(true);
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const run = <T>(code: string) => w.webContents.executeJavaScript(code, true) as Promise<T>;
+  const challenge = `/just a moment|checking your browser/i.test(document.title)`;
+  try {
+    await w.loadURL(url, { userAgent: w.webContents.getUserAgent().replace(/Electron\/\S+\s?/, '').replace(/quarrix\/\S+\s?/i, '') });
+    for (let i = 0; i < 8 && (await run<boolean>(challenge)); i++) await sleep(2000);
+    if (await run<boolean>(challenge)) throw new Error('The site is behind a bot check right now.');
+    const end = Date.now() + 12000;
+    while (Date.now() < end && !(await run<boolean>(`!!document.querySelector(${JSON.stringify(waitSelector)})`))) await sleep(300);
+    await sleep(settleMs);
+    if (await run<boolean>(`/unusual traffic|not a robot|verify you are human|access denied|captcha/i.test(document.title + ' ' + document.body.innerText.slice(0, 600))`)) throw new Error('The site asked for a captcha.');
+    return await run<string>('document.documentElement.outerHTML');
+  } finally {
+    if (!w.isDestroyed()) w.destroy();
+  }
 }

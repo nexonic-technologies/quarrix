@@ -115,9 +115,9 @@ export function Jobs() {
   };
   const apply = async (j: Job) => {
     window.open(j.url, '_blank');
-    await call('jobs:save', { ...j, status: 'Applied' });
+    await call('jobs:save', { ...j, status: 'Opened' });
     setSaved(await call('jobs:saved'));
-    toast.push('Opened the job. It is in My applications as Applied.');
+    toast.push('Opened the job page. Once you have sent the application, set it to Applied in My applications.');
   };
   const isSaved = (id: string) => saved.some((x) => x.id === id);
   const setStatus = async (j: Job, status: string) => { await call('jobs:save', { ...j, status }); setSaved(await call('jobs:saved')); };
@@ -207,7 +207,7 @@ export function Jobs() {
                 <button className="round" title={isSaved(j.id) ? 'Remove from saved' : 'Save'} onClick={() => toggleSave(j)}>{isSaved(j.id) ? <BookmarkCheck size={16} color="var(--violet)" /> : <Bookmark size={16} />}</button>
                 {tab === 'saved' && (
                   <select className="select status-select" value={j.status ?? 'Saved'} onChange={(e) => setStatus(j, e.target.value)}>
-                    {['Saved', 'Applied', 'Interview', 'Offer', 'Rejected'].map((x) => <option key={x}>{x}</option>)}
+                    {['Saved', 'Opened', 'Applied', 'Interview', 'Offer', 'Rejected'].map((x) => <option key={x}>{x}</option>)}
                   </select>
                 )}
                 <button className="btn small" title="Write a cover letter for this job" onClick={() => makeDoc(j, 'letter')}><PenLine size={13} /> Letter</button>

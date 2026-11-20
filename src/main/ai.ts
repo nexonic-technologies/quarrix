@@ -4,7 +4,7 @@ import type { Lead } from './db';
 import type { Settings } from './settings';
 import { reportFact } from './proof';
 import { signalFact } from './signals';
-import { fetchText } from './util';
+import { fetchTrusted } from './util';
 
 export const PROVIDERS: Record<string, { label: string; base: string; keyed: boolean; local?: boolean; suggest: string }> = {
   anthropic: { label: 'Anthropic Claude', base: 'https://api.anthropic.com/v1', keyed: true, suggest: 'claude-haiku-5-5' },
@@ -25,7 +25,7 @@ export async function complete(ai: Ai, system: string, prompt: string, maxTokens
   const model = ai.model || PROVIDERS[ai.provider]?.suggest;
   if (!model) throw new Error('Choose a model in Settings → Writing.');
   if (ai.provider === 'anthropic') {
-    const r = await fetchText(`${base(ai)}/messages`, {
+    const r = await fetchTrusted(`${base(ai)}/messages`, {
       method: 'POST', timeout: 90000,
       headers: { 'content-type': 'application/json', 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] }),
@@ -35,7 +35,7 @@ export async function complete(ai: Ai, system: string, prompt: string, maxTokens
     return (j.content ?? []).map((c: any) => c.text ?? '').join('');
   }
   if (ai.provider === 'gemini') {
-    const r = await fetchText(`${base(ai)}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(ai.apiKey)}`, {
+    const r = await fetchTrusted(`${base(ai)}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(ai.apiKey)}`, {
       method: 'POST', timeout: 90000, headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens } }),
     });
@@ -43,7 +43,7 @@ export async function complete(ai: Ai, system: string, prompt: string, maxTokens
     if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
     return (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('');
   }
-  const r = await fetchText(`${base(ai)}/chat/completions`, {
+  const r = await fetchTrusted(`${base(ai)}/chat/completions`, {
     method: 'POST', timeout: 120000,
     headers: { 'content-type': 'application/json', ...(ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {}) },
     body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }] }),
@@ -58,14 +58,14 @@ export async function complete(ai: Ai, system: string, prompt: string, maxTokens
 
 export async function listModels(ai: Ai): Promise<string[]> {
   if (ai.provider === 'anthropic') {
-    const r = await fetchText(`${base(ai)}/models?limit=100`, { headers: { 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01' } });
+    const r = await fetchTrusted(`${base(ai)}/models?limit=100`, { headers: { 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01' } });
     return (JSON.parse(r.text).data ?? []).map((m: any) => m.id);
   }
   if (ai.provider === 'gemini') {
-    const r = await fetchText(`${base(ai)}/models?key=${encodeURIComponent(ai.apiKey)}`);
+    const r = await fetchTrusted(`${base(ai)}/models?key=${encodeURIComponent(ai.apiKey)}`);
     return (JSON.parse(r.text).models ?? []).filter((m: any) => m.supportedGenerationMethods?.includes('generateContent')).map((m: any) => m.name.replace('models/', ''));
   }
-  const r = await fetchText(`${base(ai)}/models`, { headers: ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {} });
+  const r = await fetchTrusted(`${base(ai)}/models`, { headers: ai.apiKey ? { authorization: `Bearer ${ai.apiKey}` } : {} });
   return (JSON.parse(r.text).data ?? []).map((m: any) => m.id).sort();
 }
 

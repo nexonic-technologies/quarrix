@@ -34,6 +34,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   return (
     <div className="page">
       <div className="page-head"><div className="grow"><p>Everything is stored on this computer. Passwords and keys are encrypted with your system keychain.</p></div><button className="btn primary" onClick={save}>Save settings</button></div>
+      {s?.secretsSessionOnly && <div className="note warn" role="alert">This computer has no system keychain available, so passwords and keys are kept only until Quarrix closes. They are never saved in plain text.</div>}
       <div className="settings">
         <nav>{SECTIONS.map(([k, v]) => <button key={k} aria-current={sec === k} onClick={() => setSec(k)}>{v}</button>)}</nav>
         <div className="settings-body">

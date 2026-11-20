@@ -1,5 +1,6 @@
 // Sending through the person's own mailbox (Gmail, Outlook or any SMTP server), with a gentle daily limit,
 // working-hours windows and automatic follow-ups that stop on a reply.
+import { outreachBlock } from './safety';
 import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { randomBytes } from 'node:crypto';
@@ -92,8 +93,10 @@ export async function tick(notify: (m: string) => void) {
     if (Date.now() - lastSend < s.email.gapMinutes * 60000 * (0.8 + Math.random() * 0.6)) return;
     for (const m of db.dueMessages()) {
       const lead = db.getLead(m.lead_id);
-      if (!lead || !lead.email || ['replied', 'interested', 'won', 'lost', 'do_not_contact'].includes(lead.status) || db.isSuppressed(lead.email, lead.domain)) {
-        db.updateMessage(m.id, { status: 'cancelled', error: 'Stopped: the lead replied, opted out or has no email' });
+      const block = lead ? outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain)) : 'lead deleted';
+      if (!lead || block) {
+        db.updateMessage(m.id, { status: 'cancelled', error: `Stopped: ${block}` });
+        if (lead) db.cancelPending(lead.id, `Stopped: ${block}`);
         continue;
       }
       if (!inWindow(lead, s)) continue;

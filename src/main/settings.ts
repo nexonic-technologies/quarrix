@@ -59,7 +59,9 @@ const set = (o: Record<string, any>, p: string, v: unknown) => {
   ks.reduce((a, k) => a[k], o)[last] = v;
 };
 
-const enc = (s: string) => (s && safeStorage.isEncryptionAvailable() ? 'enc:' + safeStorage.encryptString(s).toString('base64') : s);
+/** True when the OS keychain can protect secrets. Without it, secrets stay in memory for this session only and are never written in plain text. */
+export const secureStore = () => { try { return safeStorage.isEncryptionAvailable(); } catch { return false; } };
+const enc = (s: string) => (s && secureStore() ? 'enc:' + safeStorage.encryptString(s).toString('base64') : '');
 const dec = (s: string) => {
   if (!s?.startsWith('enc:')) return s || '';
   try { return safeStorage.decryptString(Buffer.from(s.slice(4), 'base64')); } catch { return ''; }
@@ -92,6 +94,7 @@ export function save(patch: unknown): Settings {
 export function publicSettings() {
   const s = structuredClone(load()) as Record<string, any>;
   for (const p of SECRET_PATHS) set(s, p, get(s, p) ? '••••••••' : '');
+  s.secretsSessionOnly = !secureStore();
   return s as Settings;
 }
 

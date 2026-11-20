@@ -1,3 +1,4 @@
+import { isSafeExternalUrl } from './safety';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { join } from 'node:path';
 import { autoUpdater } from 'electron-updater';
@@ -31,13 +32,17 @@ function createWindow() {
     webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, sandbox: false },
   });
   win.once('ready-to-show', () => win?.show());
-  win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternalUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:') && !url.startsWith('http://localhost')) { e.preventDefault(); if (isSafeExternalUrl(url)) void shell.openExternal(url); } });
   if (process.env.QUARRIX_DEV_URL) void win.loadURL(process.env.QUARRIX_DEV_URL);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
 
 const handle = (ch: string, fn: (...a: any[]) => unknown) =>
-  ipcMain.handle(ch, async (_e, ...args) => {
+  ipcMain.handle(ch, async (e, ...args) => {
+    // Only the app's own page may call the main process.
+    const from = e.senderFrame?.url ?? '';
+    if (!from.startsWith('file:') && !from.startsWith('http://localhost:')) return { ok: false, error: 'Blocked a call from an unknown page.' };
     try { return { ok: true, data: await fn(...args) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   });
 
@@ -152,7 +157,7 @@ function registerIpc() {
     shell.showItemInFolder(r.filePath);
     return n;
   });
-  handle('open:external', (url: string) => shell.openExternal(url));
+  handle('open:external', (url: string) => { if (!isSafeExternalUrl(String(url))) throw new Error('Only web and email links can be opened.'); return shell.openExternal(url); });
 }
 
 app.whenReady().then(() => {
