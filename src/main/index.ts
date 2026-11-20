@@ -12,6 +12,8 @@ import * as jobstore from './jobstore';
 import * as automation from './automation';
 import * as localapi from './localapi';
 import * as cli from './cli';
+import * as mb from './mailboxes';
+import { abResult } from './rules';
 import * as integrations from './integrations';
 import { writeDiagnostics } from './diagnostics';
 import { privacySummary } from './privacy';
@@ -137,7 +139,18 @@ function registerIpc() {
   handle('replies:list', (all?: boolean) => db.listReplies(!all));
   handle('replies:update', (id: number, patch: { intent?: string; handled?: boolean }) => { db.updateReply(Number(id), { intent: patch?.intent ? String(patch.intent) : undefined, handled: patch?.handled }); return true; });
   handle('outreach:attention', () => db.attention());
-  handle('outreach:metrics', () => db.outreachMetrics());
+  handle('outreach:metrics', () => { const m = db.outreachMetrics() as any; return { ...m, ab: abResult(m.variants.A, m.variants.B), mailboxes: mb.stats() }; });
+  handle('mailboxes:stats', () => mb.stats());
+  handle('mailboxes:authorize', (id: string, on: boolean) => mb.authorize_(String(id), !!on));
+  handle('mailboxes:connect', (id: string, p: string) => { if (p !== 'google' && p !== 'microsoft') throw new Error('Unknown provider.'); return mb.connectBox(String(id), p); });
+  handle('mail:placement', async (address: string, boxId: string) => {
+    const a = String(address ?? '').trim();
+    if (!/^[^@\s]+@[a-z0-9.-]*mail-tester\.com$/i.test(a)) throw new Error('Paste the address shown on mail-tester.com (it ends with @srv1.mail-tester.com or similar).');
+    const box = mb.boxById(String(boxId || 'main'));
+    const sample = db.raw().prepare("SELECT subject, body FROM messages WHERE channel = 'email' AND step = 0 ORDER BY id DESC LIMIT 1").get() as { subject: string; body: string } | undefined;
+    await mail.sendRaw(a, sample?.subject ?? 'Quick question', `${sample?.body ?? 'Hello, this is a deliverability test from Quarrix.'}\n\n${mail.footer(load())}`, '', [], box.id);
+    return `https://www.mail-tester.com/${a.split('@')[0]}`;
+  });
   handle('crm:stages', () => crm.stages());
   handle('deals:list', () => crm.listDeals());
   handle('deals:save', (d) => crm.saveDeal(d ?? {}));
@@ -308,9 +321,9 @@ function registerIpc() {
   handle('campaigns:run', (id: number) => autopilot.run(send, id));
   handle('messages:cancel', (leadId: number) => db.cancelPending(leadId, 'Stopped by you'));
 
-  handle('mail:test', () => mail.testMailbox());
+  handle('mail:test', (boxId?: string) => mail.testMailbox(boxId ? String(boxId) : 'main'));
   handle('mail:testSend', (to: string) => mail.sendRaw(to, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`));
-  handle('mail:cap', () => mail.dailyCap());
+  handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
   handle('ai:models', () => listModels(load().ai));
 

@@ -371,14 +371,22 @@ export async function enrichOne(lead: db.Lead) {
   const prov = JSON.parse(lead.provenance || '{}');
   prov.emails = { ...(prov.emails ?? {}), ...r.emailSources };
   prov.checked = { website: r.website, at: db.now(), pages: Object.values(r.emailSources).length };
-  let email = lead.email || r.email;
-  // Waterfall (QF-031): the business's own site first; Hunter only when enabled, a key is set and nothing was found.
-  if (!email && settings.verify.findWithHunter && settings.verify.hunterKey && r.domain) {
-    const found = await hunterDomain(r.domain).catch(() => []);
-    for (const f of found) db.addContact({ lead_id: lead.id, name: f.name, role: f.role, email: f.email, source: 'hunter', source_url: f.source_url });
-    const best = found.filter((f) => f.type !== 'personal' || f.name).sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
-    if (best) { email = best.email; prov.emails[best.email] = `Hunter${best.source_url ? `: ${best.source_url}` : ''} (confidence ${best.confidence ?? '?'})`; }
+  // Email waterfall (QF-031): sources in the order set in Settings, stopping at the first email when chosen.
+  // Each step is recorded with what it found, so the evidence card can show where the email came from.
+  let email = lead.email;
+  const trail: { step: string; found: string; at: string }[] = [];
+  for (const step of settings.waterfall?.order ?? ['website', 'hunter']) {
+    if (email && (settings.waterfall?.stopOnFirst ?? true)) break;
+    if (step === 'website') { trail.push({ step, found: r.email || '', at: db.now() }); if (!email && r.email) email = r.email; }
+    if (step === 'hunter' && settings.verify.findWithHunter && settings.verify.hunterKey && r.domain) {
+      const found = await hunterDomain(r.domain).catch(() => []);
+      for (const f of found) db.addContact({ lead_id: lead.id, name: f.name, role: f.role, email: f.email, source: 'hunter', source_url: f.source_url });
+      const best = found.filter((f) => f.type !== 'personal' || f.name).sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
+      trail.push({ step, found: best?.email ?? '', at: db.now() });
+      if (best && !email) { email = best.email; prov.emails[best.email] = `Hunter${best.source_url ? `: ${best.source_url}` : ''} (confidence ${best.confidence ?? '?'})`; }
+    }
   }
+  prov.waterfall = trail;
   const check = email ? await checkEmail(email, settings.verify.auto).catch(() => null) : null;
   // Keep both values when sources disagree instead of silently overwriting (QF-032).
   const conflicts: Record<string, { value: string; source: string }[]> = { ...(prov.conflicts ?? {}) };

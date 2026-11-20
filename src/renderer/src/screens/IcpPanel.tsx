@@ -48,6 +48,11 @@ export function IcpPanel({ s, set }: { s: any; set: (path: string, v: unknown) =
         <label className="field"><span>ZeroBounce key</span><input className="input" type="password" value={s.verify?.zerobounceKey ?? ''} onChange={(e) => set('verify.zerobounceKey', e.target.value)} /></label>
       </div>
       <label className="switch"><input type="checkbox" checked={!!s.verify?.auto} onChange={(e) => set('verify.auto', e.target.checked)} /> Verify new emails automatically with the verifier (uses credits)</label>
+      <label className="field"><span>Where to look for an email first</span>
+        <select className="input" value={(s.waterfall?.order ?? ['website', 'hunter']).join(',')} onChange={(e) => set('waterfall', { ...(s.waterfall ?? {}), order: e.target.value.split(',') })}>
+          <option value="website,hunter">Their website, then Hunter</option><option value="hunter,website">Hunter, then their website</option><option value="website">Their website only</option>
+        </select><small>Each step is recorded on the lead's evidence card.</small></label>
+      <label className="switch"><input type="checkbox" checked={s.waterfall?.stopOnFirst ?? true} onChange={(e) => set('waterfall', { ...(s.waterfall ?? { order: ['website', 'hunter'] }), stopOnFirst: e.target.checked })} /> Stop at the first email found (saves Hunter credits)</label>
       <label className="switch"><input type="checkbox" checked={!!s.verify?.findWithHunter} onChange={(e) => set('verify.findWithHunter', e.target.checked)} /> When a website shows no email, ask Hunter (uses credits)</label>
     </section>
   );

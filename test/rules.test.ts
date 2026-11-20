@@ -62,3 +62,12 @@ test('dry run respects window, daily cap and blocks', () => {
   assert.equal(plan.find((p) => p.id === 2)!.at!.slice(0, 10), '2026-07-16', 'cap of 1 a day pushes to the next day');
   assert.equal(plan.find((p) => p.id === 3)!.at, null);
 });
+
+test('A/B subject test needs enough sends and a real difference', async () => {
+  const { abResult, altSubject } = await import('../src/main/rules');
+  assert.equal(abResult({ sent: 10, replies: 5 }, { sent: 10, replies: 0 }).winner, null, 'too few sends');
+  const r = abResult({ sent: 200, replies: 30 }, { sent: 200, replies: 10 });
+  assert.equal(r.winner, 'A'); assert.ok(r.p! < 0.01);
+  assert.equal(abResult({ sent: 100, replies: 10 }, { sent: 100, replies: 11 }).winner, null);
+  assert.notEqual(altSubject('Quick question about acme.com', { name: 'Acme', domain: 'acme.com' }).toLowerCase(), 'quick question about acme.com');
+});

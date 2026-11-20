@@ -1,14 +1,14 @@
 // Sending through the person's own mailbox (Gmail, Outlook or any SMTP server), with a gentle daily limit,
 // working-hours windows and automatic follow-ups that stop on a reply.
 import { outreachBlock } from './safety';
-import nodemailer from 'nodemailer';
 import { ImapFlow } from 'imapflow';
 import { randomBytes } from 'node:crypto';
 import * as db from './db';
 import { signature } from './ai';
 import { hasReport, reportPath } from './proof';
 import { load, save, type Settings } from './settings';
-import { accessToken } from './oauth';
+import * as mb from './mailboxes';
+import { fetchText } from './util';
 import { breaker, classifyReply, inWindowAt, zoneFor } from './rules';
 
 export const PRESETS = {
@@ -16,14 +16,6 @@ export const PRESETS = {
   outlook: { smtpHost: 'smtp.office365.com', smtpPort: 587, smtpSecure: false, imapHost: 'outlook.office365.com', imapPort: 993 },
 };
 
-async function transport(e: Settings['email']) {
-  if (e.auth !== 'password') return nodemailer.createTransport({ host: e.smtpHost, port: e.smtpPort, secure: e.smtpSecure, auth: { type: 'OAuth2', user: e.oauthUser || e.smtpUser, accessToken: await accessToken() }, connectionTimeout: 20000 });
-  return nodemailer.createTransport({ host: e.smtpHost, port: e.smtpPort, secure: e.smtpSecure, auth: { user: e.smtpUser, pass: e.smtpPass }, connectionTimeout: 20000 });
-}
-const connected = (e: Settings['email']) => (e.auth !== 'password' ? !!e.oauthRefresh : !!(e.smtpUser && e.smtpPass));
-async function imapAuth(e: Settings['email']) {
-  return e.auth !== 'password' ? { user: e.oauthUser || e.imapUser, accessToken: await accessToken() } : { user: e.imapUser, pass: e.imapPass };
-}
 /** The sender identity the user approved; sending stays off until it matches the current one (QF-066). */
 export const senderId = (e: Settings['email']) => `${e.fromEmail || e.oauthUser || e.smtpUser}`.toLowerCase();
 export const sendingAllowed = (e: Settings['email']) => !!e.authorizedAt && e.authorizedFrom === senderId(e) && !e.pausedReason;
@@ -36,13 +28,15 @@ export async function sendReport(leadId: number) {
   const lead = db.getLead(leadId);
   if (!lead?.email) throw new Error('This lead has no email address.');
   if (!hasReport(leadId)) throw new Error('Make the report first.');
-  if (!sendingAllowed(s.email)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : 'Approve sending in Settings → Email first.');
+  const used = (db.raw().prepare("SELECT mailbox FROM messages WHERE lead_id = ? AND status = 'sent' ORDER BY id LIMIT 1").get(leadId) as { mailbox: string } | undefined)?.mailbox;
+  const box = used ? mb.boxById(used, s) : mb.pick(s);
+  if (!box || !mb.approved(box, s)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : 'Approve sending in Settings → Email first.');
   const block = outreachBlock(lead, db.isSuppressed(lead.email, lead.domain));
   if (block) throw new Error(`Not sent: ${block}.`);
   const first = db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(leadId) as { subject: string; message_id: string } | undefined;
   const firstName = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.split(' ')[0] : '';
   const body = `Hi ${firstName || `${lead.name} team`},\n\nAs promised, here is the one-page review of ${lead.domain || lead.name}. The first two fixes on it are the quickest wins.\n\nHappy to talk it through if useful.\n\nBest,`;
-  const id = await sendRaw(lead.email, first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, `${body}\n\n${footer(s)}`, first?.message_id ?? '', [{ filename: reportName(lead.name, s.profile.company), path: reportPath(leadId) }]);
+  const id = await sendRaw(lead.email, first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, `${body}\n\n${footer(s)}`, first?.message_id ?? '', [{ filename: reportName(lead.name, s.profile.company), path: reportPath(leadId) }], box.id);
   db.logEvent(leadId, 'sent', 'Proof report sent');
   return id;
 }
@@ -53,24 +47,25 @@ export function footer(s: Settings) {
   return lines.join('\n');
 }
 
-export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = []) {
+export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main') {
   const s = load();
-  const e = s.email;
-  if (!connected(e)) throw new Error('Connect your mailbox first: Settings → Email.');
-  const from = e.fromEmail || e.smtpUser;
+  const box = mb.boxById(boxId, s);
+  if (!mb.connected(box)) throw new Error(box.main ? 'Connect your mailbox first: Settings → Email.' : `Mailbox "${box.label}" is not connected.`);
+  const from = mb.fromOf(box);
   const host = from.split('@')[1] || 'localhost';
   const messageId = `<${randomBytes(9).toString('hex')}@${host}>`;
-  await (await transport(e)).sendMail({
-    from: { name: e.fromName || s.profile.name || from, address: from }, to, subject, text, messageId, attachments,
+  await mb.deliver(box, {
+    from: { name: box.fromName || s.email.fromName || s.profile.name || from, address: from }, to, subject, text, messageId, attachments,
     headers: { 'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`, ...(inReplyTo ? { 'In-Reply-To': inReplyTo, References: inReplyTo } : {}) },
   });
   return messageId;
 }
 
-export async function testMailbox() {
-  const s = load();
-  await (await transport(s.email)).verify();
-  return 'Connected. Quarrix can send from ' + (s.email.fromEmail || s.email.smtpUser);
+export async function testMailbox(boxId = 'main') {
+  const b = mb.boxById(boxId);
+  if (b.kind === 'sendgrid') { const r = await fetchText('https://api.sendgrid.com/v3/scopes', { headers: { Authorization: `Bearer ${b.sendgridKey}` } }); if (!r.ok) throw new Error(`SendGrid refused the key (HTTP ${r.status}).`); return `SendGrid key works. Quarrix can send from ${mb.fromOf(b)} once the sender is verified in SendGrid.`; }
+  await (await mb.transport(b)).verify();
+  return 'Connected. Quarrix can send from ' + mb.fromOf(b);
 }
 
 /** Today's limit: starts low and grows each day after the first send, up to the daily limit. */
@@ -114,7 +109,7 @@ export function contactedRecently(lead: db.Lead, days: number) {
     AND (l.email = ? OR (l.domain <> '' AND l.domain = ?)) LIMIT 1`).get(since, lead.id, lead.email, lead.domain);
 }
 
-let lastSend = 0;
+const lastSend = new Map<string, number>();
 let busy = false;
 
 /** Called every minute: sends at most one due email. */
@@ -123,12 +118,11 @@ export async function tick(notify: (m: string) => void) {
   busy = true;
   try {
     const s = load();
-    if (!connected(s.email) || !sendingAllowed(s.email)) return;
+    if (!mb.boxes(s).some((b) => mb.connected(b) && mb.approved(b, s))) return;
     const trip = breaker(recentHealth(), { minSent: 20, bouncePct: s.email.bouncePct || 5, complaintPct: 0.5 });
     if (trip) { save({ email: { pausedReason: trip } }); notify(`Sending paused: ${trip}`); return; }
-    const sentToday = (db.raw().prepare("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ?").get(new Date().toISOString().slice(0, 10)) as { n: number }).n;
-    if (sentToday >= dailyCap(s)) return;
-    if (Date.now() - lastSend < s.email.gapMinutes * 60000 * (0.8 + Math.random() * 0.6)) return;
+    // Each mailbox has its own gap, daily limit and approval.
+    const gapOk = (id: string) => Date.now() - (lastSend.get(id) ?? 0) >= s.email.gapMinutes * 60000 * (0.8 + Math.random() * 0.6);
     for (const m of db.dueMessages()) {
       const lead = db.getLead(m.lead_id);
       const block = lead ? outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain)) : 'lead deleted';
@@ -143,11 +137,13 @@ export async function tick(notify: (m: string) => void) {
         continue;
       }
       if (!inWindow(lead, s)) continue;
+      const box = mb.boxById(m.mailbox, s);
+      if (!mb.connected(box) || !mb.approved(box, s) || mb.sentToday(box.id) >= mb.capOf(box, s) || !gapOk(box.id)) continue;
       const first = m.step > 0 ? (db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(lead.id) as { subject: string; message_id: string } | undefined) : undefined;
       try {
         const subject = m.step > 0 && first ? `Re: ${first.subject}` : m.subject;
         const attach = m.step === 0 && s.email.attachReport && hasReport(lead.id) ? [{ filename: reportName(lead.name, s.profile.company), path: reportPath(lead.id) }] : [];
-        const id = await sendRaw(lead.email, subject, `${m.body}\n\n${footer(s)}`, first?.message_id ?? '', attach);
+        const id = await sendRaw(lead.email, subject, `${m.body}\n\n${footer(s)}`, first?.message_id ?? '', attach, box.id);
         db.updateMessage(m.id, { status: 'sent', sent_at: db.now(), message_id: id, subject });
         if (lead.status === 'new') db.updateLead(lead.id, { status: 'contacted' });
         db.logEvent(lead.id, 'sent', `${m.step === 0 ? 'Email' : `Follow-up ${m.step}`}: ${subject}`);
@@ -159,7 +155,7 @@ export async function tick(notify: (m: string) => void) {
         db.logEvent(lead.id, 'error', `Send failed: ${e.message ?? e}`);
         notify(`Could not send to ${lead.name}: ${e.message ?? e}`);
       }
-      lastSend = Date.now();
+      lastSend.set(box.id, Date.now());
       break;
     }
   } finally {
@@ -168,17 +164,25 @@ export async function tick(notify: (m: string) => void) {
 }
 
 /** Read new messages in the inbox (without marking them read) to catch replies, opt-outs and bounces. */
+/** Unified inbox (QF-062): every mailbox with inbox reading on is checked, and replies are tagged with their mailbox. */
 export async function checkInbox(): Promise<{ replies: number; bounces: number }> {
-  const s = load();
-  const e = s.email;
-  if (!e.imapOn || (e.auth === 'password' && (!e.imapUser || !e.imapPass)) || (e.auth !== 'password' && !e.oauthRefresh)) return { replies: 0, bounces: 0 };
-  const client = new ImapFlow({ host: e.imapHost, port: e.imapPort, secure: true, auth: await imapAuth(e), logger: false });
+  let replies = 0, bounces = 0;
+  for (const b of mb.boxes()) {
+    if (!b.imapOn || b.kind === 'sendgrid' || !mb.connected(b)) continue;
+    try { const r = await checkBox(b); replies += r.replies; bounces += r.bounces; } catch (e: any) { db.logEvent(null, 'error', `Inbox ${b.label}: ${e.message ?? e}`); }
+  }
+  return { replies, bounces };
+}
+
+async function checkBox(box: mb.Box): Promise<{ replies: number; bounces: number }> {
+  const client = new ImapFlow({ host: box.imapHost, port: box.imapPort, secure: true, auth: await mb.imapAuth(box), logger: false });
   await client.connect();
   let replies = 0, bounces = 0;
   const lock = await client.getMailboxLock('INBOX');
   try {
     const since = new Date(Date.now() - 14 * 86400000);
-    const lastUid = (s as any)._imapLastUid ?? 0;
+    const state = db.raw().prepare('SELECT last_uid FROM imap_state WHERE box = ?').get(box.id) as { last_uid: number } | undefined;
+    const lastUid = state?.last_uid ?? (box.main ? ((load() as any)._imapLastUid ?? 0) : 0);
     let maxUid = lastUid;
     for await (const msg of client.fetch({ since }, { uid: true, envelope: true, source: { maxLength: 8000 } as any, headers: ['auto-submitted'] })) {
       if (msg.uid <= lastUid) continue;
@@ -198,7 +202,7 @@ export async function checkInbox(): Promise<{ replies: number; bounces: number }
       const body = text.split(/\r?\n\r?\n/).slice(1).join('\n').slice(0, 4000);
       const auto = /auto-submitted:\s*auto/i.test(msg.headers?.toString() ?? '');
       const c = auto ? { intent: 'out_of_office' as const, reason: 'Auto-Submitted header', review: false } : classifyReply(subject, body.slice(0, 1500));
-      db.addReply({ lead_id: lead.id, from_addr: from, subject, body, intent: c.intent, reason: c.reason, review: c.review });
+      db.addReply({ lead_id: lead.id, from_addr: from, subject, body, intent: c.intent, reason: c.reason, review: c.review, mailbox: box.id });
       if (c.intent === 'out_of_office') { db.logEvent(lead.id, 'auto_reply', subject); continue; }
       const optOut = c.intent === 'opt_out';
       if (optOut && /\b(spam|report(ed|ing)? (you|this))\b/i.test(body)) db.logEvent(lead.id, 'complaint', subject);
@@ -208,7 +212,7 @@ export async function checkInbox(): Promise<{ replies: number; bounces: number }
       db.logEvent(lead.id, 'reply', subject);
       replies++;
     }
-    save({ _imapLastUid: maxUid } as any);
+    db.raw().prepare('INSERT INTO imap_state (box, last_uid) VALUES (?, ?) ON CONFLICT(box) DO UPDATE SET last_uid = excluded.last_uid').run(box.id, maxUid);
   } finally {
     lock.release();
     await client.logout().catch(() => undefined);

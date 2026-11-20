@@ -57,6 +57,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   CREATE TABLE IF NOT EXISTS lead_snapshots (id INTEGER PRIMARY KEY, lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, data TEXT NOT NULL);
   CREATE INDEX IF NOT EXISTS snapshots_lead ON lead_snapshots(lead_id, at);
   CREATE TABLE IF NOT EXISTS replies (id INTEGER PRIMARY KEY, lead_id INTEGER REFERENCES leads(id) ON DELETE CASCADE, at TEXT NOT NULL, from_addr TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', intent TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', review INTEGER NOT NULL DEFAULT 0, handled INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE IF NOT EXISTS imap_state (box TEXT PRIMARY KEY, last_uid INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS search_templates (id INTEGER PRIMARY KEY, name TEXT NOT NULL, categories TEXT NOT NULL, places TEXT NOT NULL, sources TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS provider_usage (day TEXT NOT NULL, source TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, source));
   CREATE TABLE IF NOT EXISTS suppress (value TEXT PRIMARY KEY, reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL);
@@ -78,7 +79,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"], ['messages', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['messages', "variant TEXT NOT NULL DEFAULT ''"], ['replies', "mailbox TEXT NOT NULL DEFAULT 'main'"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -282,8 +283,8 @@ export const listSnapshots = (leadId: number) => db.prepare('SELECT * FROM lead_
 /** Other locations that share the website domain (QF-018). */
 export const branchesOf = (lead: Lead) => (lead.domain ? db.prepare('SELECT id, name, address, city, phone FROM leads WHERE domain = ? AND id <> ? LIMIT 50').all(lead.domain, lead.id) : []);
 
-export const addReply = (r: { lead_id: number; from_addr: string; subject: string; body: string; intent: string; reason: string; review: boolean }) =>
-  db.prepare('INSERT INTO replies (lead_id, at, from_addr, subject, body, intent, reason, review) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(r.lead_id, now(), r.from_addr, r.subject, r.body, r.intent, r.reason, r.review ? 1 : 0);
+export const addReply = (r: { lead_id: number; from_addr: string; subject: string; body: string; intent: string; reason: string; review: boolean; mailbox?: string }) =>
+  db.prepare('INSERT INTO replies (lead_id, at, from_addr, subject, body, intent, reason, review, mailbox) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(r.lead_id, now(), r.from_addr, r.subject, r.body, r.intent, r.reason, r.review ? 1 : 0, r.mailbox ?? 'main');
 export const listReplies = (onlyOpen = true) => db.prepare(`SELECT r.*, l.name lead_name, l.status lead_status FROM replies r LEFT JOIN leads l ON l.id = r.lead_id ${onlyOpen ? 'WHERE r.handled = 0' : ''} ORDER BY r.id DESC LIMIT 300`).all();
 export const updateReply = (id: number, patch: { intent?: string; handled?: boolean }) => {
   if (patch.intent) db.prepare('UPDATE replies SET intent = ?, review = 0 WHERE id = ?').run(patch.intent, id);
@@ -308,6 +309,11 @@ export function outreachMetrics() {
     positive: one("SELECT COUNT(DISTINCT lead_id) n FROM replies WHERE intent IN ('interested','meeting')"),
     optouts: one("SELECT COUNT(DISTINCT lead_id) n FROM replies WHERE intent = 'opt_out'"),
     byIntent: db.prepare('SELECT intent, COUNT(*) n FROM replies GROUP BY intent').all(),
+    variants: Object.fromEntries((['A', 'B'] as const).map((v) => [v, {
+      sent: one(`SELECT COUNT(DISTINCT lead_id) n FROM messages WHERE status = 'sent' AND step = 0 AND variant = '${v}'`),
+      replies: one(`SELECT COUNT(DISTINCT r.lead_id) n FROM replies r JOIN messages m ON m.lead_id = r.lead_id AND m.step = 0 AND m.status = 'sent' AND m.variant = '${v}' WHERE r.intent NOT IN ('out_of_office')`),
+      subject: (db.prepare(`SELECT subject FROM messages WHERE step = 0 AND variant = '${v}' ORDER BY id DESC LIMIT 1`).get() as { subject: string } | undefined)?.subject ?? '',
+    }])),
   };
 }
 
@@ -326,14 +332,16 @@ export const nextQueuedSearch = () => db.prepare("SELECT * FROM searches WHERE s
 
 /* ---------- Messages ---------- */
 
-export type Message = { id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; message_id: string; error: string; created_at: string };
+export type Message = { mailbox?: string; variant?: string; id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; message_id: string; error: string; created_at: string };
 
 export function addMessage(m: Partial<Message> & { lead_id: number }) {
   return Number(db.prepare('INSERT INTO messages (lead_id, channel, step, subject, body, status, due_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .run(m.lead_id, m.channel ?? 'email', m.step ?? 0, m.subject ?? '', m.body ?? '', m.status ?? 'draft', m.due_at ?? null, now()).lastInsertRowid);
 }
+const MESSAGE_COLS = ['subject', 'body', 'status', 'due_at', 'sent_at', 'message_id', 'error', 'mailbox', 'variant', 'step'];
 export function updateMessage(id: number, patch: Partial<Message>) {
-  const cols = Object.keys(patch);
+  const cols = Object.keys(patch).filter((c) => MESSAGE_COLS.includes(c));
+  if (!cols.length) return;
   db.prepare(`UPDATE messages SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => (patch as Record<string, unknown>)[c] as never), id);
 }
 export const messagesFor = (leadId: number) => db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY step, id').all(leadId) as Message[];

@@ -1,6 +1,6 @@
 import { SourcesPanel } from './SourcesPanel';
 import { IcpPanel } from './IcpPanel';
-import { SendingSafety, SignIn } from './EmailExtras';
+import { MoreMailboxes, SendingSafety, SignIn } from './EmailExtras';
 import { DataSettings } from './CrmParts';
 import { Automations, Connections } from './Connections';
 import { Privacy } from './Privacy';
@@ -103,6 +103,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
               <button className="btn" disabled={!testTo} onClick={async () => { await save(); try { await call('mail:testSend', testTo); toast.push('Test email sent'); } catch (e: any) { toast.push(e.message, true); } }}>Send test</button>
             </div>
             <SendingSafety s={s} set={set} />
+            <MoreMailboxes s={s} set={set} save={save} />
             <h2 style={{ marginTop: 10 }}>Pace</h2>
             <div className="grid3">{T('email.warmStart', 'Start with (per day)', '', 'number')}{T('email.warmStep', 'Add each day', '', 'number')}{T('email.dailyLimit', 'Maximum per day', 'Up to 40 is safe for one mailbox.', 'number')}
               {T('email.gapMinutes', 'Minutes between emails', '', 'number')}{T('email.windowStart', 'Send from (hour)', 'In the recipient\'s time.', 'number')}{T('email.windowEnd', 'Until (hour)', '', 'number')}</div>

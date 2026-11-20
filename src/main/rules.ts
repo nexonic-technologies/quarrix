@@ -116,3 +116,26 @@ export function dryRun(
   }
   return plan;
 }
+
+/** A/B test result for two subject lines (QF-071): two-proportion z-test on reply rates. A winner is named only
+ *  with at least 30 sends per side and p < 0.05; otherwise "keep testing". Pure. */
+export function abResult(a: { sent: number; replies: number }, b: { sent: number; replies: number }) {
+  const ra = a.sent ? a.replies / a.sent : 0, rb = b.sent ? b.replies / b.sent : 0;
+  if (a.sent < 30 || b.sent < 30) return { ra, rb, p: null as number | null, winner: null as 'A' | 'B' | null, note: `Keep testing: needs 30 sends per version (${a.sent} and ${b.sent} so far).` };
+  const pool = (a.replies + b.replies) / (a.sent + b.sent);
+  const se = Math.sqrt(pool * (1 - pool) * (1 / a.sent + 1 / b.sent));
+  const z = se ? (ra - rb) / se : 0;
+  const p = 2 * (1 - normCdf(Math.abs(z)));
+  const winner = p < 0.05 ? (ra > rb ? 'A' : 'B') : null;
+  return { ra, rb, p, winner, note: winner ? `Version ${winner} gets more replies (p = ${p.toFixed(3)}).` : `No clear difference yet (p = ${p.toFixed(2)}).` };
+}
+function normCdf(x: number) { // Abramowitz-Stegun approximation
+  const t = 1 / (1 + 0.2316419 * x), d = 0.3989423 * Math.exp((-x * x) / 2);
+  return 1 - d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+}
+/** A second subject line without AI: a short, plain question that names the business. Pure. */
+export function altSubject(subject: string, lead: { name: string; domain?: string }) {
+  const who = lead.domain || lead.name;
+  const options = [`Quick question about ${who}`, `${lead.name}: an idea for more bookings`, `Noticed something on ${who}`];
+  return options.find((o) => o.toLowerCase() !== subject.toLowerCase()) ?? options[0];
+}

@@ -79,3 +79,61 @@ export function SendingSafety({ s, set }: { s: any; set: (p: string, v: unknown)
     </>
   );
 }
+
+const newBox = () => ({ id: Math.random().toString(36).slice(2, 9), label: 'Mailbox', kind: 'smtp', on: true, fromName: '', fromEmail: '', smtpHost: '', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '', imapOn: false, imapHost: '', imapPort: 993, imapUser: '', imapPass: '', oauthRefresh: '', sendgridKey: '', dailyLimit: 30, authorizedAt: '', authorizedFrom: '' });
+
+/** More sending mailboxes (QF-061, QF-075), the A/B subject test (QF-071) and the inbox placement test (QF-070). */
+export function MoreMailboxes({ s, set, save }: { s: any; set: (p: string, v: unknown) => void; save: () => Promise<void> }) {
+  const list: any[] = s.mailboxes ?? [];
+  const [stats, setStats] = useState<any[]>([]);
+  const [tester, setTester] = useState('');
+  const reload = () => call<any[]>('mailboxes:stats').then((x) => setStats(x ?? []));
+  useEffect(() => { void reload(); }, []);
+  const put = (i: number, k: string, v: unknown) => set('mailboxes', list.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
+  const st = (id: string) => stats.find((x) => x.id === id);
+  return (
+    <>
+      <h2 style={{ marginTop: 10 }}>More mailboxes</h2>
+      <p className="muted small" style={{ margin: 0 }}>Spread sending across several addresses. Each approved mailbox gets its own warm-up and daily limit; each lead's whole sequence goes out from one mailbox, and replies from every mailbox land in Outreach → Replies.</p>
+      {list.map((b, i) => (
+        <div key={b.id} className="panel panel-pad feed">
+          <div className="row" style={{ gap: 6 }}>
+            <input className="input" value={b.label} onChange={(e) => put(i, 'label', e.target.value)} aria-label="Name" />
+            <select className="input" value={b.kind} onChange={(e) => put(i, 'kind', e.target.value)} aria-label="Type"><option value="smtp">Email server (app password)</option><option value="google">Google (sign in)</option><option value="microsoft">Microsoft (sign in)</option><option value="sendgrid">SendGrid API</option></select>
+            <label className="switch"><input type="checkbox" checked={b.on} onChange={(e) => put(i, 'on', e.target.checked)} /> On</label>
+            <button className="btn small ghost" aria-label="Remove mailbox" onClick={() => set('mailboxes', list.filter((_, j) => j !== i))}><Trash2 size={12} /></button>
+          </div>
+          <div className="grid3">
+            <label className="field"><span>Sender name</span><input className="input" value={b.fromName} onChange={(e) => put(i, 'fromName', e.target.value)} /></label>
+            <label className="field"><span>Send from</span><input className="input" value={b.fromEmail} onChange={(e) => put(i, 'fromEmail', e.target.value.trim())} /></label>
+            <label className="field"><span>Most per day</span><input className="input" type="number" min={1} max={500} value={b.dailyLimit} onChange={(e) => put(i, 'dailyLimit', Number(e.target.value))} /></label>
+          </div>
+          {b.kind === 'smtp' && <div className="grid3">
+            {([['smtpHost', 'SMTP server'], ['smtpPort', 'Port'], ['smtpUser', 'Login'], ['smtpPass', 'App password'], ['imapHost', 'IMAP server (replies)'], ['imapPass', 'IMAP password']] as const).map(([k, l]) => (
+              <label key={k} className="field"><span>{l}</span><input className="input" type={/Pass/.test(k) ? 'password' : k === 'smtpPort' ? 'number' : 'text'} value={b[k] ?? ''} onChange={(e) => put(i, k, k === 'smtpPort' ? Number(e.target.value) : e.target.value)} /></label>))}
+          </div>}
+          {b.kind === 'sendgrid' && <label className="field"><span>SendGrid API key</span><input className="input" type="password" value={b.sendgridKey} onChange={(e) => put(i, 'sendgridKey', e.target.value.trim())} /><small>SendGrid → Settings → API Keys (Mail Send). Verify the sending address in SendGrid first. Replies go to your normal inbox.</small></label>}
+          {(b.kind === 'google' || b.kind === 'microsoft') && <div className="row" style={{ gap: 6 }}><button className="btn small" onClick={async () => { await save(); try { toast.push(`Connected as ${await call('mailboxes:connect', b.id, b.kind)}`); } catch (e: any) { toast.push(e.message, true); } }}>{b.smtpUser ? `Reconnect (${b.smtpUser})` : `Sign in with ${b.kind === 'google' ? 'Google' : 'Microsoft'}`}</button><span className="muted small">Uses the OAuth client set above.</span></div>}
+          {b.kind !== 'sendgrid' && <label className="switch"><input type="checkbox" checked={b.imapOn} onChange={(e) => put(i, 'imapOn', e.target.checked)} /> Read this inbox for replies and bounces</label>}
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn small ghost" onClick={async () => { await save(); try { toast.push(await call('mail:test', b.id)); } catch (e: any) { toast.push(e.message, true); } }}>Test</button>
+            {st(b.id)?.approved ? <button className="btn small ghost" onClick={async () => { await call('mailboxes:authorize', b.id, false); void reload(); }}>Turn off sending</button>
+              : <button className="btn small primary" onClick={async () => { await save(); await call('mailboxes:authorize', b.id, true); void reload(); toast.push('Sending approved for this mailbox'); }}>Approve sending from {b.fromEmail || 'this address'}</button>}
+            {st(b.id) && <span className="muted small">{st(b.id).sentToday} of {st(b.id).cap} today · {st(b.id).sent} sent · {st(b.id).replies} replied</span>}
+          </div>
+        </div>
+      ))}
+      <button className="btn small" onClick={() => set('mailboxes', [...list, newBox()])}><Plus size={13} /> Add a mailbox</button>
+
+      <h2 style={{ marginTop: 14 }}>Subject line test</h2>
+      <label className="switch"><input type="checkbox" checked={!!s.email.abTest} onChange={(e) => set('email.abTest', e.target.checked)} /> Test two subject lines (every second lead gets version B)</label>
+      {s.email.abTest && <label className="field"><span>Version B subject (optional)</span><input className="input" value={s.email.abSubjectB ?? ''} onChange={(e) => set('email.abSubjectB', e.target.value)} placeholder="Leave empty to let Quarrix write one. {name} and {domain} are filled in." /><small>Outreach shows which version gets more replies once both have 30 sends.</small></label>}
+
+      <h2 style={{ marginTop: 14 }}>Inbox placement test</h2>
+      <p className="muted small" style={{ margin: 0 }}>Open mail-tester.com, copy the address it shows, paste it here and send. Quarrix sends your latest draft to it and opens the score page.</p>
+      <div className="row" style={{ gap: 6 }}><input className="input" placeholder="test-abc123@srv1.mail-tester.com" value={tester} onChange={(e) => setTester(e.target.value)} />
+        <button className="btn small" onClick={() => void call('open:external', 'https://www.mail-tester.com')}>Open mail-tester.com</button>
+        <button className="btn small primary" disabled={!tester} onClick={async () => { await save(); try { const url = await call<string>('mail:placement', tester, 'main'); toast.push('Sent. Opening your score in 10 seconds…'); setTimeout(() => void call('open:external', url), 10000); } catch (e: any) { toast.push(e.message, true); } }}>Send the test</button></div>
+    </>
+  );
+}

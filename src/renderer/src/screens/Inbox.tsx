@@ -13,11 +13,19 @@ export function Metrics({ tick }: { tick: number }) {
   if (!m) return null;
   const pct = (n: number) => (m.sent ? `${Math.round((n / m.sent) * 1000) / 10}%` : '–');
   return (
+    <>
     <div className="metrics-strip">
       {[['Sent', m.sent, ''], ['Bounced', m.bounced, pct(m.bounced)], ['Replied', m.replies, pct(m.replies)], ['Positive', m.positive, pct(m.positive)], ['Opted out', m.optouts, pct(m.optouts)]].map(([k, n, p]) => (
         <div key={k as string}><b>{(n as number)?.toLocaleString?.() ?? n}</b><span>{k}{p ? ` · ${p}` : ''}</span></div>
       ))}
     </div>
+    {(m.mailboxes?.length > 1 || m.ab?.p !== undefined && (m.variants?.A?.sent || m.variants?.B?.sent)) && (
+      <div className="row small" style={{ gap: 12, flexWrap: 'wrap', margin: '-4px 0 10px' }}>
+        {m.mailboxes?.length > 1 && m.mailboxes.map((b: any) => <span key={b.id} className="tag" title={b.from}>{b.label}: {b.sentToday}/{b.cap} today, {b.replies} replied{b.approved ? '' : ' (not approved)'}</span>)}
+        {(m.variants?.A?.sent > 0 || m.variants?.B?.sent > 0) && <span className="tag" title={`A: ${m.variants.A.subject}\nB: ${m.variants.B.subject}`}>Subject test: A {Math.round(m.ab.ra * 100)}% vs B {Math.round(m.ab.rb * 100)}% replies · {m.ab.note}</span>}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -31,11 +39,12 @@ export function Replies({ tick, openLead }: { tick: number; openLead: (id: numbe
   return (
     <div className="panel table-wrap">
       <div className="row" style={{ padding: '8px 12px' }}><label className="switch"><input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} /> Show handled replies</label></div>
-      <table className="leads"><thead><tr><th>From</th><th>Subject</th><th>What they want</th><th>Received</th><th /></tr></thead><tbody>
+      <table className="leads"><thead><tr><th>From</th><th>Mailbox</th><th>Subject</th><th>What they want</th><th>Received</th><th /></tr></thead><tbody>
         {rows.map((r) => (
           <Fragment key={r.id}>
             <tr className={r.review ? 'sel' : ''}>
               <td className="name" onClick={() => r.lead_id && openLead(r.lead_id)}><span className="t">{r.lead_name ?? r.from_addr}</span><span className="sub">{r.from_addr}</span></td>
+              <td className="small muted">{r.mailbox ?? 'main'}</td>
               <td className="clip"><button className="link" onClick={() => setOpen(open === r.id ? null : r.id)} aria-expanded={open === r.id}>{r.subject || '(no subject)'}</button></td>
               <td>
                 <select className="select" value={r.intent} aria-label="What they want" onChange={async (e) => { await call('replies:update', r.id, { intent: e.target.value }); void load(); }}>
@@ -46,7 +55,7 @@ export function Replies({ tick, openLead }: { tick: number; openLead: (id: numbe
               <td className="muted small">{new Date(r.at).toLocaleString()}</td>
               <td>{!r.handled && <button className="btn small" onClick={async () => { await call('replies:update', r.id, { handled: true }); toast.push('Marked as handled'); void load(); }}><Check size={13} /> Done</button>}</td>
             </tr>
-            {open === r.id && <tr><td colSpan={5}><pre className="reply-body">{r.body}</pre></td></tr>}
+            {open === r.id && <tr><td colSpan={6}><pre className="reply-body">{r.body}</pre></td></tr>}
           </Fragment>
         ))}
       </tbody></table>

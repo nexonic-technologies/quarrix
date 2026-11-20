@@ -1,6 +1,8 @@
 // Drafting and approving email sequences, shared by the Leads screen and the autopilot.
 import * as db from './db';
-import { draftFor } from './ai';
+import { complete, draftFor } from './ai';
+import { altSubject } from './rules';
+import { pick } from './mailboxes';
 import { outreachBlock } from './safety';
 import { load } from './settings';
 
@@ -16,8 +18,14 @@ export async function createDrafts(ids: number[], onDraft: () => void = () => un
     try {
       const d = await draftFor(s, lead, s.email.followups.length);
       db.raw().prepare("DELETE FROM messages WHERE lead_id = ? AND status = 'draft'").run(id);
-      db.addMessage({ lead_id: id, step: 0, subject: d.subject, body: d.body });
-      d.followups.forEach((b, i) => db.addMessage({ lead_id: id, step: i + 1, subject: d.subject, body: b }));
+      // A/B test (QF-071): every second lead gets version B of the subject line.
+      const variant = s.email.abTest ? (id % 2 ? 'B' : 'A') : '';
+      let subject = d.subject;
+      if (variant === 'B') subject = s.email.abSubjectB?.trim() ? s.email.abSubjectB.replace(/\{name\}/g, lead.name).replace(/\{domain\}/g, lead.domain || lead.name) : s.ai.provider !== 'none' ? (await complete(s.ai, 'Write one alternative cold-email subject line: under 7 words, plain, no clickbait, no emoji. Reply with the subject only.', `Business: ${lead.name}. Current subject: ${d.subject}`, 40).catch(() => '')).trim().replace(/^["']|["']$/g, '').slice(0, 90) || altSubject(d.subject, lead) : altSubject(d.subject, lead);
+      const m0 = db.addMessage({ lead_id: id, step: 0, subject, body: d.body });
+      d.followups.forEach((b, i) => db.addMessage({ lead_id: id, step: i + 1, subject, body: b }));
+      if (variant) db.raw().prepare("UPDATE messages SET variant = ? WHERE lead_id = ? AND status = 'draft'").run(variant, id);
+      void m0;
       if (d.whatsapp) db.addMessage({ lead_id: id, channel: 'whatsapp', step: 0, body: d.whatsapp });
       made++;
       onDraft();
@@ -31,7 +39,9 @@ export function approve(leadId: number, by = 'you') {
   if (!lead) throw new Error('Lead not found.');
   const block = outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain));
   if (block) throw new Error(`Not approved: ${block}.`);
-  db.raw().prepare("UPDATE messages SET status = 'scheduled', due_at = CASE WHEN step = 0 THEN ? ELSE NULL END WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").run(db.now(), leadId);
+  // The whole sequence goes out from one mailbox: the approved one with the most room today (QF-061).
+  const box = pick();
+  db.raw().prepare("UPDATE messages SET status = 'scheduled', mailbox = ?, due_at = CASE WHEN step = 0 THEN ? ELSE NULL END WHERE lead_id = ? AND status = 'draft' AND channel = 'email'").run(box?.id ?? 'main', db.now(), leadId);
   db.logEvent(leadId, 'approved', by === 'you' ? 'Email sequence approved' : `Email sequence approved by ${by}`);
   return true;
 }
