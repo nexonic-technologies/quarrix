@@ -2,9 +2,9 @@
 import * as db from './db';
 import { enrichWebsite, pagespeed, siteScore } from './enrich';
 import { load } from './settings';
-import { geocode, searchOsm } from './sources/osm';
+import { geocode, searchOsm, subAreas } from './sources/osm';
 import { searchPlaces } from './sources/places';
-import { searchMaps, stopMaps } from './sources/gmaps';
+import { resetMaps, searchMaps, stopMaps } from './sources/gmaps';
 import type { Candidate } from './sources/types';
 import { domainOf, isPlatformHost, normalizePhone, sleep } from './util';
 
@@ -68,14 +68,31 @@ async function runSearches() {
     notify('leads');
   };
   const progress = (msg: string) => notify('progress', { id: s.id, msg });
+  const limit = settings.sources.maxPerSearch;
+  let areas: string[] | null = null;
+  const moreAreas = async () => {
+    if (!areas) { progress('Splitting the area into neighbourhoods…'); areas = (await subAreas(s.place).catch(() => [])).map((a) => `${a}, ${s.place}`); }
+    return areas;
+  };
+  // Google lists only about 120 places per query (Places API: 60), so after the whole-city query
+  // the search repeats for each neighbourhood until the limit is reached. Duplicates are merged.
+  const byArea = async (label: string, run: (where: string, left: number) => Promise<Candidate[]>) => {
+    let got = 0;
+    const list = [s.place, ...(await moreAreas())];
+    for (const [i, where] of list.entries()) {
+      if (cancelSearch === s.id || got >= limit) break;
+      if (i > 0) progress(`${label}: area ${i} of ${list.length - 1}, ${where.split(',')[0]}`);
+      try { const c = await run(where, limit - got); got += c.length; save(c); } catch (e) { if (i === 0) throw e; }
+    }
+  };
   for (const src of sources) {
     if (cancelSearch === s.id) break;
     try {
-      if (src === 'gmaps') save(await searchMaps(s.category, s.place, settings.sources.maxPerSearch, settings.sources.mapsDelayMs, progress));
-      if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, settings.sources.maxPerSearch)); }
+      if (src === 'gmaps') { resetMaps(); const seen = new Set<string>(); await byArea('Google Maps', (w, left) => searchMaps(s.category, w, left, settings.sources.mapsDelayMs, progress, seen)); }
+      if (src === 'osm') { progress('OpenStreetMap: searching…'); save(await searchOsm(s.category, s.place, limit)); }
       if (src === 'places') {
         if (!settings.sources.placesKey) throw new Error('Add a Google Places API key in Settings → Sources.');
-        save(await searchPlaces(settings.sources.placesKey, s.category, s.place, settings.sources.maxPerSearch, progress));
+        await byArea('Google Places', (w, left) => searchPlaces(settings.sources.placesKey, s.category, w, left, progress));
       }
     } catch (e: any) {
       errors.push(String(e.message ?? e));

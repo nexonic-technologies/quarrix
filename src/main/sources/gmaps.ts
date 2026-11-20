@@ -36,8 +36,8 @@ async function waitFor(selector: string, ms = 12000) {
   return false;
 }
 
-export async function searchMaps(category: string, place: string, limit: number, delayMs: number, progress: Progress): Promise<Candidate[]> {
-  stopFlag = false;
+export async function searchMaps(category: string, place: string, limit: number, delayMs: number, progress: Progress, seen = new Set<string>()): Promise<Candidate[]> {
+  if (limit <= 0) return [];
   await load(`https://www.google.com/maps/search/${encodeURIComponent(`${category} in ${place}`)}?hl=en`);
   if (await js<boolean>(`/unusual traffic|not a robot/i.test(document.body.innerText)`)) throw new Error('Google is asking for a captcha. Pause Google Maps searches for an hour, or use the Places API or OpenStreetMap.');
 
@@ -45,7 +45,9 @@ export async function searchMaps(category: string, place: string, limit: number,
   if (!(await waitFor('div[role="feed"]', 10000))) {
     if (await waitFor('h1', 3000)) {
       const one = await readPlace(category);
-      return one ? [one] : [];
+      if (!one || seen.has(one.source_ref)) return [];
+      seen.add(one.source_ref);
+      return [one];
     }
     throw new Error('Google Maps showed no results list. The page layout may have changed.');
   }
@@ -53,7 +55,7 @@ export async function searchMaps(category: string, place: string, limit: number,
   // Scroll the results list until enough places are loaded or the list ends.
   let links: string[] = [];
   for (let i = 0; i < 60 && links.length < limit && !stopFlag; i++) {
-    links = await js<string[]>(`[...new Set([...document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]')].map(a => a.href))]`);
+    links = (await js<string[]>(`[...new Set([...document.querySelectorAll('div[role="feed"] a[href*="/maps/place/"]')].map(a => a.href))]`)).filter((h) => !seen.has(placeKey(h)));
     progress(`Google Maps: ${links.length} places listed`, links.length);
     const end = await js<boolean>(`(() => { const f = document.querySelector('div[role="feed"]'); f.scrollBy(0, 2500); return /reached the end of the list/i.test(f.innerText); })()`);
     if (end) break;
@@ -64,6 +66,7 @@ export async function searchMaps(category: string, place: string, limit: number,
   const out: Candidate[] = [];
   for (const [i, href] of links.entries()) {
     if (stopFlag) break;
+    seen.add(placeKey(href));
     try {
       await load(href + (href.includes('?') ? '&' : '?') + 'hl=en');
       await waitFor('h1', 10000);
@@ -76,6 +79,9 @@ export async function searchMaps(category: string, place: string, limit: number,
   }
   return out;
 }
+
+const placeKey = (href: string) => href.match(/!1s(0x[0-9a-f]+:0x[0-9a-f]+)/i)?.[1] ?? href.split('/maps/place/')[1]?.split('/')[0] ?? href;
+export const resetMaps = () => { stopFlag = false; };
 
 async function readPlace(category: string, href = ''): Promise<Candidate | null> {
   const d = await js<Record<string, any>>(`(() => {

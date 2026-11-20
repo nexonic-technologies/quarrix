@@ -47,18 +47,21 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
     setSearches(await call('search:list'));
   };
 
-  const width = (v: string, min: number) => `${Math.max(min, v.length + 1)}ch`;
 
   return (
     <div className="page">
       <div className="finder">
-        <div className="finder-art"><Orbs size={230} /></div>
-        <div className="eyebrow"><Sparkles size={14} /> New search</div>
-        <div className="sentence">
-          <span className="word">Find</span>
-          <span className="slot">
+        <div className="finder-art"><Orbs size={150} /></div>
+        <div className="finder-text">
+          <span className="eyebrow"><Sparkles size={13} /> New search</span>
+          <h2>Who are you looking for?</h2>
+          <p>Pick a kind of business and a place. Big cities are searched neighbourhood by neighbourhood.</p>
+        </div>
+        <div className="finder-form">
+          <label className="fbox">
+            <Building2 size={16} />
             <input
-              ref={catRef} aria-label="Type of business" placeholder="type of business" value={category} style={{ width: width(category, 14) }}
+              ref={catRef} aria-label="Type of business" placeholder="Type of business, e.g. Dentists" value={category}
               onChange={(e) => { setCategory(e.target.value); setOpen(true); setHi(0); }}
               onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
               onKeyDown={(e) => {
@@ -76,22 +79,23 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                 ))}
               </div>
             )}
-          </span>
-          <span className="word">in</span>
-          <span className="slot">
-            <input ref={placeRef} aria-label="City or area" placeholder="city or area" value={place} style={{ width: width(place, 10) }} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
-          </span>
+          </label>
+          <label className="fbox">
+            <MapPin size={16} />
+            <input ref={placeRef} aria-label="City or area" placeholder="City or area, e.g. Austin, Texas" value={place} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
+          </label>
+          <button className="btn primary go" onClick={start}>Search <ArrowRight size={15} /></button>
         </div>
         <div className="finder-foot">
+          <span className="muted small">Sources</span>
           {SOURCES.map(([id, label, hint, Icon]) => (
-            <span key={id} className="chip" role="button" tabIndex={0} aria-pressed={sources.includes(id)}
+            <span key={id} className="chip" role="button" tabIndex={0} aria-pressed={sources.includes(id)} title={hint}
               onClick={() => setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
               onKeyDown={(e) => e.key === ' ' && setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}>
-              <Icon size={15} /> {label} <small>{hint}</small>
+              <Icon size={13} /> {label}
             </span>
           ))}
-          {!category && !place && <button className="btn link-light" onClick={() => { setCategory('Dentists'); setPlace('Austin, Texas'); }}>Try an example</button>}
-          <button className="btn go" onClick={start}>Start search <ArrowRight size={17} /></button>
+          {!category && !place && <button className="btn link" onClick={() => { setCategory('Dentists'); setPlace('Austin, Texas'); }}>Try an example</button>}
         </div>
       </div>
 

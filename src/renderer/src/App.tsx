@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Sun, Moon, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -20,7 +20,6 @@ export function App() {
   const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0 });
   const [tick, setTick] = useState(0);
   const [me, setMe] = useState({ name: '', company: '' });
-  const [dark, setDark] = useState(false);
 
   toast.push = (text, err) => {
     const id = ++toastId;
@@ -35,7 +34,7 @@ export function App() {
 
   useEffect(() => {
     void refreshCounts();
-    call('settings:get').then((s) => { setDark(applyTheme(s.theme)); setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); }).catch(() => undefined);
+    call('settings:get').then((s) => { setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
       if (e === 'drafts' || e === 'leads') void refreshCounts();
@@ -43,11 +42,6 @@ export function App() {
     });
   }, [refreshCounts]);
 
-  const flipTheme = async () => {
-    const next = dark ? 'light' : 'dark';
-    setDark(applyTheme(next));
-    try { const s = await call('settings:get'); await call('settings:save', { ...s, theme: next }); } catch { /* preview */ }
-  };
   const TITLES: Record<Screen, [string, string]> = {
     find: ['Find businesses', 'Search maps and open data, then let Quarrix fill in the details.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
@@ -66,18 +60,18 @@ export function App() {
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
       <div className="backdrop" aria-hidden><i /><i /><i /></div>
       <aside className="side">
-        <div className="brand"><Logo /> <span>Quarrix</span></div>
-        <div className="side-label">Workspace</div>
+        <div className="brand"><Logo size={30} /> <span>Quarrix</span></div>
+        <div className="side-label">Main</div>
         <nav className="nav" aria-label="Main">
           {nav.map(([id, label, Icon, n]) => (
             <button key={id} aria-current={screen === id ? 'page' : undefined} onClick={() => go(id)}>
-              <Icon size={18} strokeWidth={1.8} /> {label}
+              <Icon size={16} strokeWidth={1.8} /> {label}
               {n ? <span className="count">{n}</span> : null}
             </button>
           ))}
         </nav>
         <div className="side-card">
-          <Ring value={counts.sentToday} max={counts.cap} size={58} label={`${counts.sentToday} of ${counts.cap} emails sent today`} />
+          <Ring value={counts.sentToday} max={counts.cap} size={48} label={`${counts.sentToday} of ${counts.cap} emails sent today`} />
           <div>
             <b>{counts.sentToday} of {counts.cap}</b>
             <span>emails today</span>
@@ -85,7 +79,7 @@ export function App() {
           </div>
         </div>
         <button className="me" onClick={() => go('settings')}>
-          <Avatar name={me.name || me.company || 'You'} size={38} />
+          <Avatar name={me.name || me.company || 'You'} size={34} />
           <span><b>{me.name || 'Your name'}</b><small>{me.company || 'Add your company'}</small></span>
         </button>
       </aside>
@@ -95,16 +89,13 @@ export function App() {
             <h1>{TITLES[screen][0]}</h1>
             <p>{TITLES[screen][1]}</p>
           </div>
-          <button className="theme-flip" onClick={flipTheme} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} title={dark ? 'Light mode' : 'Dark mode'}>
-            <span className={dark ? 'on' : ''}><Sun size={15} /><Moon size={15} /></span>
-          </button>
         </header>
         <div className="screen" key={screen}>
           {screen === 'find' && <Find tick={tick} go={go} />}
           {screen === 'leads' && <Leads tick={tick} go={go} />}
           {screen === 'outreach' && <Outreach tick={tick} go={go} />}
           {screen === 'files' && <ImportExport go={go} />}
-          {screen === 'settings' && <SettingsScreen onTheme={(t) => setDark(applyTheme(t))} />}
+          {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
         </div>
       </main>
       <div className="toasts" role="status">{toasts.map((t) => <div key={t.id} className={`toast ${t.err ? 'err' : ''}`}>{t.err ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}<span>{t.text}</span></div>)}</div>
@@ -113,7 +104,7 @@ export function App() {
 }
 
 export function applyTheme(theme: string) {
-  const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  return dark;
+  void theme; // Quarrix uses one light theme.
+  document.documentElement.dataset.theme = 'light';
+  return false;
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
 
-const SECTIONS = [['profile', 'You and your offer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['dnc', 'Do not contact'], ['app', 'Appearance']] as const;
+const SECTIONS = [['profile', 'You and your offer'], ['writing', 'Writing'], ['email', 'Email'], ['whatsapp', 'WhatsApp'], ['sources', 'Sources'], ['dnc', 'Do not contact'], ['app', 'About']] as const;
 
 export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   const [s, setS] = useState<any>(null);
@@ -123,7 +123,6 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'app' && <section>
-            <label className="field"><span>Theme</span><select className="select" value={s.theme} onChange={(e) => set('theme', e.target.value)}><option value="system">Match my computer</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
             <p className="muted">Quarrix {info?.version}. Your data is in {info?.dataPath}.</p>
           </section>}
         </div>

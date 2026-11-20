@@ -9,7 +9,7 @@ const placeCache = new Map<string, Place | null>();
 export async function geocode(q: string): Promise<Place | null> {
   const key = q.trim().toLowerCase();
   if (placeCache.has(key)) return placeCache.get(key)!;
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&q=${encodeURIComponent(q)}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&accept-language=en&q=${encodeURIComponent(q)}`;
   const r = await fetchText(url, { ua: BOT_UA, timeout: 20000 });
   let out: Place | null = null;
   try {
@@ -52,7 +52,7 @@ export async function searchOsm(category: string, place: string, limit: number):
     if (!t.name) continue;
     const street = [t['addr:housenumber'], t['addr:street']].filter(Boolean).join(' ');
     out.push({
-      source: 'osm', source_ref: `${e.type}/${e.id}`, name: t.name, category: cat?.name ?? category,
+      source: 'osm', source_ref: `${e.type}/${e.id}`, name: t['name:en'] ?? t.name, category: cat?.name ?? category,
       address: [street, t['addr:city'], t['addr:postcode']].filter(Boolean).join(', '),
       city: t['addr:city'] ?? where.city, region: t['addr:state'] ?? where.region, country: (t['addr:country'] ?? where.country).toUpperCase(),
       postcode: t['addr:postcode'] ?? '', lat: e.lat ?? e.center?.lat ?? null, lon: e.lon ?? e.center?.lon ?? null,
@@ -64,4 +64,22 @@ export async function searchOsm(category: string, place: string, limit: number):
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/** Neighbourhoods, sectors and suburbs inside a place, in English where possible.
+ *  Google Maps lists at most about 120 places per query, so big cities are searched area by area. */
+export async function subAreas(place: string, max = 40): Promise<string[]> {
+  const where = await geocode(place);
+  if (!where?.area) return [];
+  const q = `[out:json][timeout:40];area(${where.area})->.a;node["place"~"^(suburb|neighbourhood|quarter|town|village)$"]["name"](area.a);out tags 400;`;
+  try {
+    const r = await fetchText('https://overpass-api.de/api/interpreter', { method: 'POST', ua: BOT_UA, timeout: 50000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+    if (!r.ok) return [];
+    const rank: Record<string, number> = { suburb: 0, town: 1, quarter: 2, neighbourhood: 3, village: 4 };
+    const els = ((JSON.parse(r.text).elements ?? []) as any[])
+      .map((e) => ({ name: String(e.tags['name:en'] ?? e.tags.name), r: rank[e.tags.place] ?? 5 }))
+      .filter((x) => /[a-z]/i.test(x.name))
+      .sort((a, b) => a.r - b.r);
+    return [...new Set(els.map((x) => x.name))].slice(0, max);
+  } catch { return []; }
 }

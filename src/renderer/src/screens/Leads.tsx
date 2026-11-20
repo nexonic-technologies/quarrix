@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Mail, Phone, Globe, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin } from 'lucide-react';
+import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
 import { call, json, type Lead, type Message } from '../api';
 import { toast, type Screen } from '../App';
@@ -84,21 +84,18 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <table className="leads">
             <thead><tr>
               <th style={{ width: 34 }}><input type="checkbox" aria-label="Select all on this page" checked={allOnPage} onChange={() => setSel(allOnPage ? new Set() : new Set(rows.map((r) => r.id)))} /></th>
-              <th>Business</th><th>Location</th><th>Website</th><th>Contact</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
+              <th>Business</th><th>Category</th><th>Location</th><th>Email</th><th>Website</th><th>Rating</th><th title="How much their website needs help, out of 100">Site score</th><th>Status</th>
             </tr></thead>
             <tbody>
               {rows.map((l) => (
                 <tr key={l.id} className={sel.has(l.id) ? 'sel' : ''}>
                   <td><input type="checkbox" aria-label={`Select ${l.name}`} checked={sel.has(l.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
-                  <td className="name" onClick={() => setOpen(l.id)}><span className="who"><Avatar name={l.name} size={36} /><span>{l.name}<span className="sub">{l.category}</span></span></span></td>
-                  <td>{[l.city, l.region].filter(Boolean).join(', ')}<span className="sub">{l.country}</span></td>
+                  <td className="name" onClick={() => setOpen(l.id)}><span className="who"><Avatar name={l.name} size={32} /><span><span className="t">{l.name}</span><span className="sub">{l.phone || 'no phone'}</span></span></span></td>
+                  <td className="clip">{l.category}</td>
+                  <td className="clip" title={[l.city, l.region, l.country].filter(Boolean).join(', ')}>{[l.city || l.region, l.country].filter(Boolean).join(', ') || <span className="muted">unknown</span>}</td>
+                  <td className="clip">{l.email || <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
-                  <td><div className="contact-icons">
-                    <Mail size={15} className={l.email ? 'has' : ''} aria-label={l.email ? 'Has email' : 'No email'} />
-                    <Phone size={15} className={l.phone ? 'has' : ''} aria-label={l.phone ? 'Has phone' : 'No phone'} />
-                    <Globe size={15} className={l.website ? 'has' : ''} aria-label={l.website ? 'Has website' : 'No website'} />
-                  </div></td>
-                  <td>{l.rating ? <span className="row" style={{ gap: 4 }}><Star size={13} fill="currentColor" color="var(--brass)" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
+                  <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
                   <td>{l.score != null ? <span className={`score ${l.score >= 40 ? 'hot' : ''}`}>{l.score}</span> : <span className="muted">{l.website ? (l.enriched_at ? 'n/a' : 'checking') : 'no site'}</span>}</td>
                   <td><span className={`status ${l.status}`}>{STATUS_LABEL[l.status] ?? l.status}</span></td>
                 </tr>
