@@ -15,7 +15,8 @@ Quarrix can search any HTTPS JSON API that you are allowed to use. You describe 
   "fields": { "name": "title", "phone": "contact.phone", "website": "links.web", "address": "address.line1", "city": "address.city", "lat": "geo[0]", "lon": "geo[1]", "id": "uid" },
   "pages": { "param": "page", "start": 1, "step": 1, "max": 5 },
   "keyHeader": "X-Api-Key",
-  "delayMs": 1000
+  "delayMs": 1000,
+  "terms": { "export": true, "contact": true, "restrictions": "Credit City of Example Open Data." }
 }
 ```
 
@@ -31,6 +32,7 @@ Quarrix can search any HTTPS JSON API that you are allowed to use. You describe 
 | `items` | Yes | The path to the list of results, for example `results` or `data.places`. Use `""` if the response itself is the list. |
 | `fields` | Yes | Paths inside each result. `name` is required; `category`, `address`, `city`, `region`, `country`, `postcode`, `lat`, `lon`, `phone`, `email`, `website` and `id` are optional. |
 | `pages` | No | Page parameter, first value, step, and a maximum of 50 pages. |
+| `terms` | No, but nothing is allowed without it | What the source's licence allows. `export: true` lets leads from this source be exported or synced; `contact: true` lets them be emailed or messaged (and keeps the email field at all). Both default to **false**. `restrictions` is shown in the catalog. A lead whose source file is later removed can be neither exported nor contacted. |
 | `keyHeader` / `keyQuery` | No | If the API needs a key, the header or query parameter it goes in. Enter the key in Settings → Sources; it is stored encrypted. |
 | `delayMs` | No | Wait between pages, at least 500 ms. |
 

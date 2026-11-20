@@ -1,4 +1,5 @@
 // Import leads from CSV, Excel, JSON or PDF, and export them to CSV, Excel or JSON.
+import { current, filterRows } from './scope';
 import { overtureToCandidates } from './sources/opendata';
 import { sourceInfo } from './sources/catalog';
 import { computed } from './crm';
@@ -149,7 +150,7 @@ export const EXPORT_FIELDS = [...EXPORT_COLS.map(([, l]) => l), 'Facebook', 'Ins
 export async function exportLeads(all: db.Lead[], path: string, opts: { fields?: string[]; includeDnc?: boolean; dedupeEmail?: boolean } = {}) {
   const ext = extname(path).toLowerCase();
   // Sources whose terms do not allow exporting stored data (QF-017) are left out.
-  let rows = all.filter((r) => sourceInfo(r.source)?.export !== false);
+  let rows = filterRows(all, current(), 'id').filter((r) => sourceInfo(r.source)?.export !== false);
   if (!opts.includeDnc) rows = rows.filter((r) => r.status !== 'do_not_contact' && !(r.email && db.isSuppressed(r.email, r.domain)));
   if (opts.dedupeEmail) { const seen = new Set<string>(); rows = rows.filter((r) => !r.email || (seen.has(r.email) ? false : (seen.add(r.email), true))); }
   const labels = Object.fromEntries((db.raw().prepare("SELECT key, label FROM custom_fields WHERE entity = 'lead'").all() as { key: string; label: string }[]).map((f) => [f.key, f.label]));

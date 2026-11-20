@@ -4,9 +4,11 @@ import { createHash, createHmac } from 'node:crypto';
 import * as db from './db';
 import { load } from './settings';
 import { sourceInfo } from './sources/catalog';
+import { filterIds } from './scope';
 import { fetchTrusted } from './util';
 
-const exportable = (ids: number[]) => ids.map((id) => db.getLead(id)).filter((l): l is db.Lead => !!l && l.status !== 'do_not_contact' && !(l.email && db.isSuppressed(l.email, l.domain)) && sourceInfo(l.source)?.export !== false);
+/** Leads that may leave the app: in the selected workspace, not do-not-contact, and from sources whose terms allow export. */
+export const exportable = (ids: number[]) => filterIds(ids).map((id) => db.getLead(id)).filter((l): l is db.Lead => !!l && l.status !== 'do_not_contact' && !(l.email && db.isSuppressed(l.email, l.domain)) && sourceInfo(l.source)?.export !== false);
 const COLS = ['id', 'name', 'category', 'email', 'phone', 'website', 'address', 'city', 'region', 'country', 'postcode', 'lat', 'lon', 'rating', 'reviews', 'status', 'grade', 'contact_name', 'contact_role', 'source', 'created_at'] as const;
 
 export async function toPostgres(ids: number[]) {

@@ -1,5 +1,6 @@
 // Local SQLite database: everything stays on this computer.
-import { DUE_SQL, sameBusiness } from './safety';
+import { DUE_SQL, outreachBlock, sameBusiness } from './safety';
+import { sourceInfo } from './sources/catalog';
 import { signalConfidence } from './intel';
 import Database from 'better-sqlite3';
 import { app } from 'electron';
@@ -79,7 +80,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   );
   CREATE TABLE IF NOT EXISTS saved_jobs (id TEXT PRIMARY KEY, at TEXT NOT NULL, data TEXT NOT NULL);`);
   // Columns added after 0.3: decision maker, email check result and a short summary.
-  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"], ['messages', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['messages', "variant TEXT NOT NULL DEFAULT ''"], ['replies', "mailbox TEXT NOT NULL DEFAULT 'main'"]]) {
+  for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"], ['messages', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['messages', "variant TEXT NOT NULL DEFAULT ''"], ['replies', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['searches', "client TEXT NOT NULL DEFAULT ''"], ['watches', "client TEXT NOT NULL DEFAULT ''"], ['campaigns', "client TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
   return db;
@@ -211,10 +212,10 @@ export function facets() {
 
 /* ---------- Searches ---------- */
 
-export type Search = { id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null; watch_id: number | null; checkpoint: string; geo: string };
+export type Search = { client?: string; id: number; created_at: string; category: string; place: string; sources: string; status: string; found: number; added: number; error: string; finished_at: string | null; campaign_id: number | null; watch_id: number | null; checkpoint: string; geo: string };
 
-export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null) {
-  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id, watch_id) VALUES (?, ?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId, watchId).lastInsertRowid);
+export function addSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null, client = '') {
+  return Number(db.prepare('INSERT INTO searches (created_at, category, place, sources, campaign_id, watch_id, client) VALUES (?, ?, ?, ?, ?, ?, ?)').run(now(), category, place, JSON.stringify(sources), campaignId, watchId, client).lastInsertRowid);
 }
 
 /* ---------- Signals ---------- */
@@ -234,8 +235,8 @@ export const leadSignals = (leadId: number) => db.prepare('SELECT * FROM signals
 export const updateSignal = (id: number, patch: { seen?: number; dismissed?: number }) => db.prepare(`UPDATE signals SET ${Object.keys(patch).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(patch), id);
 export const markAllSeen = () => db.prepare('UPDATE signals SET seen = 1 WHERE seen = 0').run();
 export const listWatches = () => db.prepare('SELECT w.*, (SELECT COUNT(*) FROM signals s JOIN leads l ON l.id = s.lead_id JOIN searches se ON se.id = l.search_id WHERE se.watch_id = w.id AND s.type = \'new_listing\') found FROM watches w ORDER BY id DESC').all();
-export function saveWatch(w: { id?: number; category?: string; place?: string; sources?: string; every_days?: number; enabled?: number; last_run?: string; runs?: number }) {
-  const cols = ['category', 'place', 'sources', 'every_days', 'enabled', 'last_run', 'runs'].filter((k) => (w as Record<string, unknown>)[k] !== undefined);
+export function saveWatch(w: { id?: number; category?: string; place?: string; sources?: string; every_days?: number; enabled?: number; last_run?: string; runs?: number; client?: string }) {
+  const cols = ['category', 'place', 'sources', 'every_days', 'enabled', 'last_run', 'runs', 'client'].filter((k) => (w as Record<string, unknown>)[k] !== undefined);
   const vals = cols.map((k) => (w as Record<string, unknown>)[k] as never);
   if (w.id) { db.prepare(`UPDATE watches SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, w.id); return w.id; }
   return Number(db.prepare(`INSERT INTO watches (created_at, ${cols.join(',')}) VALUES (?, ${cols.map(() => '?').join(',')})`).run(now(), ...vals).lastInsertRowid);
@@ -255,7 +256,7 @@ export function listCampaigns() {
 }
 export const getCampaign = (id: number) => db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id) as Campaign | undefined;
 export function saveCampaign(c: Partial<Campaign>) {
-  const cols = ['name', 'category', 'places', 'sources', 'daily', 'auto_send', 'enabled', 'cursor', 'last_run', 'proof'].filter((k) => (c as Record<string, unknown>)[k] !== undefined);
+  const cols = ['name', 'category', 'places', 'sources', 'daily', 'auto_send', 'enabled', 'cursor', 'last_run', 'proof', 'client'].filter((k) => (c as Record<string, unknown>)[k] !== undefined);
   const vals = cols.map((k) => (c as Record<string, unknown>)[k] as never);
   if (c.id) { db.prepare(`UPDATE campaigns SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...vals, c.id); return c.id; }
   return Number(db.prepare(`INSERT INTO campaigns (created_at, ${cols.join(',')}) VALUES (?, ${cols.map(() => '?').join(',')})`).run(now(), ...vals).lastInsertRowid);
@@ -449,3 +450,6 @@ export function dashboard(days = 30) {
     activity: db.prepare(`SELECT e.id, e.at, e.type, e.detail, l.name FROM events e LEFT JOIN leads l ON l.id = e.lead_id ORDER BY e.id DESC LIMIT 18`).all(),
   };
 }
+
+/** Why this lead must not be contacted ('' when it may): do-not-contact, lead status, the site's no-solicitation note and the source's terms. */
+export const blockOf = (lead: Pick<Lead, 'email' | 'domain' | 'status' | 'audit' | 'source'>) => outreachBlock(lead, !!lead.email && isSuppressed(lead.email, lead.domain), sourceInfo(lead.source)?.contact !== false);

@@ -29,12 +29,14 @@ export type Settings = {
     dailyLimit: number; warmStart: number; warmStep: number; gapMinutes: number;
     windowStart: number; windowEnd: number; weekdaysOnly: boolean; followups: number[]; unsubscribeLine: boolean; attachReport: boolean;
     auth: 'password' | 'google' | 'microsoft'; oauthClientId: string; oauthClientSecret: string; oauthRefresh: string; oauthUser: string;
+    /** Separate OAuth apps per provider (0.22): Google needs its own client (and secret), Microsoft its own app ID and tenant. */
+    googleClientId: string; googleClientSecret: string; msClientId: string; msTenant: string;
     /** Set when the user confirms they may send from this identity (QF-066). Sending stays off until then. */
     authorizedAt: string; authorizedFrom: string;
     recontactDays: number; bouncePct: number; pausedReason: string; senderTimezone: string;
     abTest: boolean; abSubjectB: string;
   };
-  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string; authorizedAt: string; dailyLimit: number };
+  whatsapp: { mode: 'assisted' | 'cloud'; cloudToken: string; phoneNumberId: string; defaultCountry: string; authorizedAt: string; authorizedFor?: string; dailyLimit: number };
   signals: { on: boolean; everyDays: number; perRun: number };
   /** Daily request ceilings per source; 0 = no limit. */
   budgets: Record<string, number>;
@@ -49,7 +51,7 @@ export type Settings = {
   jobs: { hideCompanies: string[]; preferCompanies: string[]; hideRecruiters: boolean };
   crm: { stages: { key: string; label: string; probability: number }[]; currency: string };
   automations: import('./automation').Rule[];
-  webhooks: { url: string; events: string[]; secret: string; on: boolean }[];
+  webhooks: { url: string; events: string[]; secret: string; on: boolean; client?: string }[];
   api: { on: boolean; port: number; token: string; captureToken: string };
   hubspot: { token: string };
   notion: { token: string; databaseId: string };
@@ -71,7 +73,7 @@ export type Settings = {
   workspace: 'both' | 'business' | 'career';
 };
 
-export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh', 'exports.postgres.url', 'exports.s3.secretKey'] as const;
+export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'email.googleClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh', 'exports.postgres.url', 'exports.s3.secretKey'] as const;
 
 export const defaults: Settings = {
   theme: 'light',
@@ -83,7 +85,7 @@ export const defaults: Settings = {
     preset: 'gmail', fromName: '', fromEmail: '', smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, smtpUser: '', smtpPass: '',
     imapOn: false, imapHost: 'imap.gmail.com', imapPort: 993, imapUser: '', imapPass: '',
     dailyLimit: 40, warmStart: 10, warmStep: 3, gapMinutes: 4, windowStart: 9, windowEnd: 17, weekdaysOnly: true, followups: [3, 7], unsubscribeLine: true, attachReport: false,
-    auth: 'password', oauthClientId: '', oauthClientSecret: '', oauthRefresh: '', oauthUser: '', authorizedAt: '', authorizedFrom: '', recontactDays: 90, bouncePct: 5, pausedReason: '', senderTimezone: '', abTest: false, abSubjectB: '',
+    auth: 'password', oauthClientId: '', oauthClientSecret: '', googleClientId: '', googleClientSecret: '', msClientId: '', msTenant: 'common', oauthRefresh: '', oauthUser: '', authorizedAt: '', authorizedFrom: '', recontactDays: 90, bouncePct: 5, pausedReason: '', senderTimezone: '', abTest: false, abSubjectB: '',
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US', authorizedAt: '', dailyLimit: 50 },
   signals: { on: true, everyDays: 7, perRun: 30 },
@@ -142,6 +144,9 @@ const dec = (s: string) => {
   try { return safeStorage.decryptString(Buffer.from(s.slice(4), 'base64')); } catch { return ''; }
 };
 
+/** Tests only: forget the cached settings so the file is read again. */
+export const resetCache = () => { cache = null; };
+
 export function load(): Settings {
   if (cache) return cache;
   let stored: unknown = {};
@@ -155,7 +160,18 @@ export function load(): Settings {
   s.mailboxes = (s.mailboxes ?? []).map((b) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, dec(b[k])])) }));
   s.sdkKeys = Object.fromEntries(Object.entries(s.sdkKeys ?? {}).map(([k, v]) => [k, dec(String(v))]));
   cache = s;
-  return s;
+  // 0.22: the single shared OAuth client is split into a Google client and a Microsoft app, by the ID's format.
+  if (s.email.oauthClientId) {
+    const m = splitLegacyClient(s.email.oauthClientId, s.email.oauthClientSecret, s.email.auth);
+    save({ email: { ...m, googleClientId: s.email.googleClientId || m.googleClientId, googleClientSecret: s.email.googleClientSecret || m.googleClientSecret, msClientId: s.email.msClientId || m.msClientId, oauthClientId: '', oauthClientSecret: '' } });
+  }
+  return cache!;
+}
+
+/** Which provider an old shared client ID belongs to. Pure, exported for tests. */
+export function splitLegacyClient(id: string, secret: string, auth: string) {
+  const ms = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim()) || (auth === 'microsoft' && !/googleusercontent\.com$/.test(id));
+  return ms ? { googleClientId: '', googleClientSecret: '', msClientId: id.trim() } : { googleClientId: id.trim(), googleClientSecret: secret, msClientId: '' };
 }
 
 export function save(patch: unknown): Settings {
@@ -188,7 +204,7 @@ export function saveFromUi(patch: Record<string, any>) {
   }
   // Fields only the main process may change: sending approval, the safety pause and the OAuth session.
   if (p.email) for (const k of ['authorizedAt', 'authorizedFrom', 'pausedReason', 'oauthRefresh', 'oauthUser', 'auth']) delete p.email[k];
-  if (p.whatsapp) delete p.whatsapp.authorizedAt;
+  if (p.whatsapp) { delete p.whatsapp.authorizedAt; delete p.whatsapp.authorizedFor; }
   if (p.sdkKeys && typeof p.sdkKeys === 'object') { const old = load().sdkKeys; p.sdkKeys = Object.fromEntries(Object.entries(p.sdkKeys).map(([k, v]) => [k, v === '••••••••' ? old[k] ?? '' : String(v)])); }
   if (Array.isArray(p.mailboxes)) {
     const old = load().mailboxes;

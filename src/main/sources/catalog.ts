@@ -22,7 +22,13 @@ export const SOURCES: SourceInfo[] = [
   { id: 'zerobounce', name: 'ZeroBounce (email verifier)', fields: 'mailbox status', coverage: 'Worldwide', license: 'ZeroBounce terms', auth: 'paid key', cost: 'Paid per check (100 free a month)', freshness: 'Live', restrictions: 'Verification only.', export: true, contact: true, attribution: 'ZeroBounce', hosts: ['api.zerobounce.net'] },
 ];
 
-export const sourceInfo = (id: string): SourceInfo | undefined => id.startsWith('sdk:') ? { id, name: id.slice(4), fields: 'as defined in the source file', coverage: 'as defined', license: 'see the source file', auth: 'setup', cost: 'set by the provider', freshness: 'live', restrictions: 'Defined by you; check the provider\'s terms.', export: true, contact: true, attribution: id.slice(4), hosts: [] } : SOURCES.find((s) => s.id === id || (id === 'socrata' || id === 'arcgis' ? s.id === 'opendata' : false) || (['hotfrog', 'yelp', 'yellowpages', 'yell'].includes(id) && s.id === 'dir') || (id === 'reddit' && s.id === 'posts'));
+/** Source SDK files register their own licence and permissions here (0.22); an unknown or removed file allows neither export nor contact. */
+const sdkInfo = new Map<string, SourceInfo>();
+export function registerSdk(list: { id: string; name: string; license: string; attribution: string; url: string; terms: { export: boolean; contact: boolean; restrictions: string } }[]) {
+  sdkInfo.clear();
+  for (const x of list) { let host = ''; try { host = new URL(x.url.replace(/\{[a-z]+\}/g, 'x')).hostname; } catch { /* checked on load */ } sdkInfo.set(`sdk:${x.id}`, { id: `sdk:${x.id}`, name: x.name, fields: 'as defined in the source file', coverage: 'as defined', license: x.license, auth: 'setup', cost: 'set by the provider', freshness: 'live', restrictions: x.terms.restrictions || 'Defined in the source file.', export: x.terms.export, contact: x.terms.contact, attribution: x.attribution, hosts: host ? [host] : [] }); }
+}
+export const sourceInfo = (id: string): SourceInfo | undefined => id.startsWith('sdk:') ? sdkInfo.get(id) ?? { id, name: id.slice(4), fields: 'unknown', coverage: 'unknown', license: 'unknown (source file missing)', auth: 'setup', cost: 'unknown', freshness: 'unknown', restrictions: 'The source file is missing, so its terms cannot be checked. Export and contact are off.', export: false, contact: false, attribution: id.slice(4), hosts: [] } : SOURCES.find((s) => s.id === id || (id === 'socrata' || id === 'arcgis' ? s.id === 'opendata' : false) || (['hotfrog', 'yelp', 'yellowpages', 'yell'].includes(id) && s.id === 'dir') || (id === 'reddit' && s.id === 'posts'));
 
 /** Which source a network request belongs to, by host. Socrata and ArcGIS feed hosts are added at runtime. */
 export function sourceForHost(host: string, extra: Record<string, string> = {}): string | null {

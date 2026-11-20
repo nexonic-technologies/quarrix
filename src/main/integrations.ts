@@ -1,12 +1,14 @@
 // Sending leads to other tools (QF-085 HubSpot, QF-086 Google Sheets, QF-087 Notion). Each uses the user's own token.
 // Leads marked "do not contact" or on the do-not-contact list are never sent.
+import { exportable } from './exporters';
 import * as db from './db';
-import { authorize, refresh } from './oauth';
+import { authorize, refresh, requireClient } from './oauth';
 import { load, save } from './settings';
 import { fetchText } from './util';
 
 type Result = { sent: number; updated: number; skipped: number; errors: string[] };
-const consented = (ids: number[]) => ids.map((id) => db.getLead(id)).filter((l): l is db.Lead => !!l && l.status !== 'do_not_contact' && !(l.email && db.isSuppressed(l.email, l.domain)));
+// Same rules as every other export: workspace, do-not-contact and the source's export terms.
+const consented = (ids: number[]) => exportable(ids);
 async function api(url: string, token: string, method = 'GET', body?: unknown, extra: Record<string, string> = {}) {
   const r = await fetchText(url, { method, body: body ? JSON.stringify(body) : undefined, timeout: 30000, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json', ...extra } });
   const j = r.text ? JSON.parse(r.text) : {};
@@ -85,9 +87,8 @@ export async function toNotion(ids: number[]): Promise<Result> {
 // ── Google Sheets: append rows with the Sheets API, signed in with the user's own Google OAuth client ──
 const SHEETS = 'https://www.googleapis.com/auth/spreadsheets openid email';
 export async function connectSheets() {
-  const e = load().email;
-  if (!e.oauthClientId) throw new Error('Add your Google OAuth client ID in Settings → Email first (the same client works for Sheets).');
-  const t = await authorize('google', SHEETS, e.oauthClientId, e.oauthClientSecret);
+  const c = requireClient('google'); // the Google client from Settings → Email also works for Sheets
+  const t = await authorize('google', SHEETS, c.id, c.secret);
   if (!t.refresh_token) throw new Error('Google did not return a long-lived token. Remove Quarrix from your Google account\'s connected apps and try again.');
   let user = '';
   try { user = JSON.parse(Buffer.from((t.id_token ?? '').split('.')[1], 'base64').toString()).email ?? ''; } catch { /* no id token */ }
@@ -99,7 +100,8 @@ export async function toSheets(ids: number[]): Promise<Result> {
   const id = (s.sheets?.spreadsheetId ?? '').match(/[-\w]{25,}/)?.[0];
   if (!id) throw new Error('Paste the Google Sheet link or ID in Settings → Connections.');
   if (!s.sheets?.refresh) throw new Error('Connect Google Sheets in Settings → Connections.');
-  const tok = (await refresh('google', s.sheets.refresh, SHEETS, s.email.oauthClientId, s.email.oauthClientSecret)).access_token;
+  const g = requireClient('google');
+  const tok = (await refresh('google', s.sheets.refresh, SHEETS, g.id, g.secret)).access_token;
   const leads = consented(ids);
   const rows = leads.map((l) => [l.name, l.category, l.email, l.phone, l.website, l.address, l.city, l.country, l.status, l.grade, l.contact_name, l.source, new Date().toISOString().slice(0, 10)]);
   const head = [['Name', 'Category', 'Email', 'Phone', 'Website', 'Address', 'City', 'Country', 'Status', 'Grade', 'Contact', 'Source', 'Exported']];

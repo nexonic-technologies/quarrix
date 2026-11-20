@@ -3,10 +3,12 @@ import { isSafeExternalUrl } from './safety';
 import { devOrigin, lockAll, lockContents } from './guard';
 import * as budget from './budget';
 import { checkSources } from './health';
-import { SOURCES } from './sources/catalog';
+import { SOURCES, sourceInfo } from './sources/catalog';
 import { EMAIL_STATUS, listingUrl, PRESETS, reviewTrend } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
 import * as oauth from './oauth';
+import * as scope from './scope';
+import { prepareSmoke, runSmoke, smokeOut } from './smoke';
 import * as crm from './crm';
 import * as jobstore from './jobstore';
 import * as automation from './automation';
@@ -83,8 +85,12 @@ let testSends: number[] = [];
 function waGuard(l: db.Lead, cloud: boolean) {
   const digits = l.phone.replace(/\D/g, '');
   if (l.status === 'do_not_contact' || (digits && db.isSuppressed(`tel:${digits}`)) || (l.email && db.isSuppressed(l.email, l.domain))) throw new Error('This lead is on your do-not-contact list.');
+  if (sourceInfo(l.source)?.contact === false) throw new Error('The terms of the source this lead came from do not allow contacting it.');
   if (cloud) {
-    if (!load().whatsapp.authorizedAt) throw new Error('Approve WhatsApp sending in Settings → WhatsApp first.');
+    const w = load().whatsapp;
+    if (!w.authorizedAt) throw new Error('Approve WhatsApp sending in Settings → WhatsApp first.');
+    // Sender identity: the approval is for one WhatsApp Business number; changing the number needs a new approval.
+    if ((w.authorizedFor ?? '') !== w.phoneNumberId) throw new Error('The WhatsApp Business number changed since you approved sending. Approve it again in Settings → WhatsApp.');
     const today = (db.raw().prepare("SELECT COUNT(*) n FROM events WHERE type = 'whatsapp' AND detail LIKE 'Sent%' AND at >= ?").get(new Date().toISOString().slice(0, 10)) as { n: number }).n;
     if (today >= (load().whatsapp.dailyLimit || 50)) throw new Error(`Today's WhatsApp limit (${load().whatsapp.dailyLimit || 50}) is reached.`);
     if (!(l as any).wa_consent) throw new Error('WhatsApp requires the person\'s opt-in before a business sends to them. Tick "They agreed to WhatsApp messages" on the lead first.');
@@ -97,7 +103,8 @@ const handle = (ch: string, fn: (...a: any[]) => unknown) =>
     const from = e.senderFrame?.url ?? '';
     if (!from.startsWith('file:') && !(devOrigin() && from.startsWith(devOrigin() + '/'))) return { ok: false, error: 'Blocked a call from an unknown page.' };
     try { if (JSON.stringify(args ?? []).length > 5_000_000) return { ok: false, error: 'Request too large.' }; } catch { return { ok: false, error: 'Request not readable.' }; }
-    try { return { ok: true, data: await fn(...args) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
+    // Client workspace isolation: record IDs are checked and lists are limited to the selected workspace.
+    try { const s = scope.current(); return { ok: true, data: scope.guardResult(ch, await fn(...scope.guardArgs(ch, args, s)), s) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   });
 
 function registerIpc() {
@@ -162,8 +169,10 @@ function registerIpc() {
     if (!/^[^@\s]+@[a-z0-9.-]*mail-tester\.com$/i.test(a)) throw new Error('Paste the address shown on mail-tester.com (it ends with @srv1.mail-tester.com or similar).');
     const box = mb.boxById(String(boxId || 'main'));
     if (!mb.ready(box)) throw new Error('Approve sending from this mailbox first.');
+    if (mb.sentToday(box.id) >= mb.capOf(box)) throw new Error(`${box.label} has reached today's limit; the placement test counts towards it.`);
     const sample = db.raw().prepare("SELECT subject, body FROM messages WHERE channel = 'email' AND step = 0 ORDER BY id DESC LIMIT 1").get() as { subject: string; body: string } | undefined;
     await mail.sendRaw(a, sample?.subject ?? 'Quick question', `${sample?.body ?? 'Hello, this is a deliverability test from Quarrix.'}\n\n${mail.footer(load())}`, '', [], box.id);
+    db.logEvent(null, 'placement', box.id);
     return `https://www.mail-tester.com/${a.split('@')[0]}`;
   });
   handle('crm:stages', () => crm.stages());
@@ -209,7 +218,7 @@ function registerIpc() {
   handle('cli:info', () => cli.info());
   handle('cli:install', () => cli.install());
   handle('api:captureToken', () => localapi.captureToken());
-  handle('wa:authorize', (on: boolean) => { save({ whatsapp: { ...load().whatsapp, authorizedAt: on ? db.now() : '' } }); return !!on; });
+  handle('wa:authorize', (on: boolean) => { const w = load().whatsapp; if (on && (!w.cloudToken || !w.phoneNumberId)) throw new Error('Add the Cloud API token and phone number ID first.'); save({ whatsapp: { ...w, authorizedAt: on ? db.now() : '', authorizedFor: on ? w.phoneNumberId : '' } }); return !!on; });
   handle('api:token', () => ({ token: localapi.ensureToken(), port: load().api.port }));
   handle('api:newToken', () => { save({ api: { ...load().api, token: '' } }); const t = localapi.ensureToken(); localapi.start(); return t; });
   handle('sync:hubspot', (ids: number[]) => integrations.toHubspot((ids ?? []).map(Number)));
@@ -248,7 +257,7 @@ function registerIpc() {
   handle('sources:usage', () => db.usageToday());
   handle('search:list', () => db.listSearches());
 
-  handle('leads:query', (q) => db.queryLeads({ ...(load().currentClient ? { client: load().currentClient } : {}), ...(q ?? {}) }));
+  handle('leads:query', (q) => db.queryLeads(scope.scopedQuery({ ...(q ?? {}) })));
   handle('leads:get', (id: number) => ({ lead: db.getLead(id), messages: db.messagesFor(id), events: db.eventsFor(id) }));
   handle('leads:update', (id: number, patch) => { db.updateLead(id, patch); if (patch.status === 'do_not_contact') { const l = db.getLead(id); if (l?.email) db.suppress(l.email, 'marked do not contact'); db.cancelPending(id, 'Marked do not contact'); } return db.getLead(id); });
   handle('leads:delete', (ids: number[]) => db.deleteLeads(ids));
@@ -325,17 +334,17 @@ function registerIpc() {
   handle('signals:seenAll', () => db.markAllSeen());
   handle('signals:run', () => signals.run(send, true));
   handle('signals:check', async (id: number) => { const l = db.getLead(id); return l ? signals.checkLead(l) : 0; });
-  handle('watches:list', () => db.listWatches());
-  handle('watches:save', (w) => db.saveWatch(w));
-  handle('watches:delete', (id: number) => db.deleteWatch(id));
+  handle('watches:list', () => scope.byClient(db.listWatches()));
+  handle('watches:save', (w) => db.saveWatch(scope.ownRecord('watches', w ?? {})));
+  handle('watches:delete', (id: number) => { scope.ownRecord('watches', { id }); return db.deleteWatch(id); });
   handle('dash:get', (days: number) => db.dashboard(days || 30));
   handle('jobs:unsave', (id: string) => db.unsaveJob(id));
   handle('geo:cities', (cc: string) => citiesOf(cc));
   handle('search:log', (id: number) => jobs.searchLog(id));
-  handle('campaigns:list', () => db.listCampaigns());
-  handle('campaigns:save', (c) => db.saveCampaign(c));
-  handle('campaigns:delete', (id: number) => db.deleteCampaign(id));
-  handle('campaigns:run', (id: number) => autopilot.run(send, id));
+  handle('campaigns:list', () => scope.byClient(db.listCampaigns()));
+  handle('campaigns:save', (c) => db.saveCampaign(scope.ownRecord('campaigns', c ?? {})));
+  handle('campaigns:delete', (id: number) => { scope.ownRecord('campaigns', { id }); return db.deleteCampaign(id); });
+  handle('campaigns:run', (id: number) => { scope.ownRecord('campaigns', { id }); return autopilot.run(send, id); });
   handle('messages:cancel', (leadId: number) => db.cancelPending(leadId, 'Stopped by you'));
 
   handle('mail:test', (boxId?: string) => mail.testMailbox(boxId ? String(boxId) : 'main'));
@@ -346,7 +355,7 @@ function registerIpc() {
     if (db.isSuppressed(addr)) throw new Error('That address is on your do-not-contact list.');
     if ((testSends = testSends.filter((t) => Date.now() - t < 864e5)).length >= 5) throw new Error('Five test emails a day is the limit.');
     testSends.push(Date.now());
-    return mail.sendRaw(addr, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`);
+    return mail.sendRaw(addr, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`, '', [], 'main', 'test');
   });
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
@@ -370,7 +379,7 @@ function registerIpc() {
   handle('file:export', async (q, format: 'csv' | 'xlsx' | 'json', opts?: { fields?: string[]; includeDnc?: boolean; dedupeEmail?: boolean }) => {
     const r = await dialog.showSaveDialog(win!, { defaultPath: `quarrix-leads-${new Date().toISOString().slice(0, 10)}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (r.canceled || !r.filePath) return null;
-    const rows = db.queryLeads({ ...q, limit: 1_000_000, offset: 0 }).rows;
+    const rows = db.queryLeads(scope.scopedQuery({ ...(q ?? {}), limit: 1_000_000, offset: 0 })).rows;
     const n = await exportLeads(rows, r.filePath, opts ?? {});
     shell.showItemInFolder(r.filePath);
     return n;
@@ -378,9 +387,12 @@ function registerIpc() {
   handle('open:external', (url: string) => { if (!isSafeExternalUrl(String(url))) throw new Error('Only web and email links can be opened.'); return shell.openExternal(url); });
 }
 
+prepareSmoke();
+
 app.whenReady().then(() => {
   app.setAppUserModelId('com.nexonictechnologies.quarrix');
   lockAll();
+  loadSources(app.getPath('userData')); // registers the Source SDK files' licences before anything is exported or contacted
   app.on('web-contents-created', (_e, wc) => lockContents(wc));
   const restored = backup.applyPendingRestore();
   db.openDb();
@@ -394,6 +406,7 @@ app.whenReady().then(() => {
   if (restored) setTimeout(() => send('toast', 'Backup restored. Your previous data was kept as a safety copy in the app folder.'), 3000);
   registerIpc();
   createWindow();
+  if (smokeOut()) { void runSmoke(win!); return; } // installed-app smoke test: no background work
   budget.install();
   onMapsLoad(() => budget.spend('gmaps'));
   jobs.start(send);
@@ -401,7 +414,10 @@ app.whenReady().then(() => {
   signals.start(send);
   setInterval(() => void mail.tick((m) => send('toast', m)), 60_000);
   // Job alerts (QF-107): saved searches run on their schedule while Quarrix is open.
-  setInterval(() => void jobstore.runAlerts().then((hits) => { for (const [name, n] of hits) { new Notification({ title: `${n} new job${n > 1 ? 's' : ''}: ${name}`, body: 'Open Job search → Alerts to see them.' }).show(); send('alerts'); } }).catch(() => undefined), 15 * 60_000);
+  const alertTick = () => void jobstore.runAlerts().then((hits) => { for (const [name, n] of hits) { new Notification({ title: `${n} new job${n > 1 ? 's' : ''}: ${name}`, body: 'Open Job search → Alerts to see them.' }).show(); } send('alerts'); }).catch(() => undefined);
+  // Checked every 5 minutes, and a minute after start, so an alert runs within 5 minutes of when it is due.
+  setTimeout(alertTick, 60_000);
+  setInterval(alertTick, 5 * 60_000);
   // Task reminders (QF-049): a desktop notification when a task falls due.
   setInterval(() => {
     for (const t of crm.dueReminders() as any[]) {

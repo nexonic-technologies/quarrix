@@ -7,7 +7,7 @@ import { BOT_UA, fetchText, UA } from './util';
 export type Health = { id: string; name: string; status: 'ok' | 'warn' | 'fail' | 'off'; message: string; fix: string; ms: number; usedToday: number; limit: number };
 
 async function probe(url: string, opts: Parameters<typeof fetchText>[1] = {}) {
-  const r = await fetchText(url, { timeout: 15000, maxBytes: 400_000, ...opts });
+  const r = await fetchText(url, { timeout: 15000, maxBytes: 400_000, partial: true, ...opts });
   return { status: r.status, text: r.text, ms: r.ms };
 }
 

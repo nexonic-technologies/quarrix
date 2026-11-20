@@ -3,7 +3,6 @@ import * as db from './db';
 import { complete, draftFor } from './ai';
 import { altSubject } from './rules';
 import { pick } from './mailboxes';
-import { outreachBlock } from './safety';
 import { load } from './settings';
 
 export async function createDrafts(ids: number[], onDraft: () => void = () => undefined) {
@@ -13,7 +12,7 @@ export async function createDrafts(ids: number[], onDraft: () => void = () => un
   for (const id of ids) {
     const lead = db.getLead(id);
     if (!lead) continue;
-    const block = outreachBlock({ ...lead, email: lead.email || 'none', status: '' }, !!lead.email && db.isSuppressed(lead.email, lead.domain));
+    const block = db.blockOf({ ...lead, email: lead.email || 'none', status: '' });
     if (block) { errors.push(`${lead.name}: ${block}`); continue; }
     try {
       const d = await draftFor(s, lead, s.email.followups.length);
@@ -37,7 +36,7 @@ export async function createDrafts(ids: number[], onDraft: () => void = () => un
 export function approve(leadId: number, by = 'you') {
   const lead = db.getLead(leadId);
   if (!lead) throw new Error('Lead not found.');
-  const block = outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain));
+  const block = db.blockOf(lead);
   if (block) throw new Error(`Not approved: ${block}.`);
   // The whole sequence goes out from one mailbox: the approved one with the most room today (QF-061).
   // No approved mailbox means no approval: emails never wait for an account that was never approved.

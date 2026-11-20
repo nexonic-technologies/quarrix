@@ -12,6 +12,8 @@ Find businesses, build your own lead database and reach out to them, from a desk
 - **Import and export.** Bring in CSV, Excel, JSON or PDF lists; export to Excel, CSV or JSON.
 - **Personal emails.** Describe what you offer once. Quarrix drafts an email and follow-ups for each business, using any model you choose (Anthropic, OpenAI, Gemini, OpenRouter, Groq) or a free model running on your own computer (Ollama, LM Studio). No model? It uses clean built-in templates.
 - **Careful sending.** Emails go from your own Gmail, Outlook or SMTP mailbox, in the recipient's working hours, with a daily limit that grows slowly. Follow-ups stop by themselves when someone replies, bounces or asks to stop.
+- **Client workspaces.** Agencies keep each client's leads, deals, tasks, messages, exports, syncs, automations and webhooks apart; inside a client workspace nothing from another client can be seen or changed.
+- **Six languages.** English, Urdu, Arabic (right to left), Spanish, French and German across every screen (machine translation, native review welcome).
 - **WhatsApp, safely.** Open WhatsApp with the drafted message ready to send, or use Meta's official WhatsApp Business Cloud API for contacts who opted in. Quarrix never automates a personal WhatsApp account.
 
 ## Privacy
@@ -31,7 +33,7 @@ npm test           # tests
 npm run dist       # installers for this computer, in dist/
 ```
 
-Releases are built by GitHub Actions for macOS, Windows and Linux whenever the version in `package.json` changes on `main`.
+Releases are built by GitHub Actions for macOS, Windows and Linux whenever the version in `package.json` changes on `main`. Each installer is installed and started on its own platform (installed-app smoke test) and its signature state is checked before the release is published; see [docs/RELEASING.md](docs/RELEASING.md). Current builds are unsigned until certificates are added ([docs/CREDENTIALS.md](docs/CREDENTIALS.md)).
 
 ## Licence
 

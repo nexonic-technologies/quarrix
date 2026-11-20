@@ -1,66 +1,59 @@
-# Final audit, v0.21.0
+# Final audit, v0.22.0
 
-This audit covers v0.21.0 on 20 Nov 2026. It records what the code does and how each part was checked. "Verified" means an automated test exercised the real code path. A successful compile is not counted as verification.
+This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exercised the real code path; a successful compile is not counted.
 
 ## How things were tested
 
-- **Unit tests:** 59, run in Node.
-- **Integration tests:** 17, in `test/int`. They run inside Electron's own Node runtime against:
-  - real SQLite (the app's own better-sqlite3 build) and real files;
-  - real SMTP servers receiving mail from Quarrix's sending code;
-  - the real local HTTP API;
-  - the real `quarrix` CLI and MCP server as separate processes;
-  - a real HTTP server checking webhook signatures.
-- **Checks on every push:** CI runs the type check, both test suites, a production dependency audit (no high or critical issues) and the build. The release workflow runs the same tests before building the Mac, Windows and Linux installers.
-- **Not tested here:** no live tests used third-party accounts. None were available, and this environment cannot reach the public internet. Nothing below claims otherwise.
+- **Unit tests:** 69, in Node.
+- **Integration tests:** 26, in `test/int`, inside Electron's own Node against real SQLite, real SMTP servers, the real local HTTP API, the real CLI and MCP processes and a real webhook receiver.
+- **Installed-app smoke test** (`src/main/smoke.ts`, 16 checks): every release installs each installer the way a user would (DMG, silent NSIS install, `apt install` of the .deb), starts the installed app and checks window, first-launch wizard, every screen, workspaces, accessible names, Arabic right-to-left translation, database, IPC, client isolation, sending approval, network guard, packaged CLI and secret storage. The same test passed here on Linux against the built app.
+- **Signature verification** per platform in every release; the release notes state whether each build is signed.
+- **Live provider checks** (`scripts/live.mjs`): the app's own source code against the real keyless services (OpenStreetMap, Wikidata, NPI, Overture, DNS, Hacker News, Greenhouse, Lever, Ashby, SmartRecruiters, Workday, keyless job boards, a job alert run). They run from CI on every release and are published as `live-providers.json`; they are a report, not a gate. This build environment has no internet access, so they were not run here.
 
-## Critical fixes (P0), all with tests
+## Critical fixes (P0), 0.22
 
 | Issue | Fix | Evidence |
 |---|---|---|
-| Leads from different clients could merge and share companies | Duplicate checks, companies, branches and merges are limited to one client workspace; the 0.20 company table is migrated | test/int/data.int.ts |
-| Sending could fall back to another mailbox | Removed. A missing mailbox stops the sequence with a reason. Sending needs a connected, approved mailbox whose current address matches the approval | test/int/outreach.int.ts |
-| DNS rebinding and private addresses | Every request is checked when it connects, on the IP actually used. Hidden browser windows check DNS before each request, and block downloads and unsafe navigation | test/int/api.int.ts, test/safety.test.ts |
-| Outgoing paths without the rules | Report emails, test emails, placement tests and WhatsApp now have approval, do-not-contact checks, consent (WhatsApp) and daily limits. Report emails count towards the limit | test/int/outreach.int.ts (sequence paths); others checked by code review and typecheck |
+| API keys and credentials could follow a redirect to another site | Authorization, Cookie and any key/token/secret/auth header are dropped when a redirect changes origin (scheme, host or port); key-like query parameters are removed too; https → http redirects carrying credentials or a body are refused; 307/308 never resend a body to another origin | test/hardening.test.ts |
+| Client workspaces were only separated at duplicate checks | When a client workspace is selected, every IPC channel that takes a record ID checks it belongs to that client, list channels are filtered, lead queries and file exports are forced to the workspace, deals/tasks/forecast are scoped in SQL, exports and CRM/database syncs drop other clients' leads, watches and campaigns belong to the workspace they were made in, searches keep their workspace even if the user switches mid-search, automations and webhooks can be limited to one client, and the local API sees the same workspace. "All clients" stays an agency overview | test/int/hardening.int.ts, smoke test |
+| Browser DNS rebinding | Hidden browser sessions resolve names with Chromium's own resolver (the answer the page connects with), trust a safe answer for 10 s only, and stop the page if a redirect still comes from a private address. Private-address detection now covers IPv4 inside IPv6 (mapped, compatible, NAT64, 6to4), Teredo, documentation and site-local ranges, and numeric host tricks (2130706433, 0x7f.1); `.lan` and `.home.arpa` are blocked | test/hardening.test.ts, test/int/hardening.int.ts |
+| Network limits | At most 6 connections per origin, 15 s connect timeout, bounded header and body timeouts, 5 redirect hops, every hop re-checked; Overture range reads go through the same checks and budgets | code review, test/hardening.test.ts |
+| Sending paths | `sendRaw`, the only function that sends email, now re-checks every message: valid single recipient, do-not-contact list (case-insensitive), pause, approved mailbox whose address still matches the approval, today's limit, message size; subjects cannot inject headers; placement tests count towards the daily limit; provider errors are redacted before being stored. WhatsApp Cloud approval is tied to one business number, refuses leads whose source forbids contact, and handles non-JSON errors | test/int/hardening.int.ts, test/int/outreach.int.ts |
 
-## Other fixes (P1)
+## Improvements (P1), 0.22
 
-- **Dev server:** the main window and the IPC check now accept exactly the `QUARRIX_DEV_URL` origin (they used to check an unused variable).
-- **Dashboard email counts:** "confirmed" counts only verified emails; deliverable domains are counted separately.
-- **Approvals:** approving is refused when no approved mailbox exists.
-- **Results with no map position:** these are dropped when their country or city says they are elsewhere (`placeMatches`, tested).
-- **Job distance:** country names are skipped, a country named in the location is respected, district suffixes are ignored, and city lookup stays within the country (tested).
+- **OAuth:** Google and Microsoft have separate settings (Google client ID + secret; Microsoft app ID + tenant). The Google secret is never sent to Microsoft. Old shared settings are migrated by ID format.
+- **Overture:** all listing pages, every file footer, antimeridian boxes, better category matching, de-duplication, partial results reported.
+- **Job alerts:** 5-minute checks and a check at start, schedule kept from the due time, retries with backoff, per-board baselines, editing an alert's search starts a new baseline, errors shown.
+- **Source SDK:** licence terms (export, contact) per source, both off by default; emails are not kept when contact is not allowed; duplicate IDs refused.
+- **Oversized responses** are rejected with a clear error instead of being cut off (only the health probe accepts a partial page, and says so).
+- **Screens:** a screen that fails to draw shows the error and a retry button instead of blanking the app.
 
-## Partial items now complete
+## Outstanding features
 
-- **Overture:** reads the live release files directly (no query API exists).
-- **Company size and growth:** from Wikidata, by official website.
-- **Source SDK:** documented in docs/SOURCE_SDK.md.
-- **Star distribution:** only shown when it adds up to the review count.
-
-## Still partial
-
-- **QF-123 Localization:** menus, titles and the workspace switch are in 6 languages, with right-to-left layout. About 900 other strings need professional translation.
-- **QF-121 Signing:** works once the certificate secrets are added (docs/CREDENTIALS.md).
+- **QF-123 Localization: done.** Every screen in Urdu, Arabic (right to left), Spanish, French and German, 1,158 strings each, numbers in sentences handled by patterns, the user's own data left untranslated. Machine translation; native review is welcome. Error messages produced by the main process are still in English.
+- **QF-121 Signing: blocked on certificates.** The pipeline signs and verifies each platform once its secrets exist (docs/CREDENTIALS.md lists exactly what is needed); until then builds are unsigned and verified as unsigned, and the release notes say so.
 
 ## Blocked
 
 - **Job boards:** Glassdoor, ZipRecruiter, SEEK/JobStreet/JobsDB, Naukri, Bayt, BDJobs and HelloWork. Their APIs are partner-only or don't exist.
 - **Hosted collaboration (QF-057):** needs a sync service that Quarrix does not run.
-- **Not done (QF-115, demo data):** conflicts with the owner's "real data only" rule.
+- **QF-121:** needs Apple and Windows signing certificates.
+- **Not done (QF-115, demo data):** intentionally excluded: it conflicts with the owner's "real data only" rule.
 
-## Built, not yet verified live (45 items)
+## Built, not yet verified live (39 items)
+
+Each release now runs the keyless ones against the real services from CI (live-providers.json on the release page); items that need the owner's own accounts or keys stay here until those are available.
 
 | ID | Feature | Why it is not verified yet | What is needed |
 |---|---|---|---|
+| QF-005 | Overture Maps connector | Reads Overture's public S3 release files; this environment cannot reach them | The release's live check (live-providers.json) or a run in the installed app |
 | QF-002 | Batch search builder | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-005 | Overture Maps connector | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-009 | Wikidata business source | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-011 | Provider connectivity diagnostics | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-012 | Per-provider request budgets | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-013 | Batch preflight/small-sample preview | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-015 | Business search map with clustering | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-017 | Contact-source permissions registry | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-026 | Business imagery and profile media | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-028 | Company size and growth fields | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-029 | Evidence and source provenance per field | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
@@ -91,18 +84,13 @@ This audit covers v0.21.0 on 20 Nov 2026. It records what the code does and how 
 | QF-095 | Workday careers connector | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-096 | Personio/Pinpoint connectors | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-097 | Hacker News hiring posts | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-107 | Scheduled job alerts | Needs the live service; this environment cannot reach it | internet access to job boards over time |
 | QF-113 | Job result exports | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-114 | Guided first-launch wizard | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-116 | Distinct Business and Career workspaces | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-117 | Advanced search preview and estimate | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-120 | Per-feature privacy disclosures | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-122 | Accessibility and keyboard support | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 
 ## Totals
 
-- Done: 69
-- Built: 45
-- Blocked: 7
-- Partial: 2
+- Done: 76
+- Built: 39
+- Blocked: 8
+- Partial: 0
 - Not done: 1

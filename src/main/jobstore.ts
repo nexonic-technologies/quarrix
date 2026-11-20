@@ -23,6 +23,15 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS job_alerts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL, every_hours INTEGER NOT NULL DEFAULT 12, enabled INTEGER NOT NULL DEFAULT 1, last_run TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS job_alert_hits (alert_id INTEGER NOT NULL REFERENCES job_alerts(id) ON DELETE CASCADE, job_id TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (alert_id, job_id));
   `);
+  // 0.22: alert scheduling, retries and per-source baselines.
+  for (const c of ['next_run TEXT', 'fails INTEGER NOT NULL DEFAULT 0', "last_error TEXT NOT NULL DEFAULT ''", 'last_ok TEXT', "base_sources TEXT NOT NULL DEFAULT '[]'"]) {
+    try { raw().exec(`ALTER TABLE job_alerts ADD COLUMN ${c}`); } catch { /* already there */ }
+  }
+  // Alerts that already ran: every source that produced hits is already baselined.
+  for (const a of raw().prepare("SELECT id FROM job_alerts WHERE last_run IS NOT NULL AND base_sources = '[]'").all() as { id: number }[]) {
+    const src = (raw().prepare("SELECT DISTINCT json_extract(data, '$.source') s FROM job_alert_hits WHERE alert_id = ?").all(a.id) as { s: string | null }[]).map((r) => r.s).filter(Boolean);
+    if (src.length) raw().prepare('UPDATE job_alerts SET base_sources = ? WHERE id = ?').run(JSON.stringify(src), a.id);
+  }
 }
 
 // ── Followed employers (QF-091 to QF-096, QF-104) ──
@@ -127,29 +136,65 @@ export async function checkPosting(url: string) {
 export const listAlerts = () => raw().prepare('SELECT a.*, (SELECT COUNT(*) FROM job_alert_hits h WHERE h.alert_id = a.id AND h.seen = 0) unseen FROM job_alerts a ORDER BY id DESC').all();
 export function saveAlert(a: { id?: number; name: string; query: unknown; every_hours?: number; enabled?: boolean }) {
   const hours = Math.min(168, Math.max(1, Number(a.every_hours) || 12));
-  if (a.id) return raw().prepare('UPDATE job_alerts SET name = ?, query = ?, every_hours = ?, enabled = ? WHERE id = ?').run(a.name, JSON.stringify(a.query), hours, a.enabled === false ? 0 : 1, a.id);
+  // Changing the search starts a fresh baseline, so the old results are not reported as new.
+  if (a.id) return raw().prepare("UPDATE job_alerts SET name = ?, every_hours = ?, enabled = ?, next_run = NULL, fails = 0, base_sources = CASE WHEN query = ? THEN base_sources ELSE '[]' END, query = ? WHERE id = ?").run(String(a.name).slice(0, 80), hours, a.enabled === false ? 0 : 1, JSON.stringify(a.query), JSON.stringify(a.query), a.id);
   return raw().prepare('INSERT INTO job_alerts (name, query, every_hours, created_at) VALUES (?, ?, ?, ?)').run(a.name.slice(0, 80), JSON.stringify(a.query), hours, now());
 }
 export const deleteAlert = (id: number) => raw().prepare('DELETE FROM job_alerts WHERE id = ?').run(id);
 export const alertHits = (id: number) => (raw().prepare('SELECT * FROM job_alert_hits WHERE alert_id = ? ORDER BY at DESC LIMIT 200').all(id) as any[]).map((h) => ({ ...JSON.parse(h.data), at: h.at, seen: !!h.seen }));
 export const markAlertSeen = (id: number) => raw().prepare('UPDATE job_alert_hits SET seen = 1 WHERE alert_id = ?').run(id);
 let alertBusy = false;
+type AlertRow = { id: number; name: string; query: string; every_hours: number; next_run: string | null; last_run: string | null; fails: number; base_sources: string };
+/** Is the alert due? Pure. */
+export const alertDue = (a: Pick<AlertRow, 'next_run' | 'last_run' | 'every_hours'>, nowMs: number) =>
+  a.next_run ? Date.parse(a.next_run) <= nowMs : !a.last_run || nowMs - Date.parse(a.last_run) >= a.every_hours * 36e5;
+/**
+ * What a run means for the alert. Pure, exported for tests.
+ * - A run where every board failed is a failure: nothing is recorded, and it is retried after 15, 30, 60… minutes (never later than the normal schedule).
+ * - The first time a board answers, its current postings are recorded as already seen (its baseline), so a board that was down
+ *   earlier never floods the alert with old postings. Only postings from already-baselined boards count as new.
+ * - The next run is planned from the time this run was due, not from when it finished, so the schedule does not drift.
+ */
+export function alertOutcome(a: Pick<AlertRow, 'every_hours' | 'fails' | 'base_sources' | 'next_run'>, r: { jobs: { id: string; source: string }[]; errors: string[] }, nowMs: number) {
+  const every = a.every_hours * 36e5;
+  if (!r.jobs.length && r.errors.length) {
+    const fails = a.fails + 1;
+    const wait = Math.min(every, 15 * 60_000 * 2 ** Math.min(fails - 1, 8));
+    return { failed: true, fails, error: r.errors.slice(0, 3).join('; ').slice(0, 300), nextRun: new Date(nowMs + wait).toISOString(), fresh: [] as string[], baseline: [] as string[], baseSources: JSON.parse(a.base_sources || '[]') as string[] };
+  }
+  const known = new Set<string>(JSON.parse(a.base_sources || '[]'));
+  const fresh: string[] = [], baseline: string[] = [];
+  for (const j of r.jobs) (known.has(j.source) ? fresh : baseline).push(j.id);
+  for (const j of r.jobs) known.add(j.source);
+  let next = a.next_run ? Date.parse(a.next_run) : nowMs;
+  if (!Number.isFinite(next) || a.fails) next = nowMs;
+  while (next <= nowMs) next += every;
+  return { failed: false, fails: 0, error: r.errors.length ? `Some boards failed: ${r.errors.slice(0, 3).join('; ')}`.slice(0, 300) : '', nextRun: new Date(next).toISOString(), fresh, baseline, baseSources: [...known] };
+}
+
 /** Run alerts that are due; returns [alert name, new jobs] for notifications. */
 export async function runAlerts(force = false): Promise<[string, number][]> {
-  if (alertBusy) return [];
+  if (alertBusy) { if (force) throw new Error('Alerts are already running. Try again in a minute.'); return []; }
   alertBusy = true;
   const out: [string, number][] = [];
   try {
-    for (const a of raw().prepare('SELECT * FROM job_alerts WHERE enabled = 1').all() as any[]) {
-      if (!force && a.last_run && Date.now() - Date.parse(a.last_run) < a.every_hours * 36e5) continue;
-      raw().prepare('UPDATE job_alerts SET last_run = ? WHERE id = ?').run(now(), a.id);
-      const { jobs } = await searchAll(JSON.parse(a.query)).catch(() => ({ jobs: [] as Annotated[] }));
+    for (const a of raw().prepare('SELECT * FROM job_alerts WHERE enabled = 1').all() as AlertRow[]) {
+      if (!force && !alertDue(a, Date.now())) continue;
+      let q: any;
+      try { q = JSON.parse(a.query); } catch { raw().prepare("UPDATE job_alerts SET last_error = 'The saved search is damaged; edit and save the alert again.', enabled = 0 WHERE id = ?").run(a.id); continue; }
+      const res = await searchAll(q).catch((e: any) => ({ jobs: [] as Annotated[], errors: [String(e?.message ?? e)] }));
+      const o = alertOutcome(a, res, Date.now());
+      raw().prepare('UPDATE job_alerts SET last_run = ?, next_run = ?, fails = ?, last_error = ?, base_sources = ?, last_ok = CASE WHEN ? THEN last_ok ELSE ? END WHERE id = ?')
+        .run(now(), o.nextRun, o.fails, o.error, JSON.stringify(o.baseSources), o.failed ? 1 : 0, now(), a.id);
+      if (o.failed) continue;
+      const byId = new Map(res.jobs.map((j) => [j.id, j]));
       const ins = raw().prepare('INSERT OR IGNORE INTO job_alert_hits (alert_id, job_id, at, data, seen) VALUES (?, ?, ?, ?, ?)');
-      // The first run only records what exists, so the alert reports postings that appear after it was set up.
-      const first = !a.last_run;
       let n = 0;
-      raw().transaction(() => { for (const j of jobs) n += ins.run(a.id, j.id, now(), JSON.stringify(j), first ? 1 : 0).changes; })();
-      if (!first && n) out.push([a.name, n]);
+      raw().transaction(() => {
+        for (const id of o.baseline) ins.run(a.id, id, now(), JSON.stringify(byId.get(id)), 1);
+        for (const id of o.fresh) n += ins.run(a.id, id, now(), JSON.stringify(byId.get(id)), 0).changes;
+      })();
+      if (n) out.push([a.name, n]);
     }
   } finally { alertBusy = false; }
   return out;

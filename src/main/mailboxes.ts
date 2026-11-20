@@ -3,7 +3,7 @@
 // daily limit and warm-up, and every lead's whole sequence goes out from one mailbox so replies stay in one thread.
 import nodemailer from 'nodemailer';
 import * as db from './db';
-import { accessToken as mainToken, authorize, PROVIDERS, refresh } from './oauth';
+import { accessToken as mainToken, authorize, PROVIDERS, refresh, requireClient } from './oauth';
 import { load, save, type Mailbox, type Settings } from './settings';
 import { fetchText } from './util';
 
@@ -34,9 +34,9 @@ async function token(b: Box) {
   if (b.main) return mainToken();
   const c = tokens.get(b.id);
   if (c && c.until > Date.now()) return c.token;
-  const e = load().email;
   const p = b.kind as 'google' | 'microsoft';
-  const t = await refresh(p, b.oauthRefresh, PROVIDERS[p].scope, e.oauthClientId, e.oauthClientSecret);
+  const app = requireClient(p);
+  const t = await refresh(p, b.oauthRefresh, PROVIDERS[p].scope, app.id, app.secret);
   tokens.set(b.id, { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 });
   return t.access_token;
 }
@@ -66,7 +66,9 @@ export async function deliver(b: Box, msg: { from: { name: string; address: stri
 }
 
 export function sentToday(id: string) {
-  return (db.raw().prepare("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND COALESCE(mailbox, 'main') = ? AND sent_at >= ?").get(id, new Date().toISOString().slice(0, 10)) as { n: number }).n;
+  const day = new Date().toISOString().slice(0, 10);
+  // Placement tests (sent to mail-tester.com, not to a lead) count towards the same daily limit.
+  return (db.raw().prepare("SELECT (SELECT COUNT(*) FROM messages WHERE status = 'sent' AND COALESCE(mailbox, 'main') = ? AND sent_at >= ?) + (SELECT COUNT(*) FROM events WHERE type = 'placement' AND detail = ? AND at >= ?) n").get(id, day, id, day) as { n: number }).n;
 }
 /** Warm-up per mailbox: starts low and grows each day after that mailbox's first send. */
 export function capOf(b: Box, s: Settings = load()) {
@@ -97,8 +99,8 @@ export function authorize_(id: string, on: boolean) {
 /** Sign an extra mailbox in with Google or Microsoft, using the OAuth client from Settings → Email. */
 export async function connectBox(id: string, p: 'google' | 'microsoft') {
   const s = load();
-  if (!s.email.oauthClientId) throw new Error('Add your OAuth client ID in Settings → Email first.');
-  const t = await authorize(p, PROVIDERS[p].scope, s.email.oauthClientId, s.email.oauthClientSecret);
+  const c = requireClient(p);
+  const t = await authorize(p, PROVIDERS[p].scope, c.id, c.secret);
   if (!t.refresh_token) throw new Error('The provider did not return a long-lived token. Try again.');
   let user = '';
   try { user = JSON.parse(Buffer.from((t.id_token ?? '').split('.')[1], 'base64').toString()).email ?? ''; } catch { /* none */ }

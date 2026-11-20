@@ -21,12 +21,18 @@ export function SignIn({ s, set, reload }: { s: any; set: (p: string, v: unknown
   return (
     <details className="oauth">
       <summary><LogIn size={14} /> Sign in with Google or Microsoft instead of an app password</summary>
-      <p className="muted small">Uses your own OAuth app, so your mail never passes through anyone else. Google: Google Cloud Console → APIs → Credentials → Create OAuth client ID → Desktop app (enable the Gmail API). Microsoft: Azure portal → App registrations → New → "Mobile and desktop" redirect http://localhost, then add the SMTP.Send and IMAP.AccessAsUser.All permissions.</p>
+      <p className="muted small">Uses your own OAuth apps, so your mail never passes through anyone else. Google and Microsoft are set up separately.</p>
+      <p className="muted small"><b>Google:</b> Google Cloud Console → APIs → Credentials → Create OAuth client ID → Desktop app (enable the Gmail API; Sheets uses the same client).</p>
       <div className="grid2">
-        <label className="field"><span>OAuth client ID</span><input className="input" value={e.oauthClientId ?? ''} onChange={(x) => set('email.oauthClientId', x.target.value.trim())} /></label>
-        <label className="field"><span>Client secret (Google only)</span><input className="input" type="password" value={e.oauthClientSecret ?? ''} onChange={(x) => set('email.oauthClientSecret', x.target.value.trim())} /></label>
+        <label className="field"><span>Google client ID</span><input className="input" value={e.googleClientId ?? ''} onChange={(x) => set('email.googleClientId', x.target.value.trim())} /></label>
+        <label className="field"><span>Google client secret</span><input className="input" type="password" value={e.googleClientSecret ?? ''} onChange={(x) => set('email.googleClientSecret', x.target.value.trim())} /></label>
       </div>
-      <div className="row"><button className="btn" disabled={busy || !e.oauthClientId} onClick={() => go('google')}>Sign in with Google</button><button className="btn" disabled={busy || !e.oauthClientId} onClick={() => go('microsoft')}>Sign in with Microsoft</button></div>
+      <p className="muted small"><b>Microsoft:</b> Azure portal → App registrations → New → "Mobile and desktop" redirect http://localhost, allow public client flows, then add the SMTP.Send and IMAP.AccessAsUser.All permissions.</p>
+      <div className="grid2">
+        <label className="field"><span>Microsoft application (client) ID</span><input className="input" value={e.msClientId ?? ''} onChange={(x) => set('email.msClientId', x.target.value.trim())} /></label>
+        <label className="field"><span>Tenant (common, organizations or your tenant ID)</span><input className="input" value={e.msTenant ?? 'common'} onChange={(x) => set('email.msTenant', x.target.value.trim())} /></label>
+      </div>
+      <div className="row"><button className="btn" disabled={busy || !e.googleClientId} onClick={() => go('google')}>Sign in with Google</button><button className="btn" disabled={busy || !e.msClientId} onClick={() => go('microsoft')}>Sign in with Microsoft</button></div>
     </details>
   );
 }

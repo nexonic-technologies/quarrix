@@ -152,7 +152,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
           </section>}
 
           {sec === 'app' && <section>
-            <label className="field" style={{ maxWidth: 260 }}><span>Language</span><select className="input" value={s.language ?? 'en'} onChange={async (e) => { set('language', e.target.value); await call('settings:save', { language: e.target.value }); setLang(e.target.value); location.reload(); }}>{Object.entries(LANGS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select><small>Menus, page titles and the workspace switch are translated, and Arabic and Urdu read right to left. Other screens are in English for now.</small></label>
+            <label className="field" style={{ maxWidth: 260 }}><span>Language</span><select className="input" value={s.language ?? 'en'} onChange={async (e) => { set('language', e.target.value); await call('settings:save', { language: e.target.value }); setLang(e.target.value); location.reload(); }}>{Object.entries(LANGS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select><small>The whole interface is translated (machine translation awaiting native review), and Arabic and Urdu read right to left. Your lead data is not translated.</small></label>
             <div className="about-hero">
               <img src={NEXONIC_LOGO} alt="Nexonic Technologies" />
               <div className="grow"><h2>{NEXONIC.name}</h2><p className="muted">{NEXONIC.tagline}</p></div>

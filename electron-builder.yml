@@ -15,7 +15,7 @@ publish:
   provider: github
   owner: nexonic-technologies
   repo: quarrix
-  releaseType: release
+  releaseType: draft
 mac:
   category: public.app-category.business
   target:

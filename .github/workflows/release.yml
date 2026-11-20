@@ -31,44 +31,134 @@ jobs:
         os: [macos-15, windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     env:
-      HAS_MAC_CERT: ${{ secrets.CSC_LINK != '' }}
+      # Each platform signs only when its own certificate is present (macOS also needs the notarization account).
+      HAS_MAC_CERT: ${{ secrets.CSC_LINK != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_WIN_CERT: ${{ secrets.WIN_CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - if: runner.os == 'Linux'
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 xvfb >/dev/null
       # Installers are only built from code that passes the same checks as CI.
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # Unsigned build (no certificates yet). Signing variables must be absent, not empty:
-      # an empty CSC_LINK is read as the project folder ("not a file").
+      - id: sign
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ] && [ "$HAS_MAC_CERT" = true ]; then echo "signed=true" >> "$GITHUB_OUTPUT";
+          elif [ "$RUNNER_OS" = Windows ] && [ "$HAS_WIN_CERT" = true ]; then echo "signed=true" >> "$GITHUB_OUTPUT";
+          else echo "signed=false" >> "$GITHUB_OUTPUT"; fi
+      # Unsigned build. Signing variables must be absent, not empty: an empty CSC_LINK is read as the project folder ("not a file").
+      # Installers go to a draft release; it is published only after every platform's installed-app smoke test passes.
       - name: Build installers (unsigned)
-        if: env.HAS_MAC_CERT != 'true'
+        if: steps.sign.outputs.signed != 'true'
         run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      # Signed and notarized build, used once the certificate secrets are added (see docs/RELEASING.md).
-      - name: Build installers (signed)
-        if: env.HAS_MAC_CERT == 'true'
+      - name: Build installers (signed and notarized)
+        if: steps.sign.outputs.signed == 'true' && runner.os == 'macOS'
         run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Build installers (signed)
+        if: steps.sign.outputs.signed == 'true' && runner.os == 'Windows'
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # Signature checks: a signed build that fails verification fails the release.
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP="$(ls -d dist/mac-arm64/Quarrix.app)"
+          if [ "${{ steps.sign.outputs.signed }}" = true ]; then
+            codesign --verify --deep --strict --verbose=2 "$APP"
+            spctl --assess --type execute --verbose=4 "$APP"
+            xcrun stapler validate "$APP"
+            echo "macOS: signed with Developer ID and notarized" | tee -a signing.txt
+          else
+            codesign -dv "$APP" 2>&1 | tee /dev/stderr | grep -q "Signature=adhoc" && echo "macOS: unsigned (ad-hoc signature only; no Developer ID certificate in secrets)" | tee -a signing.txt
+          fi
+      - name: Verify Windows signature
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist -Filter "*-x64-setup.exe" | Select-Object -First 1
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          if ("${{ steps.sign.outputs.signed }}" -eq "true") { if ($sig.Status -ne "Valid") { throw "Signature status: $($sig.Status)" }; "Windows: signed by $($sig.SignerCertificate.Subject)" | Tee-Object -Append signing.txt }
+          else { "Windows: unsigned (status $($sig.Status); no code-signing certificate in secrets)" | Tee-Object -Append signing.txt }
+      # Installed-app smoke test: install with the real installer, start the installed app, check it end to end (src/main/smoke.ts).
+      - name: Smoke test the installed app (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          hdiutil attach -nobrowse -mountpoint /tmp/q "$(ls dist/*-mac-arm64.dmg)"
+          cp -R /tmp/q/Quarrix.app /tmp/Quarrix.app && hdiutil detach /tmp/q
+          QUARRIX_SMOKE_OUT="$PWD/smoke-mac.json" /tmp/Quarrix.app/Contents/MacOS/Quarrix || (cat smoke-mac.json; exit 1)
+          cat smoke-mac.json
+      - name: Smoke test the installed app (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist -Filter "*-x64-setup.exe" | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/S" -Wait
+          $exe = "$env:LOCALAPPDATA\Programs\Quarrix\Quarrix.exe"
+          $env:QUARRIX_SMOKE_OUT = "$PWD\smoke-windows.json"
+          $p = Start-Process $exe -PassThru -Wait
+          Get-Content smoke-windows.json
+          if ($p.ExitCode -ne 0) { throw "smoke test failed" }
+      - name: Smoke test the installed app (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get install -y -qq "./$(ls dist/*-linux-amd64.deb)" >/dev/null
+          BIN="$(dpkg -L quarrix | grep -E '/opt/.*/quarrix$' | head -1)"
+          QUARRIX_SMOKE_OUT="$PWD/smoke-linux.json" xvfb-run -a "$BIN" --no-sandbox || (cat smoke-linux.json; exit 1)
+          cat smoke-linux.json
+      - name: Attach smoke reports and signing status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ runner.os }}
+          path: |
+            smoke-*.json
+            signing.txt
+          if-no-files-found: ignore
+  # Live checks of the keyless providers with the app's own code (GitHub runners have internet access). A report, not a gate.
+  live:
+    needs: version
+    if: needs.version.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 >/dev/null
+      - run: LIVE_OUT=live-providers.json node scripts/live.mjs
+        timeout-minutes: 15
+      - uses: actions/upload-artifact@v4
+        with: { name: verification-live, path: live-providers.json }
   checksums:
-    needs: [version, build]
+    needs: [version, build, live]
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: { path: verification, pattern: verification-*, merge-multiple: true }
       - name: Package the browser extension
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
@@ -81,3 +171,21 @@ jobs:
           gh release download "$TAG" -R "$REPO" --pattern '*.dmg' --pattern '*.zip' --pattern '*.exe' --pattern '*.AppImage' --pattern '*.deb' --pattern '*-browser-extension.zip'
           sha256sum * > SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt -R "$REPO" --clobber
+      # Every platform built, verified its signature state and passed the installed-app smoke test: publish the draft,
+      # with the real signing state and smoke results in the notes.
+      - name: Publish the release
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
+        run: |
+          {
+            echo "## Verification"
+            echo
+            cat verification/signing.txt 2>/dev/null | sed 's/^/- /'
+            for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
+            if [ -f verification/live-providers.json ]; then
+              node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+x.check+': '+x.detail)"
+              gh release upload "$TAG" verification/live-providers.json -R "$REPO" --clobber
+            fi
+            echo
+            echo "Checksums: SHA256SUMS.txt. Unsigned builds: see docs/RELEASING.md for how to open them."
+          } > notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md --draft=false --latest

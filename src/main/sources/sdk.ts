@@ -5,12 +5,15 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BOT_UA, fetchText, sleep } from '../util';
 import type { Candidate, Progress } from './types';
+import { registerSdk } from './catalog';
 
 export type SdkSource = {
   id: string; name: string; license: string; attribution: string; url: string;
   items: string; fields: Partial<Record<'name' | 'category' | 'address' | 'city' | 'region' | 'country' | 'postcode' | 'lat' | 'lon' | 'phone' | 'email' | 'website' | 'id', string>>;
   pages?: { param: string; start: number; step: number; max: number };
   keyHeader?: string; keyQuery?: string; delayMs?: number;
+  /** What the source's licence allows. Both default to false: say so explicitly once you have checked the provider's terms. */
+  terms: { export: boolean; contact: boolean; restrictions: string };
 };
 
 const ID = /^[a-z0-9-]{2,32}$/;
@@ -31,7 +34,9 @@ export function validate(x: any): SdkSource {
   if (x.pages && !(typeof x.pages.param === 'string' && [x.pages.start, x.pages.step, x.pages.max].every((n) => Number.isInteger(n) && n >= 0) && x.pages.max <= 50)) err('"pages" needs param, start, step and max (max 50)');
   if (x.keyHeader && !/^[A-Za-z0-9-]{1,40}$/.test(x.keyHeader)) err('"keyHeader" must be a header name');
   if (x.keyQuery && !/^[A-Za-z0-9_]{1,40}$/.test(x.keyQuery)) err('"keyQuery" must be a parameter name');
-  return { ...x, delayMs: Math.max(500, Number(x.delayMs) || 1000) };
+  if (x.terms !== undefined && (typeof x.terms !== 'object' || x.terms === null || ['export', 'contact'].some((k) => x.terms[k] !== undefined && typeof x.terms[k] !== 'boolean'))) err('"terms.export" and "terms.contact" must be true or false');
+  const terms = { export: x.terms?.export === true, contact: x.terms?.contact === true, restrictions: String(x.terms?.restrictions ?? '').slice(0, 300) };
+  return { ...x, terms, delayMs: Math.max(500, Number(x.delayMs) || 1000) };
 }
 
 /** Read a value by path ("a.b[0].c"). Pure. */
@@ -46,7 +51,10 @@ export function loadSources(userData: string): { ok: SdkSource[]; errors: string
   for (const f of readdirSync(sourcesDir(userData)).filter((x) => x.endsWith('.json'))) {
     try { ok.push(validate(JSON.parse(readFileSync(join(sourcesDir(userData), f), 'utf8')))); } catch (e: any) { errors.push(`${f}: ${e.message}`); }
   }
-  return { ok, errors };
+  const ids = new Set<string>();
+  const unique = ok.filter((x) => (ids.has(x.id) ? (errors.push(`Source "${x.id}" is defined twice; the second file was ignored.`), false) : ids.add(x.id)));
+  registerSdk(unique);
+  return { ok: unique, errors };
 }
 
 export async function runSdk(src: SdkSource, q: { category: string; city: string; country: string; lat?: number; lon?: number }, key: string, limit: number, progress: Progress): Promise<Candidate[]> {
@@ -66,7 +74,7 @@ export async function runSdk(src: SdkSource, q: { category: string; city: string
       const name = f('name');
       if (!name) continue;
       const num = (k: 'lat' | 'lon') => { const n = Number(f(k)); return f(k) !== '' && Number.isFinite(n) ? n : null; };
-      out.push({ source: `sdk:${src.id}` as Candidate['source'], source_ref: `${src.id}:${f('id') || name}`, name, category: f('category') || q.category, address: f('address'), city: f('city') || q.city, region: f('region'), country: (f('country') || q.country).toUpperCase().slice(0, 2), postcode: f('postcode'), lat: num('lat'), lon: num('lon'), phone: f('phone'), email: f('email'), website: /^https?:\/\//.test(f('website')) ? f('website') : '', summary: `From ${src.name} (${src.attribution})` });
+      out.push({ source: `sdk:${src.id}` as Candidate['source'], source_ref: `${src.id}:${f('id') || name}`, name, category: f('category') || q.category, address: f('address'), city: f('city') || q.city, region: f('region'), country: (f('country') || q.country).toUpperCase().slice(0, 2), postcode: f('postcode'), lat: num('lat'), lon: num('lon'), phone: f('phone'), email: src.terms.contact ? f('email') : '', website: /^https?:\/\//.test(f('website')) ? f('website') : '', summary: `From ${src.name} (${src.attribution})` });
     }
     progress(`${src.name}: ${out.length} records`, out.length);
     if (!pages.param) break;

@@ -19,6 +19,21 @@ export const PROVIDERS = {
 } as const;
 export type OAuthProvider = keyof typeof PROVIDERS;
 
+/** The OAuth app for a provider. Google and Microsoft are configured separately. Pure, exported for tests. */
+export function clientFor(p: OAuthProvider, e: { googleClientId?: string; googleClientSecret?: string; msClientId?: string; msTenant?: string }) {
+  if (p === 'google') return { id: (e.googleClientId ?? '').trim(), secret: (e.googleClientSecret ?? '').trim(), tenant: '' };
+  const tenant = /^[a-z0-9.-]{1,80}$/i.test(e.msTenant ?? '') ? e.msTenant! : 'common';
+  return { id: (e.msClientId ?? '').trim(), secret: '', tenant }; // Microsoft desktop apps are public clients: no secret
+}
+/** Sign-in and token addresses; Microsoft uses the app's tenant (single-tenant apps cannot use "common"). Pure. */
+export function endpointsFor(p: OAuthProvider, tenant = 'common') {
+  if (p === 'google') return { auth: PROVIDERS.google.auth, token: PROVIDERS.google.token };
+  const t = encodeURIComponent(tenant || 'common');
+  return { auth: `https://login.microsoftonline.com/${t}/oauth2/v2.0/authorize`, token: `https://login.microsoftonline.com/${t}/oauth2/v2.0/token` };
+}
+const missing = (p: OAuthProvider) => new Error(p === 'google' ? 'Add your Google OAuth client ID in Settings → Email → Sign in with Google or Microsoft.' : 'Add your Microsoft app (client) ID in Settings → Email → Sign in with Google or Microsoft.');
+export function requireClient(p: OAuthProvider) { const c = clientFor(p, load().email); if (!c.id) throw missing(p); return c; }
+
 const b64url = (b: Buffer) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 let access: { token: string; until: number } | null = null;
 
@@ -27,8 +42,9 @@ function emailFromIdToken(idToken?: string) {
 }
 
 async function tokenRequest(p: OAuthProvider, body: Record<string, string>) {
-  const r = await fetchText(PROVIDERS[p].token, { method: 'POST', body: new URLSearchParams(body).toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, timeout: 30000 });
-  const j = JSON.parse(r.text || '{}');
+  const r = await fetchText(endpointsFor(p, clientFor(p, load().email).tenant).token, { method: 'POST', body: new URLSearchParams(body).toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, timeout: 30000 });
+  let j: any = {};
+  try { j = JSON.parse(r.text || '{}'); } catch { throw new Error(`Sign-in failed: the provider answered HTTP ${r.status} without JSON.`); }
   if (!r.ok || j.error) throw new Error(j.error_description || j.error || `Sign-in failed (HTTP ${r.status})`);
   return j as { access_token: string; refresh_token?: string; expires_in: number; id_token?: string };
 }
@@ -53,7 +69,7 @@ export async function authorize(p: OAuthProvider, scope: string, clientId: strin
     server.listen(0, '127.0.0.1', () => {
       const port = (server.address() as any).port;
       const q = new URLSearchParams({ client_id: e.oauthClientId, redirect_uri: `http://127.0.0.1:${port}/callback`, response_type: 'code', scope, state, code_challenge: challenge, code_challenge_method: 'S256', ...(p === 'google' ? { access_type: 'offline', prompt: 'consent' } : { prompt: 'select_account' }) });
-      void shell.openExternal(`${PROVIDERS[p].auth}?${q}`);
+      void shell.openExternal(`${endpointsFor(p, clientFor(p, load().email).tenant).auth}?${q}`);
     });
   });
   return tokenRequest(p, { grant_type: 'authorization_code', code, redirect_uri: redirect, client_id: e.oauthClientId, code_verifier: verifier, ...(e.oauthClientSecret ? { client_secret: e.oauthClientSecret } : {}) });
@@ -66,8 +82,8 @@ export const refresh = (p: OAuthProvider, refreshToken: string, scope: string, c
 /** Opens the browser, waits for the user to approve, saves the refresh token. Returns the signed-in address. */
 export async function connect(p: OAuthProvider): Promise<string> {
   const e = load().email;
-  if (!e.oauthClientId) throw new Error('Paste your OAuth client ID first (see the steps under the button).');
-  const t = await authorize(p, PROVIDERS[p].scope, e.oauthClientId, e.oauthClientSecret);
+  const c = requireClient(p);
+  const t = await authorize(p, PROVIDERS[p].scope, c.id, c.secret);
   if (!t.refresh_token) throw new Error('The provider did not return a long-lived token. Remove Quarrix from your account\'s connected apps and try again.');
   const user = emailFromIdToken(t.id_token) || e.fromEmail;
   access = { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 };
@@ -87,7 +103,8 @@ export async function accessToken(): Promise<string> {
   if (e.auth === 'password') throw new Error('Not using OAuth.');
   if (access && access.until > Date.now()) return access.token;
   if (!e.oauthRefresh) throw new Error('Reconnect your mailbox in Settings → Email.');
-  const t = await tokenRequest(e.auth as OAuthProvider, { grant_type: 'refresh_token', refresh_token: e.oauthRefresh, client_id: e.oauthClientId, scope: PROVIDERS[e.auth as OAuthProvider].scope, ...(e.oauthClientSecret ? { client_secret: e.oauthClientSecret } : {}) });
+  const c = requireClient(e.auth as OAuthProvider);
+  const t = await tokenRequest(e.auth as OAuthProvider, { grant_type: 'refresh_token', refresh_token: e.oauthRefresh, client_id: c.id, scope: PROVIDERS[e.auth as OAuthProvider].scope, ...(c.secret ? { client_secret: c.secret } : {}) });
   access = { token: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 };
   if (t.refresh_token && t.refresh_token !== e.oauthRefresh) save({ email: { oauthRefresh: t.refresh_token } });
   return access.token;

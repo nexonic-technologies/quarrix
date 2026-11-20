@@ -1,6 +1,5 @@
 // Sending through the person's own mailbox (Gmail, Outlook or any SMTP server), with a gentle daily limit,
 // working-hours windows and automatic follow-ups that stop on a reply.
-import { outreachBlock } from './safety';
 import { ImapFlow } from 'imapflow';
 import { randomBytes } from 'node:crypto';
 import * as db from './db';
@@ -10,6 +9,7 @@ import { load, save, type Settings } from './settings';
 import * as mb from './mailboxes';
 import { fetchText } from './util';
 import { breaker, classifyReply, inWindowAt, zoneFor } from './rules';
+import { redact } from './safety';
 
 export const PRESETS = {
   gmail: { smtpHost: 'smtp.gmail.com', smtpPort: 587, smtpSecure: false, imapHost: 'imap.gmail.com', imapPort: 993 },
@@ -32,7 +32,7 @@ export async function sendReport(leadId: number) {
   const box = used ? mb.boxById(used, s) : mb.pick(s);
   if (!mb.ready(box, s)) throw new Error(s.email.pausedReason ? `Sending is paused: ${s.email.pausedReason}` : used ? 'The mailbox that emailed this lead is no longer connected or approved.' : 'Approve sending in Settings → Email first.');
   if (mb.sentToday(box.id) >= mb.capOf(box, s)) throw new Error(`${box.label} has reached today's limit. The report can go tomorrow.`);
-  const block = outreachBlock(lead, db.isSuppressed(lead.email, lead.domain));
+  const block = db.blockOf(lead);
   if (block) throw new Error(`Not sent: ${block}.`);
   const first = db.raw().prepare("SELECT subject, message_id FROM messages WHERE lead_id = ? AND step = 0 AND status = 'sent'").get(leadId) as { subject: string; message_id: string } | undefined;
   const firstName = lead.contact_name && !lead.contact_name.startsWith('u/') ? lead.contact_name.split(' ')[0] : '';
@@ -51,16 +51,31 @@ export function footer(s: Settings) {
   return lines.join('\n');
 }
 
-export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main') {
+/**
+ * The only function that sends email. Every message, whatever the caller, is checked here once more: the recipient must not be
+ * on the do-not-contact list, and anything other than a capped connection test needs an approved mailbox whose address still
+ * matches the approval (sender identity) and has room under today's limit.
+ */
+export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main', purpose: 'outreach' | 'test' = 'outreach') {
   const s = load();
   const box = mb.boxById(boxId, s);
   if (!box) throw new Error('That mailbox was removed or switched off.');
   if (!mb.connected(box)) throw new Error(box.main ? 'Connect your mailbox first: Settings → Email.' : `Mailbox "${box.label}" is not connected.`);
+  const rcpt = String(to).trim().toLowerCase();
+  if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}$/i.test(rcpt)) throw new Error('Not sent: the address is not valid.');
+  if (db.isSuppressed(rcpt)) throw new Error('Not sent: the address is on the do-not-contact list.');
+  const label = box.label;
+  if (purpose === 'outreach') {
+    if (s.email.pausedReason) throw new Error(`Sending is paused: ${s.email.pausedReason}`);
+    if (!mb.ready(box, s)) throw new Error(`Not sent: ${label} is not approved for sending, or its address changed since it was approved.`);
+    if (mb.sentToday(box.id) >= mb.capOf(box, s)) throw new Error(`Not sent: ${box.label} has reached today's limit.`);
+  }
+  if (subject.length > 500 || text.length > 200_000) throw new Error('Not sent: the message is too long.');
   const from = mb.fromOf(box);
   const host = from.split('@')[1] || 'localhost';
   const messageId = `<${randomBytes(9).toString('hex')}@${host}>`;
   await mb.deliver(box, {
-    from: { name: box.fromName || s.email.fromName || s.profile.name || from, address: from }, to, subject, text, messageId, attachments,
+    from: { name: box.fromName || s.email.fromName || s.profile.name || from, address: from }, to: rcpt, subject: subject.replace(/[\r\n]+/g, ' '), text, messageId, attachments,
     headers: { 'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`, ...(inReplyTo ? { 'In-Reply-To': inReplyTo, References: inReplyTo } : {}) },
   });
   return messageId;
@@ -131,7 +146,7 @@ export async function tick(notify: (m: string) => void) {
     const gapOk = (id: string) => Date.now() - (lastSend.get(id) ?? 0) >= s.email.gapMinutes * 60000 * (0.8 + Math.random() * 0.6);
     for (const m of db.dueMessages()) {
       const lead = db.getLead(m.lead_id);
-      const block = lead ? outreachBlock(lead, !!lead.email && db.isSuppressed(lead.email, lead.domain)) : 'lead deleted';
+      const block = lead ? db.blockOf(lead) : 'lead deleted';
       if (!lead || block) {
         db.updateMessage(m.id, { status: 'cancelled', error: `Stopped: ${block}` });
         if (lead) db.cancelPending(lead.id, `Stopped: ${block}`);
@@ -159,9 +174,11 @@ export async function tick(notify: (m: string) => void) {
         if (next) db.updateMessage(next.id, { due_at: new Date(Date.now() + (s.email.followups[m.step] ?? 4) * 86400000).toISOString() });
         notify(`Sent to ${lead.name}`);
       } catch (e: any) {
-        db.updateMessage(m.id, { status: 'failed', error: String(e.message ?? e).slice(0, 300) });
-        db.logEvent(lead.id, 'error', `Send failed: ${e.message ?? e}`);
-        notify(`Could not send to ${lead.name}: ${e.message ?? e}`);
+        // Provider errors can echo credentials or tokens; they are cleaned before they are stored or shown.
+        const why = redact(String(e?.message ?? e)).slice(0, 300);
+        db.updateMessage(m.id, { status: 'failed', error: why });
+        db.logEvent(lead.id, 'error', `Send failed: ${why}`);
+        notify(`Could not send to ${lead.name}: ${why}`);
       }
       lastSend.set(box.id, Date.now());
       break;

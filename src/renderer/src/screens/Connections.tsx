@@ -43,6 +43,7 @@ export function Connections({ s, set, save }: { s: any; set: (p: string, v: unkn
       {hooks.map((h, i) => (
         <div key={i} className="panel panel-pad feed">
           <label className="field"><span>URL</span><input className="input" value={h.url} onChange={(e) => setHook(i, 'url', e.target.value.trim())} placeholder="https://hooks.zapier.com/…" /></label>
+          <label className="field"><span>Client workspace</span><select className="input" value={h.client ?? ''} onChange={(e) => setHook(i, 'client', e.target.value)}><option value="">Every workspace</option>{(s.clients ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}</select></label>
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>{EVENTS.map((ev) => <label key={ev} className="chip"><input type="checkbox" checked={h.events.includes(ev)} onChange={(e) => setHook(i, 'events', e.target.checked ? [...h.events, ev] : h.events.filter((x: string) => x !== ev))} /> {ev}</label>)}</div>
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <span className="row" style={{ gap: 6 }}><label className="switch"><input type="checkbox" checked={h.on} onChange={(e) => setHook(i, 'on', e.target.checked)} /> On</label><button className="btn small ghost" onClick={() => copy(h.secret)}><Copy size={12} /> Copy secret</button>
@@ -94,6 +95,7 @@ export function Automations({ s, set }: { s: any; set: (p: string, v: unknown) =
       {rules.map((r, i) => (
         <div key={r.id} className="panel panel-pad feed">
           <div className="row" style={{ gap: 6 }}><input className="input" value={r.name} onChange={(e) => put(i, { ...r, name: e.target.value })} aria-label="Name" /><label className="switch"><input type="checkbox" checked={r.on} onChange={(e) => put(i, { ...r, on: e.target.checked })} /> On</label><button className="btn small ghost" aria-label="Delete automation" onClick={() => set('automations', rules.filter((_, j) => j !== i))}><Trash2 size={12} /></button></div>
+          <label className="field"><span>Client workspace</span><select className="input" value={r.client ?? ''} onChange={(e) => put(i, { ...r, client: e.target.value })}><option value="">Every workspace</option>{(s.clients ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}</select></label>
           <label className="field"><span>When</span><select className="input" value={r.trigger} onChange={(e) => put(i, { ...r, trigger: e.target.value })}>{Object.entries(meta.triggers).map(([k, v]) => <option key={k} value={k}>{v as string}</option>)}</select></label>
           <b className="small">If all of these are true</b>
           {r.conditions.map((c: any, ci: number) => (

@@ -3,7 +3,6 @@ import { resolveTxt } from 'node:dns/promises';
 import * as db from './db';
 import { dailyCap, recipientZone, senderId } from './mail';
 import { dryRun, explainDns } from './rules';
-import { outreachBlock } from './safety';
 import { load } from './settings';
 
 const txt = (name: string) => resolveTxt(name).then((r) => r.map((x) => x.join(''))).catch(() => [] as string[]);
@@ -23,7 +22,7 @@ export function dryRunPlan(days = 3) {
   const s = load();
   const rows = db.raw().prepare("SELECT m.id, m.step, m.due_at, l.* FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'scheduled' AND m.channel = 'email' ORDER BY COALESCE(m.due_at, '9999'), m.step LIMIT 500").all() as any[];
   const sentToday = (db.raw().prepare("SELECT COUNT(*) n FROM messages WHERE status = 'sent' AND sent_at >= ?").get(new Date().toISOString().slice(0, 10)) as { n: number }).n;
-  const due = rows.filter((r) => r.due_at).map((r) => ({ id: r.id, lead: r.name, email: r.email, step: r.step, dueAt: r.due_at, zone: recipientZone(r, s), block: outreachBlock(r, !!r.email && db.isSuppressed(r.email, r.domain)) }));
+  const due = rows.filter((r) => r.due_at).map((r) => ({ id: r.id, lead: r.name, email: r.email, step: r.step, dueAt: r.due_at, zone: recipientZone(r, s), block: db.blockOf(r) }));
   const plan = dryRun(due, { now: new Date(), cap: dailyCap(s), sentToday, gapMinutes: s.email.gapMinutes, window: s.email, days });
   const waiting = rows.filter((r) => !r.due_at).length;
   return { plan, waiting, cap: dailyCap(s), sentToday, authorized: !!s.email.authorizedAt, paused: s.email.pausedReason };

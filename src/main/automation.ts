@@ -11,9 +11,12 @@ export const TRIGGERS: Record<string, string> = {
 };
 export type Condition = { field: string; op: 'eq' | 'neq' | 'in' | 'contains' | 'gte' | 'lte' | 'empty' | 'notempty'; value?: string };
 export type Action = { type: 'tag' | 'status' | 'task' | 'webhook' | 'deal' | 'draft'; value?: string; days?: number };
-export type Rule = { id: string; name: string; on: boolean; trigger: string; conditions: Condition[]; actions: Action[] };
+/** client: '' runs for every workspace; a name limits the rule to that client's leads. */
+export type Rule = { id: string; name: string; on: boolean; trigger: string; conditions: Condition[]; actions: Action[]; client?: string };
+/** Does a rule or webhook limited to a client apply to this lead? Pure, exported for tests. */
+export const appliesTo = (ruleClient: string | undefined, lead: { client?: string } | null) => !ruleClient || (!!lead && (lead.client ?? '') === ruleClient);
 
-export const FIELDS = ['grade', 'relevance', 'evidence', 'fit', 'status', 'country', 'city', 'category', 'email_status', 'rating', 'reviews', 'source', 'tags', 'detail'];
+export const FIELDS = ['client', 'grade', 'relevance', 'evidence', 'fit', 'status', 'country', 'city', 'category', 'email_status', 'rating', 'reviews', 'source', 'tags', 'detail'];
 
 /** Editable starting points (QF-077). */
 export const TEMPLATES: Rule[] = [
@@ -47,8 +50,8 @@ export function matches(rec: Record<string, unknown>, conds: Condition[]) {
 export const sign = (secret: string, body: string) => createHmac('sha256', secret).update(body).digest('hex');
 
 /** Post an event to every matching webhook, signed, with up to three tries (QF-084). */
-export async function deliver(event: string, payload: unknown, only?: string) {
-  const hooks = (load().webhooks ?? []).filter((w) => w.on && (only ? w.url === only : !w.events.length || w.events.includes(event)));
+export async function deliver(event: string, payload: unknown, only?: string, lead: { client?: string } | null = null) {
+  const hooks = (load().webhooks ?? []).filter((w) => w.on && (only ? w.url === only : (!w.events.length || w.events.includes(event)) && appliesTo(w.client, lead)));
   for (const w of hooks) {
     const body = JSON.stringify({ event, at: new Date().toISOString(), data: payload });
     for (let i = 0; i < 3; i++) {
@@ -73,18 +76,18 @@ async function act(a: Action, leadId: number | null, rec: Record<string, any>, r
     case 'task': db.raw().prepare('INSERT INTO tasks (lead_id, title, kind, due_at, created_at) VALUES (?, ?, ?, ?, ?)').run(leadId, a.value || rule.name, 'task', new Date(Date.now() + (a.days ?? 1) * 864e5).toISOString(), db.now()); break;
     case 'deal': if (lead && !db.raw().prepare("SELECT 1 FROM deals WHERE lead_id = ? AND stage NOT IN ('won','lost')").get(lead.id)) db.raw().prepare("INSERT INTO deals (lead_id, title, stage, created_at, updated_at) VALUES (?, ?, 'talking', ?, ?)").run(lead.id, `${lead.name}: ${a.value || 'Opportunity'}`, db.now(), db.now()); break;
     case 'draft': if (lead?.email && !db.raw().prepare("SELECT 1 FROM messages WHERE lead_id = ? AND status IN ('draft','scheduled','sent')").get(lead.id)) await drafting([lead.id]); break; // drafts still need approval
-    case 'webhook': await deliver(rule.trigger, { rule: rule.name, lead: lead ?? null, ...rec }, a.value || undefined); break;
+    case 'webhook': await deliver(rule.trigger, { rule: rule.name, lead: lead ?? null, ...rec }, a.value || undefined, lead ?? null); break;
   }
 }
 
 /** Called for every event. Rules run in order; each rule's run is logged. */
 export async function handle(leadId: number | null, type: string, detail: string) {
-  const rules = (load().automations ?? []).filter((r) => r.on && r.trigger === type);
-  const hooks = (load().webhooks ?? []).filter((w) => w.on && w.events.includes(type));
+  const lead = leadId ? db.getLead(leadId) ?? null : null;
+  const rules = (load().automations ?? []).filter((r) => r.on && r.trigger === type && appliesTo(r.client, lead));
+  const hooks = (load().webhooks ?? []).filter((w) => w.on && w.events.includes(type) && appliesTo(w.client, lead));
   if (!rules.length && !hooks.length) return;
-  const lead = leadId ? db.getLead(leadId) : null;
   const rec: Record<string, unknown> = { ...(lead ?? {}), detail };
-  if (hooks.length) void deliver(type, { lead, detail });
+  if (hooks.length) void deliver(type, { lead, detail }, undefined, lead);
   for (const r of rules) {
     if (!matches(rec, r.conditions)) continue;
     for (const a of r.actions) {

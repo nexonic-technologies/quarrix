@@ -50,7 +50,9 @@ export function start(n: Notify) {
 }
 
 export function queueSearch(category: string, place: string, sources: string[], campaignId: number | null = null, watchId: number | null = null) {
-  const id = db.addSearch(category.trim(), place.trim(), sources, campaignId, watchId);
+  // The search belongs to the workspace of its watch or campaign, or to the one selected now, even if the user switches later.
+  const owner = (watchId ? db.raw().prepare('SELECT client FROM watches WHERE id = ?').get(watchId) : campaignId ? db.raw().prepare('SELECT client FROM campaigns WHERE id = ?').get(campaignId) : null) as { client: string } | null;
+  const id = db.addSearch(category.trim(), place.trim(), sources, campaignId, watchId, owner ? owner.client : load().currentClient ?? '');
   notify('searches');
   void runSearches();
   return id;
@@ -172,7 +174,7 @@ async function runSearches() {
           socials: JSON.stringify(socials), rating: c.rating ?? null, reviews: c.reviews ?? null, source: c.source, source_ref: c.source_ref, search_id: s.id,
           tags: c.chain ? 'chain' : '', summary: c.summary ?? '', contact_name: c.contact_name ?? '',
           provenance: JSON.stringify({ listing: { source: c.source, ref: c.source_ref, at: db.now(), search: s.id } }),
-          details: c.details ? JSON.stringify(c.details) : '{}', client: load().currentClient ?? '',
+          details: c.details ? JSON.stringify(c.details) : '{}', client: s.client ?? '',
         });
         found++;
         if (created) {
@@ -302,14 +304,14 @@ export async function previewSearch(category: string, place: string, sources: st
 /** Queue every category × place combination (QF-002). */
 export function queueBatch(categories: string[], places: string[], sources: string[]) {
   const ids: number[] = [];
-  for (const p of places.map((x) => x.trim()).filter(Boolean)) for (const c of categories.map((x) => x.trim()).filter(Boolean)) ids.push(db.addSearch(c, p, sources, null, null));
+  for (const p of places.map((x) => x.trim()).filter(Boolean)) for (const c of categories.map((x) => x.trim()).filter(Boolean)) ids.push(db.addSearch(c, p, sources, null, null, load().currentClient ?? ''));
   notify('searches');
   void runSearches();
   return ids;
 }
 
 export function queueGeoSearch(category: string, label: string, geo: Geo, sources: string[]) {
-  const id = db.addSearch(category.trim(), label, sources, null, null);
+  const id = db.addSearch(category.trim(), label, sources, null, null, load().currentClient ?? '');
   db.addSearchGeo(id, JSON.stringify(geo));
   notify('searches');
   void runSearches();

@@ -11,19 +11,38 @@ export function isPrivateAddress(ip: string): boolean {
       (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
   }
   if (v === 6) {
-    const x = ip.toLowerCase();
-    if (x === '::' || x === '::1') return true;
-    const m = x.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (m) return isPrivateAddress(m[1]);
-    return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(x);
+    const g = expand6(ip);
+    if (!g) return true;
+    if (g.slice(0, 7).every((x) => x === 0) && g[7] <= 1) return true; // :: and ::1
+    const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+    // IPv4 hidden inside IPv6: mapped (::ffff:a.b.c.d), compatible (::a.b.c.d), NAT64 (64:ff9b::/96), 6to4 (2002::/16).
+    if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) return isPrivateAddress(v4(g[6], g[7]));
+    if (g[0] === 0x64 && g[1] === 0xff9b) return isPrivateAddress(v4(g[6], g[7]));
+    if (g[0] === 0x2002) return isPrivateAddress(v4(g[1], g[2]));
+    if (g[0] === 0x2001 && (g[1] === 0 || g[1] === 0xdb8)) return true; // Teredo and documentation ranges
+    return (g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00;
   }
   return true;
+}
+
+/** Eight 16-bit groups of an IPv6 address (handles :: and a trailing dotted IPv4), or null. */
+function expand6(ip: string): number[] | null {
+  let x = ip.toLowerCase().split('%')[0];
+  const m = x.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (m) { const [a, b, c, d] = m.slice(1).map(Number); x = x.slice(0, -m[0].length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`; }
+  const [head, tail] = x.split('::');
+  const h = head ? head.split(':') : [], t = tail ? tail.split(':') : [];
+  const fill = x.includes('::') ? 8 - h.length - t.length : 0;
+  const parts = [...h, ...Array(Math.max(0, fill)).fill('0'), ...t].map((p) => parseInt(p || '0', 16));
+  return parts.length === 8 && parts.every((n) => n >= 0 && n <= 0xffff) ? parts : null;
 }
 
 /** Hostnames that must never be fetched for lead or job pages. */
 export function isBlockedHost(host: string): boolean {
   const h = host.toLowerCase().replace(/^\[|\]$/g, '');
-  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h.endsWith('.internal') || h.endsWith('.home.arpa') || h.endsWith('.lan') || h === 'metadata.google.internal') return true;
+  // Numeric shorthands such as 2130706433 or 0x7f.1 are refused outright; browsers and some resolvers read them as IPv4.
+  if (/^(0x[0-9a-f]+|\d+)(\.(0x[0-9a-f]+|\d+)){0,3}$/i.test(h) && !isIP(h)) return true;
   return isIP(h) ? isPrivateAddress(h) : false;
 }
 
@@ -51,9 +70,10 @@ export function sameBusiness(a: Biz, b: Biz): boolean {
 }
 
 /** Why outreach to this lead must not happen, or '' when it may. */
-export function outreachBlock(lead: { email?: string; status?: string; audit?: string }, suppressed: boolean): string {
+export function outreachBlock(lead: { email?: string; status?: string; audit?: string }, suppressed: boolean, sourceAllowsContact = true): string {
   if (!lead.email) return 'no email address';
   if (suppressed) return 'on the do-not-contact list';
+  if (!sourceAllowsContact) return 'the terms of the source it came from do not allow contacting';
   if (['replied', 'interested', 'won', 'lost', 'do_not_contact'].includes(lead.status ?? '')) return `lead is ${lead.status}`;
   try { if (JSON.parse(lead.audit || '{}')?.facts?.noSolicit) return 'their website says no solicitation'; } catch { /* bad JSON */ }
   return '';

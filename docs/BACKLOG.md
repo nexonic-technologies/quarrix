@@ -8,7 +8,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-002 | Batch search builder | P1 | Built | jobs.queueBatch, search_templates table, FindTools BatchModal | preview UI |
 | QF-003 | Interactive radius and polygon search | P2 | Done | Circle or drawn polygon (FindTools MapPicker); geo.inPolygon/polygonCircle; grid limited to the polygon | test/safety.test.ts (polygon) |
 | QF-004 | Geographic grid coverage | P2 | Done | geo.ts gridCells/zoomFor; Google Maps grid in jobs.ts | test/discovery.test.ts |
-| QF-005 | Overture Maps connector | P1 | Built | sources/overture.ts reads Overture release GeoParquet by HTTP range (footer → overlapping row groups); GeoJSON import kept | test/partials.test.ts (row-group selection, row mapping); live S3 read not run here |
+| QF-005 | Overture Maps connector | P1 | Built | sources/overture.ts: every listing page (continuation tokens), every file footer read so no region is skipped, antimeridian boxes split, plural/category matching, read limit reported as partial, budgets and private-address checks on range reads | test/hardening.test.ts; live check in the release (live-providers.json) |
 | QF-006 | Socrata open-data adapter | P2 | Done | sources/opendata.ts searchSocrata; Settings → Sources feeds | test/discovery.test.ts (recorded shape) |
 | QF-007 | ArcGIS public-layer adapter | P2 | Done | sources/opendata.ts searchArcgis | test/discovery.test.ts (recorded shape) |
 | QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
@@ -20,7 +20,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-014 | Separated browser navigation workers | P0 | Done | sources/gmaps.ts pageHtml (own window, own session, own queue) | manual (Electron) |
 | QF-015 | Business search map with clustering | P2 | Built | FindTools LeadMap (Leaflet + markercluster), Leads → Map | preview UI |
 | QF-016 | Optional company website lookup | P2 | Done | sources/lookup.ts findWebsite + websiteEvidence; provenance.website | test/discovery.test.ts (evidence rule) |
-| QF-017 | Contact-source permissions registry | P1 | Built | catalog export/contact/attribution; export skips no-export sources and adds "Data credit" | test/discovery.test.ts (flags) |
+| QF-017 | Contact-source permissions registry | P1 | Done | Catalog export/contact flags; Source SDK files declare their own terms (default: neither); exports, CRM syncs and every outreach path enforce them | test/hardening.test.ts, test/int/hardening.int.ts |
 | QF-018 | Company-versus-branch hierarchy | P1 | Done | Companies per client workspace; branches of a chain share their client's company | test/int/data.int.ts |
 | QF-019 | Multi-contact relationships | P1 | Done | contacts table, role filter | test/int/records.int.ts |
 | QF-020 | Operating-hours data | P2 | Done | Hours from OSM opening_hours, Google Maps and schema.org (intel.osmDetails/schemaDetails) | test/formula.test.ts |
@@ -62,8 +62,8 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-056 | Client/project workspaces | P3 | Done | Client-scoped duplicates, companies, branches, merges | test/int/data.int.ts |
 | QF-057 | Role-based collaboration (optional) | P3 | Blocked | Collaboration needs a shared server or sync service; Quarrix is local-first. Not built. | — |
 | QF-058 | Fix ordered follow-up state machine | P0 | Done | safety.ts DUE_SQL; db.dueMessages | test/safety.test.ts (SQLite) |
-| QF-059 | Gmail browser-based OAuth | P1 | Built | oauth.ts (Google, loopback + PKCE, user's own client), XOAUTH2 in mail.ts | typecheck; needs the owner's OAuth client to test |
-| QF-060 | Microsoft 365/Outlook OAuth | P1 | Built | oauth.ts (Microsoft 365 SMTP.Send + IMAP) | typecheck; needs an Azure app to test |
+| QF-059 | Gmail browser-based OAuth | P1 | Built | oauth.ts with a separate Google client (ID + secret), loopback + PKCE, XOAUTH2; Sheets reuses the Google client | test/int/hardening.int.ts (client selection, migration); needs the owner's Google OAuth client for a live sign-in |
+| QF-060 | Microsoft 365/Outlook OAuth | P1 | Built | oauth.ts with a separate Microsoft app ID and tenant (single-tenant apps), public client (no secret sent) | test/int/hardening.int.ts (client, tenant endpoints); needs an Azure app for a live sign-in |
 | QF-061 | Multiple connected sending accounts | P2 | Done | Several mailboxes, least-loaded choice, one mailbox per sequence, own limits, no fallback | test/int/outreach.int.ts (real SMTP) |
 | QF-062 | Unified replies inbox | P2 | Built | Replies from every mailbox with a mailbox column | typecheck |
 | QF-063 | Reply intent labeling | P2 | Done | rules.classifyReply with reason; ambiguous → review | test/rules.test.ts |
@@ -83,7 +83,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-077 | Workflow templates | P2 | Done | automation.TEMPLATES (5, off by default) | test/integrations.test.ts |
 | QF-078 | Conditional routing | P2 | Done | automation.matches (eq, neq, in, contains, gte, lte, empty, notempty) | test/integrations.test.ts |
 | QF-079 | Formula and computed-field engine | P3 | Done | formula.ts (safe parser, no code execution); formula custom fields in drawer and exports | test/formula.test.ts |
-| QF-080 | Normalized source plugin SDK | P2 | Done | Declarative JSON sources (sources/sdk.ts), validation, encrypted keys, docs/SOURCE_SDK.md | test/partials.test.ts |
+| QF-080 | Normalized source plugin SDK | P2 | Done | Declarative JSON sources (sources/sdk.ts), validation, encrypted keys, licence terms (export/contact) enforced, duplicate IDs refused, docs/SOURCE_SDK.md | test/partials.test.ts, test/hardening.test.ts, test/int/hardening.int.ts |
 | QF-081 | Local REST API (opt-in) | P2 | Done | Local API over HTTP: token, host check, capture-only token | test/int/api.int.ts |
 | QF-082 | Command-line interface | P2 | Done | CLI against the running API | test/int/api.int.ts |
 | QF-083 | Optional MCP server | P3 | Done | MCP list_leads against the running API | test/int/api.int.ts |
@@ -110,31 +110,31 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-104 | Applicant tracking system detection | P1 | Done | ats.detectAts (9 systems); Job search → Employers | test/jobs.test.ts |
 | QF-105 | Application URL validation | P1 | Done | ats.postingState + jobstore.checkPosting; "Is it still open?" in job details | test/jobs.test.ts |
 | QF-106 | Fresh-jobs-since-last-run mode | P1 | Done | First/last seen, New flag | test/int/records.int.ts |
-| QF-107 | Scheduled job alerts | P1 | Built | job_alerts + job_alert_hits; runs every 15 min while open; notifications | typecheck |
+| QF-107 | Scheduled job alerts | P1 | Done | Alerts checked every 5 minutes and at start; schedule kept from the due time; failed runs retried after 15/30/60… minutes; per-board baselines so a board that was down never floods; errors shown | test/int/hardening.int.ts; live check in the release |
 | QF-108 | Job application state accuracy | P1 | Done | Jobs.tsx: Apply sets "Opened", never "Applied" | manual |
 | QF-109 | Country-specific regional salary normalization | P2 | Done | ats.parseSalary (currency, period, yearly) | test/jobs.test.ts |
 | QF-110 | Salary floor and radius filters | P2 | Done | Distance filter using offline GeoNames coordinates (jobsearch.cityPoint) | test/jobs.test.ts |
 | QF-111 | Hide recruiters and company preferences | P2 | Done | ats.isRecruiter; hide/prefer companies (settings.jobs); filter | test/jobs.test.ts |
 | QF-112 | Job post provenance and age | P1 | Done | Seen dates, repost detection, yearly salary | test/int/records.int.ts |
 | QF-113 | Job result exports | P2 | Built | jobstore.exportSaved CSV/JSON/Markdown; buttons in My applications | typecheck |
-| QF-114 | Guided first-launch wizard | P1 | Built | Onboarding.tsx (purpose, profile, ideal customer, privacy); shown once, skippable | preview |
+| QF-114 | Guided first-launch wizard | P1 | Done | Onboarding.tsx (purpose, profile, ideal customer, privacy), skippable | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
 | QF-115 | One-click offline sample/demo data | P1 | Not done (owner decision) | Conflicts with the owner's "real data only" rule; the browser preview keeps its demo data, the app does not | — |
-| QF-116 | Distinct Business and Career workspaces | P1 | Built | settings.workspace; Business / Career / Both switch in the sidebar | preview |
+| QF-116 | Distinct Business and Career workspaces | P1 | Done | Business, Career and Both workspaces; menu filtered | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
 | QF-117 | Advanced search preview and estimate | P1 | Built | jobs.previewSearch; Find → Preview (0.13.0) | preview |
 | QF-118 | Safe export wizard with field mapping | P2 | Done | Export columns, do-not-contact left out by default | test/int/records.int.ts |
 | QF-119 | Encrypted database backups and recovery | P1 | Done | Encrypted backup → wrong passphrase refused → restore of data and settings with safety copy | test/int/data.int.ts |
-| QF-120 | Per-feature privacy disclosures | P1 | Built | privacy.ts summary; Settings → Privacy; onboarding notes | typecheck |
-| QF-121 | App signing and macOS notarization | P1 | Partial | Signing and notarization run automatically once certificate secrets exist (docs/CREDENTIALS.md); unsigned builds pass on all three platforms | Release workflow |
-| QF-122 | Accessibility and keyboard support | P2 | Built | axe-core audit of 9 screens: no serious or critical violations left; skip link, focus, reduced motion, RTL | axe-core run (manual, in browser preview) |
-| QF-123 | Localized interface and regional defaults | P3 | Partial | Menus, titles, workspace switch in 6 languages; RTL for Arabic and Urdu. Full screen text needs professional translation (about 900 strings); not machine-generated here | — |
+| QF-120 | Per-feature privacy disclosures | P1 | Done | privacy.ts summary per feature; Settings → Privacy | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
+| QF-121 | App signing and macOS notarization | P1 | Blocked | Per-platform signing (macOS needs Developer ID + notarization account, Windows an OV .pfx); release verifies codesign/spctl/stapler and Authenticode, and writes the signing state into the notes | Blocked on certificates the owner does not have yet (docs/CREDENTIALS.md); unsigned builds are verified as unsigned |
+| QF-122 | Accessibility and keyboard support | P2 | Done | Accessible names, ARIA tabs, contrast, skip link, keyboard focus | axe-core audit (0.21) + every-button-named check in the installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
+| QF-123 | Localized interface and regional defaults | P3 | Done | Whole interface in Urdu, Arabic (RTL), Spanish, French and German: 1,158 strings per language, number patterns, lead data untouched; machine translation awaiting native review | test/i18n.test.ts (complete catalogues, placeholders kept); RTL and translation check in the installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
 | QF-124 | Trusted source audit logs and diagnostics | P1 | Done | diagnostics.ts with safety.redact; Settings → Privacy → Save a diagnostics file | test/safety.test.ts (redaction) |
 
 ## Totals
 
-- Done: 69
-- Built: 45
-- Blocked: 7
-- Partial: 2
+- Done: 76
+- Built: 39
+- Blocked: 8
+- Partial: 0
 - Not done: 1
 
 ## Security and sending fixes (0.20.0)

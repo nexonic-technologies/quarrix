@@ -4,6 +4,7 @@ import * as db from './db';
 import { load } from './settings';
 import { isPlatformHost } from './util';
 import { compile, evaluate } from './formula';
+import { scopeArgs, scopeSql } from './scope';
 
 const raw = () => db.raw();
 const now = () => db.now();
@@ -45,7 +46,7 @@ export function migrate() {
 const DEAL_FIELDS = ['lead_id', 'title', 'value', 'currency', 'probability', 'stage', 'expected_close', 'products', 'notes', 'lost_reason', 'custom', 'position'] as const;
 export function listDeals() {
   return raw().prepare(`SELECT d.*, l.name lead_name, l.city lead_city, l.email lead_email,
-    (SELECT MIN(due_at) FROM tasks t WHERE t.deal_id = d.id AND t.done_at IS NULL) next_task FROM deals d LEFT JOIN leads l ON l.id = d.lead_id ORDER BY d.stage, d.position, d.id`).all();
+    (SELECT MIN(due_at) FROM tasks t WHERE t.deal_id = d.id AND t.done_at IS NULL) next_task FROM deals d LEFT JOIN leads l ON l.id = d.lead_id WHERE ${scopeSql('d.lead_id')} ORDER BY d.stage, d.position, d.id`).all(...scopeArgs());
 }
 export function saveDeal(d: Record<string, any>) {
   const st = stages();
@@ -91,7 +92,7 @@ export function moveDeal(id: number, stage: string, beforeId: number | null) {
 // ── Forecast (QF-055) ──
 export function forecast() {
   const st = stages();
-  const deals = raw().prepare('SELECT * FROM deals').all() as any[];
+  const deals = raw().prepare(`SELECT * FROM deals WHERE ${scopeSql()}`).all(...scopeArgs()) as any[];
   const prob = (d: any) => d.probability ?? st.find((s) => s.key === d.stage)?.probability ?? 0;
   const open = deals.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
   const byStage = st.map((s) => { const ds = deals.filter((d) => d.stage === s.key); return { stage: s.key, label: s.label, count: ds.length, value: ds.reduce((a, d) => a + d.value, 0), weighted: ds.reduce((a, d) => a + (d.value * prob(d)) / 100, 0) }; });
@@ -102,13 +103,13 @@ export function forecast() {
     won: won.reduce((a, d) => a + d.value, 0), winRate: won.length + lost.length ? Math.round((won.length / (won.length + lost.length)) * 100) : null,
     byStage, currencies: [...new Set(deals.map((d) => d.currency))],
     byMonth: months.map((m) => ({ month: m, won: won.filter((d) => (d.closed_at ?? '').startsWith(m)).reduce((a, d) => a + d.value, 0), expected: open.filter((d) => (d.expected_close ?? '').startsWith(m)).reduce((a, d) => a + (d.value * prob(d)) / 100, 0) })),
-    lostReasons: raw().prepare("SELECT lost_reason reason, COUNT(*) n FROM deals WHERE stage = 'lost' AND lost_reason <> '' GROUP BY lost_reason ORDER BY n DESC LIMIT 6").all(),
+    lostReasons: raw().prepare(`SELECT lost_reason reason, COUNT(*) n FROM deals WHERE stage = 'lost' AND lost_reason <> '' AND ${scopeSql()} GROUP BY lost_reason ORDER BY n DESC LIMIT 6`).all(...scopeArgs()),
   };
 }
 
 // ── Tasks and reminders (QF-049, QF-054) ──
 export function listTasks(f: { leadId?: number; dealId?: number; open?: boolean; from?: string; to?: string } = {}) {
-  const w: string[] = [], a: unknown[] = [];
+  const w: string[] = [`(${scopeSql('COALESCE(t.lead_id, d.lead_id)')})`], a: unknown[] = [...scopeArgs()];
   if (f.leadId) { w.push('t.lead_id = ?'); a.push(f.leadId); }
   if (f.dealId) { w.push('t.deal_id = ?'); a.push(f.dealId); }
   if (f.open) w.push('t.done_at IS NULL');

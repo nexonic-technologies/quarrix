@@ -1,5 +1,6 @@
 // Opt-in local REST API (QF-081): 127.0.0.1 only, bearer token, small JSON surface. Used by the CLI (QF-082),
 // the MCP server (QF-083) and the capture bookmarklet (QF-090). Off by default.
+import * as scope from './scope';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { writeFileSync, rmSync } from 'node:fs';
@@ -59,10 +60,10 @@ async function route(req: IncomingMessage, res: ServerResponse, token: string) {
     if (!rateOk()) return send(res, 429, { error: 'Too many captures, wait a minute.' }, true);
   } else if (!authed(req, token)) return send(res, 401, { error: 'Missing or wrong token. Copy it from Settings → Connections.' });
   const num = (k: string, d: number, max = 1000) => Math.min(max, Math.max(1, Number(u.searchParams.get(k)) || d));
-  if (req.method === 'GET' && path === '/v1/leads') return send(res, 200, db.queryLeads({ q: u.searchParams.get('q') ?? undefined, grade: u.searchParams.get('grade') ?? undefined, status: u.searchParams.get('status') ?? undefined, country: u.searchParams.get('country') ?? undefined, sort: u.searchParams.get('sort') ?? 'grade', limit: num('limit', 50), offset: Number(u.searchParams.get('offset')) || 0 }));
+  if (req.method === 'GET' && path === '/v1/leads') return send(res, 200, db.queryLeads(scope.scopedQuery({ q: u.searchParams.get('q') ?? undefined, grade: u.searchParams.get('grade') ?? undefined, status: u.searchParams.get('status') ?? undefined, country: u.searchParams.get('country') ?? undefined, sort: u.searchParams.get('sort') ?? 'grade', limit: num('limit', 50), offset: Number(u.searchParams.get('offset')) || 0 })));
   const lm = path.match(/^\/v1\/leads\/(\d+)$/);
-  if (req.method === 'GET' && lm) { const l = db.getLead(+lm[1]); return l ? send(res, 200, { lead: l, contacts: db.listContacts(l.id), deals: crm.leadDeals(l.id), events: db.eventsFor(l.id).slice(0, 30) }) : send(res, 404, { error: 'Not found' }); }
-  if (req.method === 'GET' && path === '/v1/searches') return send(res, 200, db.listSearches(num('limit', 30, 200)));
+  if (req.method === 'GET' && lm) { const l = scope.leadOk(+lm[1]) ? db.getLead(+lm[1]) : undefined; return l ? send(res, 200, { lead: l, contacts: db.listContacts(l.id), deals: crm.leadDeals(l.id), events: db.eventsFor(l.id).slice(0, 30) }) : send(res, 404, { error: 'Not found' }); }
+  if (req.method === 'GET' && path === '/v1/searches') return send(res, 200, scope.guardResult('search:list', db.listSearches(num('limit', 30, 200))));
   if (req.method === 'POST' && path === '/v1/searches') {
     const b = await readBody(req);
     const ids = new Set(SOURCES.map((s) => s.id));

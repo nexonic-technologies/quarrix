@@ -30,7 +30,8 @@ export async function cloudSend(phone: string, country: string, body: { text?: s
   const r = await fetchText(`https://graph.facebook.com/v21.0/${encodeURIComponent(w.phoneNumberId)}/messages`, {
     method: 'POST', timeout: 30000, headers: { authorization: `Bearer ${w.cloudToken}`, 'content-type': 'application/json' }, body: JSON.stringify(payload),
   });
-  const j = JSON.parse(r.text || '{}');
-  if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+  let j: any = {};
+  try { j = JSON.parse(r.text || '{}'); } catch { /* not JSON */ }
+  if (!r.ok) throw new Error(`WhatsApp refused the message: ${String(j.error?.message ?? `HTTP ${r.status}`).slice(0, 200)}`);
   return j.messages?.[0]?.id ?? '';
 }

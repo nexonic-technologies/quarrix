@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Component, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, KanbanSquare, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
@@ -114,6 +114,7 @@ export function App() {
           </div>
         </header>
         <div className="screen" key={screen}>
+          <ScreenGuard>
           {screen === 'dashboard' && <Dashboard tick={tick} go={go} />}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
@@ -124,11 +125,22 @@ export function App() {
           {screen === 'jobs' && <Jobs />}
           {screen === 'files' && <ImportExport go={go} />}
           {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
+          </ScreenGuard>
         </div>
       </main>
       <div className="toasts" role="status">{toasts.map((t) => <div key={t.id} className={`toast ${t.err ? 'err' : ''}`}>{t.err ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}<span>{t.text}</span></div>)}</div>
     </div>
   );
+}
+
+/** A screen that fails to draw shows what went wrong instead of blanking the whole app; other screens keep working. */
+class ScreenGuard extends Component<{ children: ReactNode }, { err: string }> {
+  state = { err: '' };
+  static getDerivedStateFromError(e: unknown) { return { err: String((e as Error)?.message ?? e) }; }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return <div className="panel panel-pad" role="alert" data-screen-error><b>This screen could not be shown.</b><p className="muted small">{this.state.err}</p><button className="btn small" onClick={() => this.setState({ err: '' })}>Try again</button></div>;
+  }
 }
 
 export function applyTheme(theme: string) {

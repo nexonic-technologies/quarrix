@@ -15,4 +15,5 @@ export const session = { fromPartition: () => ({}), defaultSession: {} };
 export const nativeTheme = { themeSource: 'light', shouldUseDarkColors: false };
 export const ipcMain = { handle: () => undefined };
 export const dialog = {};
-export default { app, safeStorage, BrowserWindow, Notification, shell, session, nativeTheme, ipcMain, dialog };
+export const webContents = { fromId: () => undefined };
+export default { app, safeStorage, BrowserWindow, Notification, shell, session, nativeTheme, ipcMain, dialog, webContents };
