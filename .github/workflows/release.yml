@@ -115,9 +115,11 @@ jobs:
           Start-Process $setup.FullName -ArgumentList "/S" -Wait
           $exe = "$env:LOCALAPPDATA\Programs\Quarrix\Quarrix.exe"
           $env:QUARRIX_SMOKE_OUT = "$PWD\smoke-windows.json"
-          $p = Start-Process $exe -PassThru -Wait
+          Start-Process $exe -Wait
+          # Start-Process often reports no exit code for GUI apps, so the report itself decides.
+          if (-not (Test-Path smoke-windows.json)) { throw "the app wrote no smoke report" }
           Get-Content smoke-windows.json
-          if ($p.ExitCode -ne 0) { throw "smoke test failed" }
+          if (-not (Get-Content smoke-windows.json -Raw | ConvertFrom-Json).ok) { throw "smoke test failed" }
       - name: Smoke test the installed app (Linux)
         if: runner.os == 'Linux'
         shell: bash
