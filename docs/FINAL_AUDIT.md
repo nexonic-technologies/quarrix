@@ -14,6 +14,7 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 
 - Passed: Nominatim geocoding, Wikidata businesses (QF-009), Wikidata company size (QF-028), NPI registry, DNS checks, Hacker News hiring (QF-097), Workday (QF-095, 400 NVIDIA jobs), keyless job boards (90 jobs), job alert baseline and re-run (QF-107), oversized-response rejection.
 - Fixed in 0.22.1 from these results: Greenhouse, Lever and Ashby feeds of big employers are tens of MB and hit the 3 MB limit (now 40 MB for employer feeds); Overture renamed `categories` to `taxonomy`/`basic_category` in its newer releases (now read whichever the file has).
+- Confirmed in the v0.22.1 release (14 of 16 live): Overture returned 10 places, Greenhouse 781, Lever 308 and Ashby 187 jobs.
 - Not fixed: Overpass was busy at the time (temporary); SmartRecruiters returned no jobs for "Visa" (the test employer may have moved off SmartRecruiters; QF-094 stays Built).
 
 ## Critical fixes (P0), 0.22
@@ -47,13 +48,12 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 - **QF-121:** needs Apple and Windows signing certificates.
 - **Not done (QF-115, demo data):** intentionally excluded: it conflicts with the owner's "real data only" rule.
 
-## Built, not yet verified live (35 items)
+## Built, not yet verified live (33 items)
 
 Each release now runs the keyless ones against the real services from CI (live-providers.json on the release page); items that need the owner's own accounts or keys stay here until those are available.
 
 | ID | Feature | Why it is not verified yet | What is needed |
 |---|---|---|---|
-| QF-005 | Overture Maps connector | Reads Overture's public S3 release files; this environment cannot reach them | The release's live check (live-providers.json) or a run in the installed app |
 | QF-002 | Batch search builder | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-011 | Provider connectivity diagnostics | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-012 | Per-provider request budgets | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
@@ -83,7 +83,6 @@ Each release now runs the keyless ones against the real services from CI (live-p
 | QF-087 | Notion connector | Needs the live service; this environment cannot reach it | Notion integration token |
 | QF-088 | n8n/Zapier adapters | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-090 | Approved-source browser extension | Needs the live service; this environment cannot reach it | Chrome with the extension loaded |
-| QF-093 | Ashby jobs connector | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-094 | SmartRecruiters connector | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-096 | Personio/Pinpoint connectors | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
 | QF-113 | Job result exports | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
@@ -91,8 +90,8 @@ Each release now runs the keyless ones against the real services from CI (live-p
 
 ## Totals
 
-- Done: 80
-- Built: 35
+- Done: 82
+- Built: 33
 - Blocked: 8
 - Partial: 0
 - Not done: 1

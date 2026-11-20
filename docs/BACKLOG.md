@@ -8,7 +8,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-002 | Batch search builder | P1 | Built | jobs.queueBatch, search_templates table, FindTools BatchModal | preview UI |
 | QF-003 | Interactive radius and polygon search | P2 | Done | Circle or drawn polygon (FindTools MapPicker); geo.inPolygon/polygonCircle; grid limited to the polygon | test/safety.test.ts (polygon) |
 | QF-004 | Geographic grid coverage | P2 | Done | geo.ts gridCells/zoomFor; Google Maps grid in jobs.ts | test/discovery.test.ts |
-| QF-005 | Overture Maps connector | P1 | Built | sources/overture.ts: every listing page (continuation tokens), every file footer read so no region is skipped, antimeridian boxes split, plural/category matching, read limit reported as partial, budgets and private-address checks on range reads | test/hardening.test.ts; live check in the release (live-providers.json) |
+| QF-005 | Overture Maps connector | P1 | Done | sources/overture.ts: every listing page (continuation tokens), every file footer read so no region is skipped, antimeridian boxes split, plural/category matching, read limit reported as partial, budgets and private-address checks on range reads | live provider check in the v0.22.1 release (live-providers.json): 10 places in Austin from the live Overture release |
 | QF-006 | Socrata open-data adapter | P2 | Done | sources/opendata.ts searchSocrata; Settings → Sources feeds | test/discovery.test.ts (recorded shape) |
 | QF-007 | ArcGIS public-layer adapter | P2 | Done | sources/opendata.ts searchArcgis | test/discovery.test.ts (recorded shape) |
 | QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
@@ -96,7 +96,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-090 | Approved-source browser extension | P3 | Built | extension/ (MV3 popup + options, capture-only token); zipped into each release | typecheck; load-unpacked test pending |
 | QF-091 | Greenhouse company jobs connector | P1 | Done | ats.ts employerJobs (Greenhouse board API) | test/jobs.test.ts (recorded shape) |
 | QF-092 | Lever jobs connector | P1 | Done | ats.ts (Lever postings API, US and EU) | test/jobs.test.ts (recorded shape) |
-| QF-093 | Ashby jobs connector | P1 | Built | ats.ts (Ashby posting API) | typecheck; needs live run |
+| QF-093 | Ashby jobs connector | P1 | Done | ats.ts (Ashby posting API) | live provider check in the v0.22.1 release (live-providers.json): 187 Ashby jobs (Ramp) |
 | QF-094 | SmartRecruiters connector | P2 | Built | ats.ts (SmartRecruiters postings API) | typecheck; needs live run |
 | QF-095 | Workday careers connector | P2 | Done | ats.ts (Workday public jobs endpoint) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 400 NVIDIA Workday jobs |
 | QF-096 | Personio/Pinpoint connectors | P2 | Built | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run |
@@ -131,8 +131,8 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 
 ## Totals
 
-- Done: 80
-- Built: 35
+- Done: 82
+- Built: 33
 - Blocked: 8
 - Partial: 0
 - Not done: 1
