@@ -13,6 +13,8 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      # Integration tests run inside Electron's own Node; it needs these shared libraries even without a window.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 >/dev/null
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high

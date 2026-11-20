@@ -204,3 +204,14 @@ export function reviewTrend(snaps: { at: string; rating: number | null; reviews:
     from: first.at.slice(0, 10), to: last.at.slice(0, 10), points: s.length,
   };
 }
+
+/** Google Maps star histogram labels ("5 stars, 1,234 reviews") → counts per star, or null when missing or inconsistent. Pure. */
+export function starsFromLabels(labels: string[], total?: number | null) {
+  const out: Record<string, number> = {};
+  for (const l of labels) { const m = l.match(/^([1-5])\s*stars?,\s*([\d,.\s]+)\s*reviews?$/i); if (m) out[m[1]] = Number(m[2].replace(/[^\d]/g, '')); }
+  if (Object.keys(out).length < 5) return null;
+  const sum = Object.values(out).reduce((a, b) => a + b, 0);
+  // Only trust it when it adds up to the listed review count (within 2%), so a changed page never gives wrong numbers.
+  if (total && Math.abs(sum - total) > Math.max(2, total * 0.02)) return null;
+  return out;
+}

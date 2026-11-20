@@ -13,6 +13,7 @@ import * as automation from './automation';
 import * as localapi from './localapi';
 import * as cli from './cli';
 import * as exporters from './exporters';
+import { loadSources, sourcesDir } from './sources/sdk';
 import * as mb from './mailboxes';
 import { abResult } from './rules';
 import * as integrations from './integrations';
@@ -64,7 +65,8 @@ function createWindow() {
 
 const KNOWN_SOURCES = new Set(SOURCES.map((x) => x.id));
 const validSources = (v: unknown) => {
-  const list = Array.isArray(v) ? v.map(String).filter((x) => KNOWN_SOURCES.has(x)) : [];
+  const sdk = new Set(loadSources(app.getPath('userData')).ok.map((x) => `sdk:${x.id}`));
+  const list = Array.isArray(v) ? v.map(String).filter((x) => KNOWN_SOURCES.has(x) || sdk.has(x)) : [];
   if (!list.length) throw new Error('Choose at least one source.');
   return list;
 };
@@ -124,6 +126,8 @@ function registerIpc() {
   handle('templates:save', (t) => db.saveTemplate(t));
   handle('templates:delete', (id: number) => db.deleteTemplate(Number(id)));
   handle('sources:catalog', () => SOURCES);
+  handle('sdk:list', () => { const r = loadSources(app.getPath('userData')); return { dir: sourcesDir(app.getPath('userData')), sources: r.ok.map((x) => ({ id: x.id, name: x.name, license: x.license, attribution: x.attribution, needsKey: !!(x.keyHeader || x.keyQuery) })), errors: r.errors }; });
+  handle('sdk:openDir', () => shell.openPath(sourcesDir(app.getPath('userData'))));
   handle('icp:presets', () => PRESETS);
   handle('mail:oauth', (p: string) => { if (p !== 'google' && p !== 'microsoft') throw new Error('Unknown provider.'); return oauth.connect(p); });
   handle('mail:oauthOff', () => oauth.disconnect());

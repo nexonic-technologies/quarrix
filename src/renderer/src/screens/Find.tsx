@@ -22,6 +22,7 @@ const SOURCES: [string, string, string, typeof Map][] = [
   ['npi', 'NPI registry', 'US healthcare, official', Stethoscope],
   ['wikidata', 'Wikidata', 'notable organisations, open data', Library],
   ['opendata', 'Open data feeds', 'city licence registers you add', Landmark],
+  ['overture', 'Overture Maps', 'open map data, large download', Database],
 ];
 const STAGES: [string, string][] = [['new', 'New'], ['contacted', 'Contacted'], ['replied', 'Replied'], ['interested', 'Interested'], ['won', 'Won']];
 
@@ -38,6 +39,8 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [progress, setProgress] = useState<Record<number, string>>({});
   const [stats, setStats] = useState<any>(null);
   const [geo, setGeo] = useState<Geo | null>(null);
+  const [own, setOwn] = useState<[string, string][]>([]);
+  useEffect(() => { call<any>('sdk:list').then((x) => setOwn((x?.sources ?? []).map((y: any) => [`sdk:${y.id}`, y.name]))); }, []);
   const [tool, setTool] = useState<'' | 'map' | 'preview' | 'batch'>('');
   const placeRef = useRef<HTMLInputElement>(null);
   const catRef = useRef<HTMLInputElement>(null);
@@ -118,7 +121,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <span className="chip" role="button" tabIndex={0} onClick={() => ready() && setTool('preview')} onKeyDown={(e) => e.key === 'Enter' && ready() && setTool('preview')} title="See a few real results and an estimate first"><Eye size={13} /> Preview</span>
           <span className="chip" role="button" tabIndex={0} onClick={() => setTool('batch')} onKeyDown={(e) => e.key === 'Enter' && setTool('batch')} title="Many business types in many places"><Layers size={13} /> Batch</span>
           <span className="muted small" style={{ marginLeft: 6 }}>Sources</span>
-          {SOURCES.map(([id, label, hint, Icon]) => (
+          {[...SOURCES, ...own.map(([id, name]) => [id, name, 'your own source', Database] as (typeof SOURCES)[number])].map(([id, label, hint, Icon]) => (
             <span key={id} className="chip" role="button" tabIndex={0} aria-pressed={sources.includes(id)} title={hint}
               onClick={() => setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
               onKeyDown={(e) => e.key === ' ' && setSources((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}>

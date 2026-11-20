@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const unit = readdirSync('test').filter((f) => f.endsWith('.test.ts'));
-await build({ entryPoints: unit.map((f) => `test/${f}`), outdir: 'out/test', bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['electron', 'better-sqlite3', 'node:sqlite', 'all-the-cities', 'pg'], logLevel: 'error' });
+await build({ entryPoints: unit.map((f) => `test/${f}`), outdir: 'out/test', bundle: true, platform: 'node', format: 'cjs', target: 'node22', external: ['electron', 'better-sqlite3', 'node:sqlite', 'all-the-cities', 'pg', 'undici'], logLevel: 'error' });
 let r = spawnSync(process.execPath, ['--test', ...unit.map((f) => `out/test/${f.replace(/\.ts$/, '.js')}`)], { stdio: 'inherit' });
 if (r.status) process.exit(r.status);
 

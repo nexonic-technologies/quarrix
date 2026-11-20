@@ -1,14 +1,14 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test. **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end. **Blocked** = cannot be done with authorised access today (reason given).
+Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test (unit tests in Node; integration tests in test/int run in Electron's own Node against real SQLite, real SMTP servers, a real HTTP API, and the real CLI and MCP processes). **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end. **Blocked** = cannot be done with authorised access today (reason given).
 
 | ID | Feature | Pri | Status | Where | Verified by |
 |---|---|---|---|---|---|
-| QF-001 | Persisted pause/resume checkpoints | P1 | Built | jobs.ts checkpoints (searches.checkpoint), requeueInterrupted, pause/resume | typecheck; needs live run |
+| QF-001 | Persisted pause/resume checkpoints | P1 | Done | Interrupted searches go back in the queue at start-up (checkpoint per source and area) | test/int/records.int.ts |
 | QF-002 | Batch search builder | P1 | Built | jobs.queueBatch, search_templates table, FindTools BatchModal | preview UI |
 | QF-003 | Interactive radius and polygon search | P2 | Done | Circle or drawn polygon (FindTools MapPicker); geo.inPolygon/polygonCircle; grid limited to the polygon | test/safety.test.ts (polygon) |
 | QF-004 | Geographic grid coverage | P2 | Done | geo.ts gridCells/zoomFor; Google Maps grid in jobs.ts | test/discovery.test.ts |
-| QF-005 | Overture Maps connector | P1 | Partial | Overture GeoJSON import; no live query (Overture publishes files only, no query API) | test/discovery.test.ts |
+| QF-005 | Overture Maps connector | P1 | Built | sources/overture.ts reads Overture release GeoParquet by HTTP range (footer → overlapping row groups); GeoJSON import kept | test/partials.test.ts (row-group selection, row mapping); live S3 read not run here |
 | QF-006 | Socrata open-data adapter | P2 | Done | sources/opendata.ts searchSocrata; Settings → Sources feeds | test/discovery.test.ts (recorded shape) |
 | QF-007 | ArcGIS public-layer adapter | P2 | Done | sources/opendata.ts searchArcgis | test/discovery.test.ts (recorded shape) |
 | QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
@@ -21,17 +21,17 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-015 | Business search map with clustering | P2 | Built | FindTools LeadMap (Leaflet + markercluster), Leads → Map | preview UI |
 | QF-016 | Optional company website lookup | P2 | Done | sources/lookup.ts findWebsite + websiteEvidence; provenance.website | test/discovery.test.ts (evidence rule) |
 | QF-017 | Contact-source permissions registry | P1 | Built | catalog export/contact/attribution; export skips no-export sources and adds "Data credit" | test/discovery.test.ts (flags) |
-| QF-018 | Company-versus-branch hierarchy | P1 | Built | companies table, linkCompany, Leads → Companies with locations, contacts and open deals | typecheck, preview |
-| QF-019 | Multi-contact relationships | P1 | Built | contacts table; website, Hunter and manual contacts in the Evidence card | typecheck |
+| QF-018 | Company-versus-branch hierarchy | P1 | Done | Companies per client workspace; branches of a chain share their client's company | test/int/data.int.ts |
+| QF-019 | Multi-contact relationships | P1 | Done | contacts table, role filter | test/int/records.int.ts |
 | QF-020 | Operating-hours data | P2 | Done | Hours from OSM opening_hours, Google Maps and schema.org (intel.osmDetails/schemaDetails) | test/formula.test.ts |
 | QF-021 | Business open/closed status tracking | P2 | Done | Status operational / temporarily / permanently closed (OSM, Google Maps) | test/formula.test.ts |
 | QF-022 | Price tier and amenities fields | P3 | Done | Price level, amenities, payment methods with source label | test/formula.test.ts |
 | QF-023 | Booking, ordering and menu links | P2 | Done | intel.actionLinks → leads.details.links | test/intel.test.ts |
 | QF-024 | Place listing IDs and canonical URLs | P1 | Done | intel.listingUrl; Evidence card "open" | test/intel.test.ts |
-| QF-025 | Review distribution and trends | P2 | Done | intel.reviewTrend (reviews per month, rating change) in the Evidence card | test/formula.test.ts |
+| QF-025 | Review distribution and trends | P2 | Done | Review trend plus 5-to-1 star counts from Google Maps, used only when they add up to the review count | test/partials.test.ts, test/formula.test.ts |
 | QF-026 | Business imagery and profile media | P3 | Built | Image from the business's own site (schema.org logo/image or og:image), shown not stored | typecheck |
 | QF-027 | Website technology inventory | P2 | Done | intel.detectTech (34 technologies with markers) | test/intel.test.ts |
-| QF-028 | Company size and growth fields | P3 | Partial | Founding year and employee count from the business's own website; licensed firmographic APIs not added | test/formula.test.ts |
+| QF-028 | Company size and growth fields | P3 | Built | Size, employee growth per year, founding, revenue from Wikidata (CC0) matched by official website | test/partials.test.ts (claims → facts); live lookup not run here |
 | QF-029 | Evidence and source provenance per field | P1 | Built | leads.provenance: listing, website evidence, email pages, checks, conflicts | typecheck |
 | QF-030 | Field freshness and stale-data warnings | P1 | Built | settings.freshDays; signals runner re-checks stale leads; "Not checked in 90 days" filter | typecheck |
 | QF-031 | Configurable enrichment waterfall | P1 | Built | settings.waterfall order and stop rule; provenance.waterfall trail | typecheck |
@@ -47,47 +47,47 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-041 | Email syntax and domain-level checks as separate statuses | P1 | Done | intel.EMAIL_STATUS, validSyntax; "ok" migrated to "mx-ok" | test/intel.test.ts |
 | QF-042 | Optional provider-backed mailbox verification | P2 | Built | verify.ts Hunter and ZeroBounce adapters | typecheck; needs a key |
 | QF-043 | Bulk email validation queue | P2 | Built | verify.verifyLeads, 30-day cache (email_checks), daily limits; "Check emails" bulk action | typecheck |
-| QF-044 | Role and department contact filters | P2 | Built | "Contact role" filter (contact_role and contacts.role) | typecheck |
+| QF-044 | Role and department contact filters | P2 | Done | Contact role filter (lead role or contacts table) | test/int/records.int.ts |
 | QF-045 | Contact freshness and historical changes | P1 | Built | email_checks.at, contacts.confirmed_at, bounces set status | typecheck |
 | QF-046 | Contact do-not-solicit enforcement | P0 | Done | safety.ts outreachBlock; outreach.ts, mail.ts | test/safety.test.ts |
-| QF-047 | Kanban pipeline view | P1 | Built | crm.ts deals + moveDeal + deal_history; Pipeline board (drag and drop, arrow buttons) | typecheck, preview |
-| QF-048 | Deal and opportunity records | P1 | Built | deals table: value, currency, probability, products, expected close, lost reason | typecheck |
-| QF-049 | Tasks and reminders | P1 | Built | tasks table, reminders (Notification every minute), Pipeline → Tasks, tasks on each lead | typecheck |
+| QF-047 | Kanban pipeline view | P1 | Done | crm.saveDeal/moveDeal/deal_history | test/int/data.int.ts |
+| QF-048 | Deal and opportunity records | P1 | Done | Deal value, currency check, stage → lead status | test/int/data.int.ts |
+| QF-049 | Tasks and reminders | P1 | Done | Tasks, reminders fire once | test/int/records.int.ts |
 | QF-050 | Custom fields and field types | P2 | Done | custom_fields + cleanValue (text, number, date, select, url); in exports | test/crm.test.ts |
-| QF-051 | Customizable saved views | P2 | Built | saved_views; Leads "Save view" chips | typecheck |
-| QF-052 | Companies, contacts, locations and deals data model | P1 | Built | Companies ↔ locations (leads) ↔ contacts ↔ deals; legacy leads linked at start-up | typecheck |
-| QF-053 | Data merge review UI | P2 | Built | crm.duplicateGroups / mergeLeads / undoMerge / keepApart; Leads → Duplicates | typecheck; needs live data |
+| QF-051 | Customizable saved views | P2 | Done | Saved views round-trip | test/int/records.int.ts |
+| QF-052 | Companies, contacts, locations and deals data model | P1 | Done | Leads ↔ companies ↔ deals; 0.20 table migrated | test/int/data.int.ts |
+| QF-053 | Data merge review UI | P2 | Done | mergeLeads/undoMerge with history moved back; cross-client merge refused | test/int/data.int.ts |
 | QF-054 | Calendar-based next-action view | P2 | Built | Pipeline → Tasks → Week view (local tasks; no external calendar sync) | preview |
-| QF-055 | Opportunity forecasting dashboard | P2 | Built | crm.forecast: open, weighted, won, win rate, by stage and month, lost reasons | typecheck |
-| QF-056 | Client/project workspaces | P3 | Built | leads.client, client picker on Leads; new search results filed under the current client; API and exports follow it | typecheck |
+| QF-055 | Opportunity forecasting dashboard | P2 | Done | crm.forecast | test/int/data.int.ts |
+| QF-056 | Client/project workspaces | P3 | Done | Client-scoped duplicates, companies, branches, merges | test/int/data.int.ts |
 | QF-057 | Role-based collaboration (optional) | P3 | Blocked | Collaboration needs a shared server or sync service; Quarrix is local-first. Not built. | — |
 | QF-058 | Fix ordered follow-up state machine | P0 | Done | safety.ts DUE_SQL; db.dueMessages | test/safety.test.ts (SQLite) |
 | QF-059 | Gmail browser-based OAuth | P1 | Built | oauth.ts (Google, loopback + PKCE, user's own client), XOAUTH2 in mail.ts | typecheck; needs the owner's OAuth client to test |
 | QF-060 | Microsoft 365/Outlook OAuth | P1 | Built | oauth.ts (Microsoft 365 SMTP.Send + IMAP) | typecheck; needs an Azure app to test |
-| QF-061 | Multiple connected sending accounts | P2 | Built | mailboxes.ts: extra mailboxes (SMTP, Google, Microsoft, SendGrid), own approval, warm-up, limits; sequence pinned to one mailbox; unified reply inbox | typecheck; needs real mailboxes |
+| QF-061 | Multiple connected sending accounts | P2 | Done | Several mailboxes, least-loaded choice, one mailbox per sequence, own limits, no fallback | test/int/outreach.int.ts (real SMTP) |
 | QF-062 | Unified replies inbox | P2 | Built | Replies from every mailbox with a mailbox column | typecheck |
 | QF-063 | Reply intent labeling | P2 | Done | rules.classifyReply with reason; ambiguous → review | test/rules.test.ts |
-| QF-064 | Visual sequence editor | P1 | Built | Sequence editor in Settings → Email (global steps; not per campaign yet) | typecheck |
+| QF-064 | Visual sequence editor | P1 | Done | Sequence order and per-step due dates in the real send loop | test/int/outreach.int.ts |
 | QF-065 | Pre-send dry run | P1 | Done | rules.dryRun + deliverability.dryRunPlan; Outreach → Send plan | test/rules.test.ts |
-| QF-066 | Explicit send authorization | P1 | Built | email.authorizedAt/authorizedFrom; sending off until approved; UI cannot set it | typecheck |
+| QF-066 | Explicit send authorization | P1 | Done | No approval without an approved connected mailbox; address change turns approval off | test/int/outreach.int.ts |
 | QF-067 | IANA timezone-aware scheduling | P1 | Done | rules.zoneFor (tz-lookup), localClock, inWindowAt, nextWindow; mail.inWindow | test/rules.test.ts |
 | QF-068 | Bounce/complaint circuit breakers | P1 | Done | rules.breaker + mail.recentHealth; auto-pause with reason | test/rules.test.ts |
 | QF-069 | Deliverability DNS diagnostics | P2 | Done | rules.explainDns + deliverability.checkDomain | test/rules.test.ts |
 | QF-070 | Optional inbox placement testing | P3 | Built | mail-tester.com flow: sends the latest draft to the tester address and opens the score | typecheck; needs live send |
-| QF-071 | A/B tests for approved messaging | P2 | Done | Version B subject per second lead, rules.abResult (z-test, 30 per side) | test/rules.test.ts |
+| QF-071 | A/B tests for approved messaging | P2 | Done | Version B on every second lead with custom subject | test/int/outreach.int.ts, test/rules.test.ts |
 | QF-072 | Per-mailbox and per-campaign metrics | P2 | Built | Per-mailbox sent, today/limit and replies; A/B reply rates | typecheck |
-| QF-073 | Campaign attention center | P1 | Built | db.attention; Outreach → Needs attention | typecheck |
-| QF-074 | Cross-campaign contact exclusion rules | P1 | Built | mail.contactedRecently (same email or domain, any campaign) | typecheck |
+| QF-073 | Campaign attention center | P1 | Done | Failed sends appear in the attention queue | test/int/records.int.ts |
+| QF-074 | Cross-campaign contact exclusion rules | P1 | Done | Same company (any branch) not emailed again within the set days | test/int/records.int.ts |
 | QF-075 | Optional transactional email provider adapter | P3 | Built | SendGrid v3 sending as a mailbox type | typecheck; needs a SendGrid key |
-| QF-076 | No-code automation builder | P2 | Built | automation.ts rules (trigger → conditions → actions); Settings → Automations editor | test/integrations.test.ts (conditions) |
+| QF-076 | No-code automation builder | P2 | Done | Rules run on real events and act (tag, task) | test/int/api.int.ts |
 | QF-077 | Workflow templates | P2 | Done | automation.TEMPLATES (5, off by default) | test/integrations.test.ts |
 | QF-078 | Conditional routing | P2 | Done | automation.matches (eq, neq, in, contains, gte, lte, empty, notempty) | test/integrations.test.ts |
 | QF-079 | Formula and computed-field engine | P3 | Done | formula.ts (safe parser, no code execution); formula custom fields in drawer and exports | test/formula.test.ts |
-| QF-080 | Normalized source plugin SDK | P2 | Partial | Declarative Socrata/ArcGIS feeds only; no code plugins (avoids running third-party code) | — |
-| QF-081 | Local REST API (opt-in) | P2 | Built | localapi.ts (127.0.0.1, bearer token, host check); docs/INTEGRATIONS.md | typecheck; needs live run |
-| QF-082 | Command-line interface | P2 | Done | bin/quarrix.mjs | test/integrations.test.ts (help, no-app error) |
-| QF-083 | Optional MCP server | P3 | Done | bin/quarrix-mcp.mjs (stdio JSON-RPC, read tools, confirm-gated search) | test/integrations.test.ts (protocol) |
-| QF-084 | Generic webhook actions | P2 | Done | automation.deliver: HMAC-SHA256 signature, 3 retries, delivery log | test/integrations.test.ts (signature) |
+| QF-080 | Normalized source plugin SDK | P2 | Done | Declarative JSON sources (sources/sdk.ts), validation, encrypted keys, docs/SOURCE_SDK.md | test/partials.test.ts |
+| QF-081 | Local REST API (opt-in) | P2 | Done | Local API over HTTP: token, host check, capture-only token | test/int/api.int.ts |
+| QF-082 | Command-line interface | P2 | Done | CLI against the running API | test/int/api.int.ts |
+| QF-083 | Optional MCP server | P3 | Done | MCP list_leads against the running API | test/int/api.int.ts |
+| QF-084 | Generic webhook actions | P2 | Done | Signed webhook received and verified by a real HTTP server | test/int/api.int.ts |
 | QF-085 | HubSpot adapter | P3 | Built | integrations.toHubspot (companies by domain, contacts by email, association) | typecheck; needs a HubSpot token |
 | QF-086 | Google Sheets connector | P3 | Built | integrations.toSheets (own Google OAuth client, append rows) | typecheck; needs an OAuth client |
 | QF-087 | Notion connector | P3 | Built | integrations.toNotion (property matching by name and type) | typecheck; needs a Notion token |
@@ -109,32 +109,32 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-103 | BDJobs and HelloWork connectors | P3 | Blocked | BDJobs and HelloWork: no public API | — |
 | QF-104 | Applicant tracking system detection | P1 | Done | ats.detectAts (9 systems); Job search → Employers | test/jobs.test.ts |
 | QF-105 | Application URL validation | P1 | Done | ats.postingState + jobstore.checkPosting; "Is it still open?" in job details | test/jobs.test.ts |
-| QF-106 | Fresh-jobs-since-last-run mode | P1 | Built | job_seen first/last seen; "Only new since last search" filter; New badge | typecheck |
+| QF-106 | Fresh-jobs-since-last-run mode | P1 | Done | First/last seen, New flag | test/int/records.int.ts |
 | QF-107 | Scheduled job alerts | P1 | Built | job_alerts + job_alert_hits; runs every 15 min while open; notifications | typecheck |
 | QF-108 | Job application state accuracy | P1 | Done | Jobs.tsx: Apply sets "Opened", never "Applied" | manual |
 | QF-109 | Country-specific regional salary normalization | P2 | Done | ats.parseSalary (currency, period, yearly) | test/jobs.test.ts |
 | QF-110 | Salary floor and radius filters | P2 | Done | Distance filter using offline GeoNames coordinates (jobsearch.cityPoint) | test/jobs.test.ts |
 | QF-111 | Hide recruiters and company preferences | P2 | Done | ats.isRecruiter; hide/prefer companies (settings.jobs); filter | test/jobs.test.ts |
-| QF-112 | Job post provenance and age | P1 | Built | first_seen, last_seen, posted, age badge, repost badge | typecheck |
+| QF-112 | Job post provenance and age | P1 | Done | Seen dates, repost detection, yearly salary | test/int/records.int.ts |
 | QF-113 | Job result exports | P2 | Built | jobstore.exportSaved CSV/JSON/Markdown; buttons in My applications | typecheck |
 | QF-114 | Guided first-launch wizard | P1 | Built | Onboarding.tsx (purpose, profile, ideal customer, privacy); shown once, skippable | preview |
 | QF-115 | One-click offline sample/demo data | P1 | Not done (owner decision) | Conflicts with the owner's "real data only" rule; the browser preview keeps its demo data, the app does not | — |
 | QF-116 | Distinct Business and Career workspaces | P1 | Built | settings.workspace; Business / Career / Both switch in the sidebar | preview |
 | QF-117 | Advanced search preview and estimate | P1 | Built | jobs.previewSearch; Find → Preview (0.13.0) | preview |
-| QF-118 | Safe export wizard with field mapping | P2 | Built | ExportWizard.tsx + exportLeads options (columns, do-not-contact, one row per email) | typecheck, preview |
-| QF-119 | Encrypted database backups and recovery | P1 | Done | backupcrypto.ts (AES-256-GCM + scrypt), backup.ts (checked restore at next start, safety copy) | test/crm.test.ts |
+| QF-118 | Safe export wizard with field mapping | P2 | Done | Export columns, do-not-contact left out by default | test/int/records.int.ts |
+| QF-119 | Encrypted database backups and recovery | P1 | Done | Encrypted backup → wrong passphrase refused → restore of data and settings with safety copy | test/int/data.int.ts |
 | QF-120 | Per-feature privacy disclosures | P1 | Built | privacy.ts summary; Settings → Privacy; onboarding notes | typecheck |
-| QF-121 | App signing and macOS notarization | P1 | Partial | Signing/notarization wired and conditional; SHA256SUMS; needs Apple Developer ID and Windows certificates | Release v0.19.1 built on 3 platforms |
+| QF-121 | App signing and macOS notarization | P1 | Partial | Signing and notarization run automatically once certificate secrets exist (docs/CREDENTIALS.md); unsigned builds pass on all three platforms | Release workflow |
 | QF-122 | Accessibility and keyboard support | P2 | Built | axe-core audit of 9 screens: no serious or critical violations left; skip link, focus, reduced motion, RTL | axe-core run (manual, in browser preview) |
-| QF-123 | Localized interface and regional defaults | P3 | Partial | 6 languages for menus, titles and workspace switch; RTL for Arabic and Urdu; content screens English | — |
+| QF-123 | Localized interface and regional defaults | P3 | Partial | Menus, titles, workspace switch in 6 languages; RTL for Arabic and Urdu. Full screen text needs professional translation (about 900 strings); not machine-generated here | — |
 | QF-124 | Trusted source audit logs and diagnostics | P1 | Done | diagnostics.ts with safety.redact; Settings → Privacy → Save a diagnostics file | test/safety.test.ts (redaction) |
 
 ## Totals
 
-- Built: 65
-- Done: 46
+- Done: 69
+- Built: 45
 - Blocked: 7
-- Partial: 5
+- Partial: 2
 - Not done: 1
 
 ## Security and sending fixes (0.20.0)

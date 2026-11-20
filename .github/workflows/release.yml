@@ -37,6 +37,8 @@ jobs:
       - uses: actions/setup-node@v5
         with: { node-version: 22, cache: npm }
       - run: npm ci
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 >/dev/null
       # Installers are only built from code that passes the same checks as CI.
       - run: npm run typecheck
       - run: npm test

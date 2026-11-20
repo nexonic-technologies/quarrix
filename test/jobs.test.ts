@@ -76,3 +76,14 @@ test('job distance uses offline city coordinates', async () => {
   assert.ok(distanceKm(g, k) > 1000);
   assert.equal(cityPoint('Nowhereville-xyz'), null);
 });
+
+test('job distance: country names, other countries and same-name cities', async () => {
+  const { jobDistanceOk } = await import('../src/main/jobstore');
+  const { cityPoint } = await import('../src/main/jobsearch');
+  const g = cityPoint('Gujranwala', 'PK')!;
+  assert.equal(jobDistanceOk('Lahore, Punjab, Pakistan', g, 100, 'PK'), true);
+  assert.equal(jobDistanceOk('Karachi, Pakistan', g, 100, 'PK'), false);
+  assert.equal(jobDistanceOk('Lahore District, Pakistan', g, 100, 'PK'), true, 'district suffix ignored');
+  assert.equal(jobDistanceOk('Dubai, United Arab Emirates', g, 1000, 'PK'), false, 'another country named');
+  assert.equal(jobDistanceOk('Somewhere Unknown', g, 10, 'PK'), true, 'unknown places are kept');
+});

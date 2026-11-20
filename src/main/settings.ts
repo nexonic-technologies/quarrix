@@ -61,6 +61,9 @@ export type Settings = {
   waterfall: { order: ('website' | 'hunter')[]; stopOnFirst: boolean };
   /** Client workspaces (QF-056): new leads are filed under the current client. */
   language: string;
+  /** Keys for your own sources (Source SDK), by source id; encrypted like other secrets. */
+  sdkKeys: Record<string, string>;
+  companyFacts: boolean;
   clients: string[];
   exports: { postgres: { url: string; table: string; allowSelfSigned: boolean }; s3: { endpoint: string; region: string; bucket: string; prefix: string; accessKey: string; secretKey: string } };
   currentClient: string;
@@ -102,6 +105,8 @@ export const defaults: Settings = {
   mailboxes: [],
   waterfall: { order: ['website', 'hunter'], stopOnFirst: true },
   language: 'en',
+  sdkKeys: {},
+  companyFacts: true,
   clients: [],
   exports: { postgres: { url: '', table: 'quarrix_leads', allowSelfSigned: false }, s3: { endpoint: '', region: 'us-east-1', bucket: '', prefix: 'quarrix/', accessKey: '', secretKey: '' } },
   currentClient: '',
@@ -148,6 +153,7 @@ export function load(): Settings {
   s.theme = 'light';
   for (const p of SECRET_PATHS) set(s, p, dec(get(s, p)));
   s.mailboxes = (s.mailboxes ?? []).map((b) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, dec(b[k])])) }));
+  s.sdkKeys = Object.fromEntries(Object.entries(s.sdkKeys ?? {}).map(([k, v]) => [k, dec(String(v))]));
   cache = s;
   return s;
 }
@@ -158,6 +164,7 @@ export function save(patch: unknown): Settings {
   const out = structuredClone(s) as Record<string, any>;
   for (const p of SECRET_PATHS) set(out, p, enc(get(out, p)));
   out.mailboxes = (out.mailboxes ?? []).map((b: Mailbox) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, enc(b[k])])) }));
+  out.sdkKeys = Object.fromEntries(Object.entries(out.sdkKeys ?? {}).map(([k, v]) => [k, enc(String(v))]));
   writeFileSync(file(), JSON.stringify(out, null, 2));
   return s;
 }
@@ -167,6 +174,7 @@ export function publicSettings() {
   const s = structuredClone(load()) as Record<string, any>;
   for (const p of SECRET_PATHS) set(s, p, get(s, p) ? '••••••••' : '');
   s.mailboxes = (s.mailboxes ?? []).map((b: Mailbox) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, b[k] ? '••••••••' : ''])) }));
+  s.sdkKeys = Object.fromEntries(Object.keys(s.sdkKeys ?? {}).map((k) => [k, s.sdkKeys[k] ? '••••••••' : '']));
   s.secretsSessionOnly = !secureStore();
   return s as Settings;
 }
@@ -181,6 +189,7 @@ export function saveFromUi(patch: Record<string, any>) {
   // Fields only the main process may change: sending approval, the safety pause and the OAuth session.
   if (p.email) for (const k of ['authorizedAt', 'authorizedFrom', 'pausedReason', 'oauthRefresh', 'oauthUser', 'auth']) delete p.email[k];
   if (p.whatsapp) delete p.whatsapp.authorizedAt;
+  if (p.sdkKeys && typeof p.sdkKeys === 'object') { const old = load().sdkKeys; p.sdkKeys = Object.fromEntries(Object.entries(p.sdkKeys).map(([k, v]) => [k, v === '••••••••' ? old[k] ?? '' : String(v)])); }
   if (Array.isArray(p.mailboxes)) {
     const old = load().mailboxes;
     p.mailboxes = p.mailboxes.map((b: Mailbox) => {

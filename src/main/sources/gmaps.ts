@@ -2,6 +2,7 @@
 // Google changes its page often; every selector here has a fallback, and failures are reported, not hidden.
 import { BrowserWindow } from 'electron';
 import { assertPublicUrl, countryCode, sleep } from '../util';
+import { starsFromLabels } from '../intel';
 import type { Candidate, Progress } from './types';
 
 let win: BrowserWindow | null = null;
@@ -107,6 +108,7 @@ async function readPlace(category: string, href = ''): Promise<Candidate | null>
       temp: /temporarily closed/i.test(document.body.innerText.slice(0, 4000)),
       hours: ((document.querySelector('[aria-label*="Monday"][aria-label*="Tuesday"]') || {}).getAttribute?.('aria-label') || '').replace(/\.\s*Hide open hours.*$/i, '').slice(0, 400),
       price: txt(q('span[aria-label^="Price"]')).replace(/^Price:\s*/i, ''),
+      starLabels: [...document.querySelectorAll('[aria-label]')].map((e) => e.getAttribute('aria-label')).filter((t) => /^[1-5] stars?, [\d,.\s]+ reviews?$/i.test(t)).slice(0, 10),
       url: location.href,
     };
   })()`);
@@ -123,7 +125,7 @@ async function readPlace(category: string, href = ''): Promise<Candidate | null>
     city: parts.length >= 3 ? parts[parts.length - 3] : '', region: (parts[parts.length - 2] ?? '').replace(/\s*\d.*$/, ''), country,
     postcode: (parts[parts.length - 2] ?? '').match(/\b[A-Z0-9]{2,4}\s?[A-Z0-9]{2,4}\b|\b\d{4,6}\b/)?.[0] ?? '',
     lat: m ? +m[1] : null, lon: m ? +m[2] : null, phone: d.phone, email: '', website: d.website, rating: d.rating, reviews: d.reviews,
-    details: { source: 'Google Maps', status: d.temp ? 'closed_temporarily' : 'operational', ...(d.hours ? { hours: d.hours } : {}), ...(d.price ? { price: d.price } : {}) },
+    details: { source: 'Google Maps', status: d.temp ? 'closed_temporarily' : 'operational', ...(d.hours ? { hours: d.hours } : {}), ...(d.price ? { price: d.price } : {}), ...((() => { const st = starsFromLabels(d.starLabels ?? [], d.reviews); return st ? { stars: st } : {}; })()) },
   };
 }
 

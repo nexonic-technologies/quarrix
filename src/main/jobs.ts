@@ -9,6 +9,10 @@ import { searchFoursquare, searchTomTom } from './sources/keyed';
 import { load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { findWebsite } from './sources/lookup';
+import { companyFacts } from './sources/companyfacts';
+import { loadSources, runSdk } from './sources/sdk';
+import { searchOverture } from './sources/overture';
+import { app } from 'electron';
 import { checkEmail, hunterDomain } from './verify';
 import { diffSnapshot, scoreLead } from './intel';
 import { linkCompany } from './crm';
@@ -100,6 +104,18 @@ async function fetchFrom(src: string, area: string, left: number, c: Ctx): Promi
       }
       return out;
     }
+  }
+  if (src === 'overture') {
+    const g = c.geo;
+    const b = g ? bboxOf(g) : c.where?.bbox?.length === 4 ? { s: c.where.bbox[0], n: c.where.bbox[1], w: c.where.bbox[2], e: c.where.bbox[3] } : null;
+    if (!b) throw new Error('Overture needs a place it can find on the map, or a map area.');
+    if ((b.n - b.s) * (b.e - b.w) > 4) throw new Error('That area is too large for Overture (about 200 km across at most). Pick a city or a map area.');
+    return searchOverture(c.category, b, left, c.progress);
+  }
+  if (src.startsWith('sdk:')) {
+    const def = loadSources(app.getPath('userData')).ok.find((x) => `sdk:${x.id}` === src);
+    if (!def) throw new Error(`The source file for ${src.slice(4)} is missing or has an error (Settings → Sources → Your own sources).`);
+    return runSdk(def, { category: c.category, city, country: c.where?.country ?? '', lat: c.where?.lat, lon: c.where?.lon }, settings.sdkKeys?.[def.id] ?? '', left, c.progress);
   }
   throw new Error(`Unknown source ${src}`);
 }
@@ -399,6 +415,8 @@ export async function enrichOne(lead: db.Lead) {
   if (contact.contact_name) db.addContact({ lead_id: lead.id, name: contact.contact_name, role: contact.contact_role, email: email && email.split('@')[0].includes(contact.contact_name.split(' ')[0].toLowerCase()) ? email : '', source: 'website', source_url: r.website });
   for (const p of r.people.slice(0, 10)) db.addContact({ lead_id: lead.id, name: p.name, role: p.role, source: 'website', source_url: r.website });
   for (const e of r.emails.slice(0, 5)) db.addContact({ lead_id: lead.id, email: e, source: 'website', source_url: r.emailSources[e] ?? r.website });
+  // Company size and growth from Wikidata, when the company has an entry with this official website.
+  const company = settings.companyFacts !== false && r.domain ? await companyFacts(r.domain).catch(() => null) : null;
   db.updateLead(lead.id, {
     contact_name: lead.contact_name || contact.contact_name, contact_role: lead.contact_role || contact.contact_role,
     summary: lead.summary || contact.summary, email_status: check?.status ?? '', email_checked_at: check?.at ?? null, fit: fit.fit, needs: fit.needs.join(', '),
@@ -407,7 +425,7 @@ export async function enrichOne(lead: db.Lead) {
     address: lead.address || [r.schema.street, r.schema.city, r.schema.postcode].filter(Boolean).join(', '),
     city: lead.city || r.schema.city || '', region: lead.region || r.schema.region || '',
     audit: JSON.stringify({ facts: { ...r.facts, tech: r.tech }, psi, findings: sc.findings, phones: r.phones }),
-    details: JSON.stringify({ ...JSON.parse(lead.details || '{}'), links: r.links, ...(Object.keys(r.extra).length ? { site: r.extra } : {}) }),
+    details: JSON.stringify({ ...JSON.parse(lead.details || '{}'), links: r.links, ...(Object.keys(r.extra).length ? { site: r.extra } : {}), ...(company ? { company } : {}) }),
     provenance: JSON.stringify(prov),
   });
   snapshotAndDiff(lead.id);

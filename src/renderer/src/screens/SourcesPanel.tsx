@@ -24,6 +24,8 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
     setChecking(false);
   };
   const feeds: any[] = s.openFeeds ?? [];
+  const [sdk, setSdk] = useState<{ dir: string; sources: any[]; errors: string[] } | null>(null);
+  useEffect(() => { call<any>('sdk:list').then(setSdk); }, []);
   const setFeed = (i: number, k: string, v: unknown) => set('openFeeds', feeds.map((f, j) => (j === i ? { ...f, [k]: v } : f)));
 
   return (
@@ -70,6 +72,16 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
         })}
       </div>
 
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+        <h2 style={{ margin: 0 }}>Your own sources</h2>
+        <span className="row" style={{ gap: 6 }}><button className="btn small ghost" onClick={() => void call('sdk:openDir')}>Open the sources folder</button><button className="btn small ghost" onClick={() => call<any>('sdk:list').then(setSdk)}>Reload</button></span>
+      </div>
+      <p className="muted small" style={{ margin: 0 }}>Add any business API with a JSON file in the sources folder: the link, where the list is, and which field is which. No code runs. See docs/SOURCE_SDK.md in the Quarrix repository.</p>
+      {sdk?.errors.map((e) => <div key={e} className="note warn small">{e}</div>)}
+      {sdk?.sources.map((x) => (
+        <div key={x.id} className="contact-row"><span><b>{x.name}</b> <span className="muted small">{x.license} · credit: {x.attribution}</span></span>
+          {x.needsKey ? <input className="input" type="password" placeholder="API key" value={s.sdkKeys?.[x.id] ?? ''} onChange={(e) => set('sdkKeys', { ...(s.sdkKeys ?? {}), [x.id]: e.target.value.trim() })} aria-label={`${x.name} key`} /> : <span />}<span /></div>
+      ))}
       <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
         <h2 style={{ margin: 0 }}>Open data feeds</h2>
         <button className="btn small" onClick={() => set('openFeeds', [...feeds, { ...blankFeed }])}><Plus size={14} /> Add a feed</button>
