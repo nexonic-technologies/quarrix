@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search as SearchIcon, Flag, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
 import { call } from '../api';
 import { toast } from '../App';
-import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight } from '../Art';
+import { Avatar, EmptyArt, HeroArt, HeroBg, spotlight, useSceneMode } from '../Art';
 import { CityInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
 
@@ -63,6 +63,8 @@ export function Jobs() {
   const [cv, setCv] = useState<Cv | null>(null);
   const [ai, setAi] = useState('none');
   const [ranking, setRanking] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const mode = useSceneMode(busy || ranking, focused);
   const [doc, setDoc] = useState<{ job: Job; kind: 'letter' | 'cv'; text: string; busy: boolean } | null>(null);
 
   useEffect(() => {
@@ -128,11 +130,11 @@ export function Jobs() {
 
   return (
     <div className="page">
-      <div className="finder jobs-hero" onMouseMove={spotlight}>
-        <HeroBg />
+      <div className="finder jobs-hero" data-mode={mode} data-kind="jobs" onMouseMove={spotlight} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+        <HeroBg kind="jobs" mode={mode} />
         <div className="finder-art"><HeroArt kind="jobs" /></div>
         <div className="finder-text">
-          <span className="eyebrow"><Briefcase size={13} /> Job search</span>
+          <span className="eyebrow"><Briefcase size={13} /> {busy ? 'Searching every board…' : ranking ? 'Matching jobs to your CV…' : mode === 'done' ? 'Jobs found' : 'Job search'}</span>
           <h2>Find your next job, from every board at once</h2>
           <p>LinkedIn, Indeed, Google Jobs, Rozee and remote boards, searched together and matched to your CV.</p>
         </div>

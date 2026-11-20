@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../../shared/categories';
 import { call, json, type Search } from '../api';
 import { toast, type Screen } from '../App';
-import { HeroArt, HeroBg, spotlight, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
+import { HeroArt, HeroBg, spotlight, useSceneMode, Sparkline, Bars, CountUp, EmptyArt } from '../Art';
 import { CityInput } from '../CityInput';
 import { Building2, Mail, Phone, MessageCircleReply, MapPin, Map, Database, KeyRound, Sparkles, ArrowRight, Globe2, BookOpen, Megaphone, Flag, ChevronRight } from 'lucide-react';
 import { COUNTRIES } from '../countries';
@@ -24,6 +24,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [sources, setSources] = useState<string[]>(['gmaps', 'osm', 'web']);
   const [country, setCountry] = useState('');
   const [live, setLive] = useState<Search | null>(null);
+  const [focused, setFocused] = useState(false);
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const [searches, setSearches] = useState<Search[]>([]);
@@ -41,6 +42,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
     return off;
   }, []);
 
+  const mode = useSceneMode(searches.some((x) => x.status === 'running' || x.status === 'queued'), focused);
   const matches = useMemo(() => {
     const q = category.trim().toLowerCase();
     return (q ? CATEGORIES.filter((c) => c.name.toLowerCase().includes(q) || c.group.toLowerCase().includes(q)) : CATEGORIES).slice(0, 40);
@@ -61,11 +63,11 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
 
   return (
     <div className="page">
-      <div className="finder" onMouseMove={spotlight}>
-        <HeroBg />
+      <div className="finder" data-mode={mode} data-kind="leads" onMouseMove={spotlight} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}>
+        <HeroBg kind="leads" mode={mode} />
         <div className="finder-art"><HeroArt kind="leads" /></div>
         <div className="finder-text">
-          <span className="eyebrow"><Sparkles size={13} /> New search</span>
+          <span className="eyebrow"><Sparkles size={13} /> {mode === 'busy' ? 'Finding businesses…' : mode === 'done' ? 'Search finished' : 'New search'}</span>
           <h2>Who are you looking for?</h2>
           <p>Pick a kind of business and a place. Big cities are searched neighbourhood by neighbourhood.</p>
         </div>

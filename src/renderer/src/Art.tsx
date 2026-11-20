@@ -151,11 +151,132 @@ export function HeroArt({ kind = 'leads' }: { kind?: 'leads' | 'jobs' }) {
 }
 
 /** Animated banner background with a soft light that follows the mouse. */
-export function HeroBg() {
-  return <div className="hero-bg" aria-hidden><i /><i /><i /><b className="spot" /></div>;
+export function HeroBg({ kind, mode }: { kind: 'leads' | 'jobs'; mode: SceneMode }) {
+  return <div className="hero-bg" aria-hidden><i /><i /><i /><HeroScene kind={kind} mode={mode} /><b className="spot" /></div>;
+}
+
+/** idle / focus / busy, plus a short "done" after busy ends. */
+export function useSceneMode(busy: boolean, focused: boolean): SceneMode {
+  const [done, setDone] = useState(false);
+  const was = useRef(busy);
+  useEffect(() => {
+    if (was.current && !busy) { setDone(true); const t = setTimeout(() => setDone(false), 2500); was.current = busy; return () => clearTimeout(t); }
+    was.current = busy;
+  }, [busy]);
+  return busy ? 'busy' : done ? 'done' : focused ? 'focus' : 'idle';
 }
 export const spotlight = (e: React.MouseEvent<HTMLElement>) => {
   const r = e.currentTarget.getBoundingClientRect();
   e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`);
   e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
 };
+
+/* Full-banner animated scene that reacts to what the person is doing.
+   leads: a network of businesses, pins light up where the scan passes.
+   jobs: job cards drift up, matching ones get a tick.
+   mode: idle (calm), focus (typing), busy (searching: new colour, scan beam, faster), done (short burst). */
+export type SceneMode = 'idle' | 'focus' | 'busy' | 'done';
+const PALETTE: Record<string, Record<SceneMode, [number, number, number]>> = {
+  leads: { idle: [124, 58, 237], focus: [79, 70, 229], busy: [16, 185, 129], done: [236, 72, 153] },
+  jobs: { idle: [124, 58, 237], focus: [8, 145, 178], busy: [245, 158, 11], done: [236, 72, 153] },
+};
+export function HeroScene({ kind, mode }: { kind: 'leads' | 'jobs'; mode: SceneMode }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  useEffect(() => {
+    const cv = ref.current!;
+    const ctx = cv.getContext('2d')!;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let w = 0, h = 0, raf = 0, t = 0, beam = -0.2, lastMode: SceneMode = 'idle', burstAt = -1;
+    const mouse = { x: -999, y: -999 };
+    const col = [...PALETTE[kind].idle];
+    type P = { x: number; y: number; vx: number; vy: number; r: number; pin: number; tick: number };
+    let ps: P[] = [];
+    const spawn = (y?: number): P => ({ x: Math.random() * w, y: y ?? Math.random() * h, vx: (Math.random() - 0.5) * 0.25, vy: kind === 'jobs' ? -(0.15 + Math.random() * 0.25) : (Math.random() - 0.5) * 0.25, r: 1 + Math.random() * 1.6, pin: 0, tick: 0 });
+    const fit = () => {
+      const dpr = devicePixelRatio || 1;
+      const r = cv.parentElement!.getBoundingClientRect();
+      w = r.width; h = r.height;
+      cv.width = w * dpr; cv.height = h * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const n = Math.round((w * h) / (kind === 'leads' ? 9000 : 16000));
+      ps = Array.from({ length: n }, () => spawn());
+    };
+    const ro = new ResizeObserver(fit); ro.observe(cv.parentElement!); fit();
+    const host = (cv.closest('.finder') as HTMLElement) ?? cv.parentElement!;
+    const mv = (e: MouseEvent) => { const r = cv.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; };
+    const out = () => { mouse.x = mouse.y = -999; };
+    host.addEventListener('mousemove', mv); host.addEventListener('mouseleave', out);
+    const rgba = (a: number) => `rgba(${col[0] | 0},${col[1] | 0},${col[2] | 0},${a})`;
+    const card = (x: number, y: number, s: number, a: number, tick: boolean) => {
+      ctx.fillStyle = `rgba(255,255,255,${0.55 * a})`; ctx.strokeStyle = rgba(0.35 * a); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x - 11 * s, y - 7 * s, 22 * s, 14 * s, 3 * s); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = rgba(0.5 * a); ctx.fillRect(x - 7 * s, y - 3 * s, 10 * s, 1.6 * s); ctx.fillRect(x - 7 * s, y + 1 * s, 14 * s, 1.4 * s);
+      if (tick) { ctx.strokeStyle = rgba(0.95 * a); ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(x + 5 * s, y - 1 * s); ctx.lineTo(x + 7 * s, y + 2 * s); ctx.lineTo(x + 11 * s, y - 5 * s); ctx.stroke(); }
+    };
+    const frame = () => {
+      const m = modeRef.current;
+      if (m !== lastMode) { if (m === 'done') burstAt = t; lastMode = m; }
+      const target = PALETTE[kind][m];
+      for (let i = 0; i < 3; i++) col[i] += (target[i] - col[i]) * 0.05;
+      const speed = m === 'busy' ? 3.2 : m === 'focus' ? 1.6 : 1;
+      t += 1;
+      ctx.clearRect(0, 0, w, h);
+      // scan beam sweeping the whole banner while busy
+      if (m === 'busy') {
+        beam += 0.006;
+        if (beam > 1.2) beam = -0.2;
+        const bx = beam * w;
+        const g = ctx.createLinearGradient(bx - 140, 0, bx + 16, 0);
+        g.addColorStop(0, rgba(0)); g.addColorStop(0.82, rgba(0.14)); g.addColorStop(0.94, rgba(0.38)); g.addColorStop(1, rgba(0));
+        ctx.fillStyle = g; ctx.fillRect(bx - 140, 0, 156, h);
+      }
+      for (const p of ps) {
+        p.x += p.vx * speed; p.y += p.vy * speed;
+        const dx = p.x - mouse.x, dy = p.y - mouse.y, d = Math.hypot(dx, dy);
+        if (d < 90 && d > 0) { p.x += (dx / d) * 0.8; p.y += (dy / d) * 0.8; }
+        if (kind === 'jobs' && p.y < -20) Object.assign(p, spawn(h + 10));
+        if (p.x < -20) p.x = w + 20; if (p.x > w + 20) p.x = -20;
+        if (kind === 'leads') { if (p.y < -20) p.y = h + 20; if (p.y > h + 20) p.y = -20; }
+        if (m === 'busy' && Math.abs(p.x - beam * w) < 3 && Math.random() < 0.5) { p.pin = 1; p.tick = 1; }
+        else if (m !== 'busy' && Math.random() < (m === 'focus' ? 0.002 : 0.0006)) p.pin = 1;
+        p.pin *= 0.985;
+      }
+      if (kind === 'leads') {
+        ctx.lineWidth = 1;
+        for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+          const a = ps[i], b = ps[j], d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < 95) { ctx.strokeStyle = rgba((1 - d / 95) * (m === 'busy' ? 0.3 : 0.16)); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); }
+        }
+        for (const p of ps) {
+          const dm = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+          if (dm < 140) { ctx.strokeStyle = rgba((1 - dm / 140) * 0.45); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke(); }
+          ctx.fillStyle = rgba(0.55); ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+          if (p.pin > 0.05) {
+            ctx.strokeStyle = rgba(p.pin * 0.7); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(p.x, p.y, 3 + (1 - p.pin) * 14, 0, 7); ctx.stroke();
+            ctx.fillStyle = rgba(p.pin); ctx.beginPath(); ctx.arc(p.x, p.y - 7, 3.2, 0, 7); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(p.x - 2.6, p.y - 5.5); ctx.lineTo(p.x, p.y - 1); ctx.lineTo(p.x + 2.6, p.y - 5.5); ctx.fill();
+          }
+        }
+      } else {
+        for (const p of ps) {
+          const near = Math.hypot(p.x - mouse.x, p.y - mouse.y) < 110;
+          card(p.x, p.y, 0.7 + p.r * 0.25, near ? 1 : 0.75, p.tick > 0.2 || (near && m !== 'idle'));
+          p.tick *= 0.996;
+        }
+      }
+      // short celebration when a search finishes
+      if (burstAt >= 0 && t - burstAt < 90) {
+        const k = (t - burstAt) / 90;
+        for (let i = 0; i < 26; i++) {
+          const a = (i / 26) * Math.PI * 2, rr = k * Math.min(w, h) * 0.6;
+          ctx.fillStyle = rgba(1 - k); ctx.beginPath(); ctx.arc(w * 0.82 + Math.cos(a) * rr, h * 0.5 + Math.sin(a) * rr, 2.2, 0, 7); ctx.fill();
+        }
+      }
+      if (!reduce) raf = requestAnimationFrame(frame);
+    };
+    frame();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); host.removeEventListener('mousemove', mv); host.removeEventListener('mouseleave', out); };
+  }, [kind]);
+  return <canvas ref={ref} className="hero-scene" aria-hidden />;
+}
