@@ -19,6 +19,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [progress, setProgress] = useState<Record<number, string>>({});
   const [stats, setStats] = useState<any>(null);
   const placeRef = useRef<HTMLInputElement>(null);
+  const catRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     call<Search[]>('search:list').then(setSearches);
@@ -35,7 +36,8 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   }, [category]);
 
   const start = async () => {
-    if (!category.trim() || !place.trim()) { toast.push('Type what kind of business and where.', true); return; }
+    if (!category.trim()) { catRef.current?.focus(); setOpen(true); toast.push('First, type or pick a kind of business.', true); return; }
+    if (!place.trim()) { placeRef.current?.focus(); toast.push('Now type a city or area, for example Austin, Texas.', true); return; }
     if (!sources.length) { toast.push('Choose at least one source.', true); return; }
     await call('search:start', category, place, sources);
     toast.push(`Searching for ${category.toLowerCase()} in ${place}`);
@@ -51,7 +53,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           <span className="word">Find</span>
           <span className="slot">
             <input
-              aria-label="Type of business" placeholder="dentists" value={category} style={{ width: width(category, 8) }}
+              ref={catRef} aria-label="Type of business" placeholder="type of business" value={category} style={{ width: width(category, 15) }}
               onChange={(e) => { setCategory(e.target.value); setOpen(true); setHi(0); }}
               onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
               onKeyDown={(e) => {
@@ -72,7 +74,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           </span>
           <span className="word">in</span>
           <span className="slot">
-            <input ref={placeRef} aria-label="City or area" placeholder="Austin, Texas" value={place} style={{ width: width(place, 12) }} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
+            <input ref={placeRef} aria-label="City or area" placeholder="city or area" value={place} style={{ width: width(place, 11) }} onChange={(e) => setPlace(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && start()} />
           </span>
         </div>
         <div className="finder-foot">
@@ -83,6 +85,7 @@ export function Find({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               {label} <small>{hint}</small>
             </span>
           ))}
+          {!category && !place && <button className="btn link-light" onClick={() => { setCategory('Dentists'); setPlace('Austin, Texas'); }}>Try an example</button>}
           <button className="btn go" onClick={start}>Start search</button>
         </div>
       </div>
