@@ -1,8 +1,8 @@
-# Final audit, v0.28.0
+# Final audit, v0.30.0
 
-## v0.30.0 candidate
+## v0.30.0 (released)
 
-Market Intelligence uses the existing local business database, with country and category filters and grouping by category, country, city, source or linked company. It distinguishes locations from linked companies, reports unlinked records and coverage, averages only recorded fit scores, and counts checks from the last 90 days. The group view and CSV show the largest 100 groups; totals cover all matching records. These are sample summaries, not market size, market share or forecast estimates. No network requests or individual contact details are included. Full release verification pending.
+Market Intelligence uses the existing local business database, with country and category filters and grouping by category, country, city, source or linked company. It distinguishes locations from linked companies, reports unlinked records and coverage, averages only recorded fit scores, and counts checks from the last 90 days. The group view and CSV show the largest 100 groups; totals cover all matching records. These are sample summaries, not market size, market share or forecast estimates. No network requests or individual contact details are included. [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44962900415) passed. [Release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.30.0) confirms 126/126 installed-app checks across six configurations. Live results: 19/20 returned real data, one temporary Overpass outage, no provider failures. The 17 external blockers remain unchanged.
 
 ## v0.29.0 (released)
 
