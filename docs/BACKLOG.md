@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v0.29.0 candidate:** local resume review, contextual interview practice, per-application document drafts and a due-date planner. Full CI and installed-app verification pending.
+
 **v0.28.0 released:** Job Trust Score, contextual warning excerpts and employer-page exact-vacancy corroboration. Unknown provider responses remain unknown. CI passed and all six installed-app runs passed 19/19 checks. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.28.0).
 
 **v0.27.0 Career Intelligence released:** offline occupation exploration using a real, versioned catalog; manual or CV-based profile inputs; explained title/skill matches, related skill suggestions and direct job search. CI passed; all six installed-app runs passed 18/18 checks. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.27.0).

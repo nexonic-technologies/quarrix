@@ -273,7 +273,14 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v0.28.0 ]; then
+            if [ "$TAG" = v0.29.0 ]; then
+              echo "## Resume, Interview and Application Studio"
+              echo
+              echo "- Text-based resume review, skill evidence and interview practice prompts."
+              echo "- Per-application notes and document drafts, deadlines and follow-up planner."
+              echo "- Local storage, explicit user review, no automatic application submission."
+              echo
+            elif [ "$TAG" = v0.28.0 ]; then
               echo "## Job Trust and Employer Verification"
               echo
               echo "- Explainable job trust evidence and contextual recruitment warnings."

@@ -11,9 +11,11 @@ import { Combo } from '../Combo';
 import { JOB_TITLES } from '../../../shared/jobtitles';
 import { CareerExplorer } from './CareerExplorer';
 import { JobTrust } from './JobTrust';
+import { ApplicationOverview, ApplicationStudio } from './ApplicationStudio';
+import type { StudioNotes } from '../../../shared/application-studio';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
-type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
+type Cv = { file: string; text?: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
 type Job = { firstSeen?: string; isNew?: boolean; repost?: boolean; ageDays?: number | null; recruiter?: boolean; salaryYearly?: { min: number; max: number; currency: string; period: string } | null; status?: string; id: string; source: string; title: string; company: string; location: string; workplace: string; type: string; level: string; salary: string; url: string; posted: string; tags: string[]; snippet: string; match?: number; why?: string };
 
 const OPT = {
@@ -146,14 +148,14 @@ export function Jobs() {
   };
   const apply = async (j: Job) => {
     window.open(j.url, '_blank');
-    await call('jobs:save', { ...j, status: 'Opened' });
+    await call('jobs:save', { ...j, status: saved.find(x => x.id === j.id)?.status || 'Opened' });
     setSaved(await call('jobs:saved'));
     toast.push('Opened the job page. Once you have sent the application, set it to Applied in My applications.');
   };
   const isSaved = (id: string) => saved.some((x) => x.id === id);
   const setStatus = async (j: Job, status: string) => { await call('jobs:save', { ...j, status }); setSaved(await call('jobs:saved')); };
   const toggleSave = async (j: Job) => {
-    if (isSaved(j.id)) await call('jobs:unsave', j.id); else await call('jobs:save', { ...j, status: 'Saved' });
+    if (isSaved(j.id)) { if (!window.confirm('Remove this application and its studio notes?')) return; await call('jobs:unsave', j.id); } else await call('jobs:save', { ...j, status: 'Saved' });
     setSaved(await call('jobs:saved'));
   };
   const list = tab === 'saved' ? saved : jobs;
@@ -201,6 +203,7 @@ export function Jobs() {
       {panel === 'employers' && <EmployersPanel />}
       {panel === 'alerts' && <AlertsPanel current={{ ...query(kw.trim()), name: kw.trim() }} onOpen={(list) => { setJobs(list as Job[]); setTab('results'); }} />}
       {tab === 'saved' && saved.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 8 }}><span className="muted small">Export my applications:</span>{(['csv', 'json', 'md'] as const).map((f) => <button key={f} className="btn small ghost" onClick={async () => { const n = await call('jobs:export', f); if (n) toast.push(`Exported ${n} jobs`); }}>{f === 'md' ? 'Markdown' : f.toUpperCase()}</button>)}</div>}
+      {tab === 'saved' && <ApplicationOverview jobs={saved as (Job & { studio?: StudioNotes })[]} onOpen={setOpen} />}
       {cv ? (
         <div className="panel cv-card">
           <span className="cv-icon"><FileText size={18} /></span>
@@ -283,7 +286,7 @@ export function Jobs() {
           ))}
         </div>
       )}
-      {open && (() => { const j = list.find((x) => x.id === open) ?? saved.find((x) => x.id === open); return j ? <JobDetail job={j} onClose={() => setOpen(null)} onApply={() => apply(j)} onLetter={() => makeDoc(j, 'letter')} onTailor={() => makeDoc(j, 'cv')} saved={isSaved(j.id)} onSave={() => toggleSave(j)} /> : null; })()}
+      {open && (() => { const j = saved.find((x) => x.id === open) ?? list.find((x) => x.id === open); return j ? <JobDetail job={j} cv={cv} onStudioUpdated={async () => setSaved(await call('jobs:saved'))} onClose={() => setOpen(null)} onApply={() => apply(j)} onLetter={() => makeDoc(j, 'letter')} onTailor={() => makeDoc(j, 'cv')} saved={isSaved(j.id)} onSave={() => toggleSave(j)} /> : null; })()}
       {doc && (
         <>
           <div className="scrim" onClick={() => !doc.busy && setDoc(null)} />
@@ -304,7 +307,7 @@ export function Jobs() {
   );
 }
 
-function JobDetail({ job, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
+function JobDetail({ job, cv, onStudioUpdated, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job & { studio?: StudioNotes }; cv: Cv | null; onStudioUpdated: () => Promise<void>; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
   const [d, setD] = useState<{ text: string; seniority: string; employment: string; func: string; industries: string } | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => { setD(null); setErr(false); call('jobs:detail', job).then(setD).catch(() => setErr(true)); }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -337,6 +340,7 @@ function JobDetail({ job, onClose, onApply, onLetter, onTailor, saved, onSave }:
         </header>
         <div className="body">
           <JobTrust key={job.id} job={job} />
+          <ApplicationStudio key={`${job.id}:${saved}`} job={job} cv={cv} posting={d?.text || job.snippet} saved={saved} onSave={onSave} onUpdated={onStudioUpdated} />
           <dl className="kv">{facts.filter(([, v]) => v).flatMap(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
           <div className="row">
             <a className="btn small" href={`https://www.google.com/search?q=${q}`} target="_blank" rel="noreferrer">Company on Google</a>

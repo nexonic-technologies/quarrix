@@ -476,7 +476,18 @@ export const recentEvents = (limit = 100) => db.prepare('SELECT * FROM events OR
 
 /* ---------- Saved jobs ---------- */
 export const savedJobs = () => (db.prepare('SELECT data FROM saved_jobs ORDER BY at DESC').all() as { data: string }[]).map((r) => JSON.parse(r.data));
-export const saveJob = (job: { id: string }) => db.prepare('INSERT OR REPLACE INTO saved_jobs (id, at, data) VALUES (?, ?, ?)').run(job.id, now(), JSON.stringify(job));
+export function saveJob(job: { id: string }) {
+  const old = db.prepare('SELECT data FROM saved_jobs WHERE id = ?').get(job.id) as { data: string } | undefined;
+  const { studio: _ignored, ...rest } = job as { id: string; studio?: unknown };
+  const prior = old ? JSON.parse(old.data) : {};
+  return db.prepare('INSERT OR REPLACE INTO saved_jobs (id, at, data) VALUES (?, ?, ?)').run(job.id, now(), JSON.stringify({ ...prior, ...rest, ...(prior.studio ? { studio: prior.studio } : {}) }));
+}
+export function saveApplicationStudio(id: string, studio: import('../shared/application-studio').StudioNotes) {
+  const old = db.prepare('SELECT data FROM saved_jobs WHERE id = ?').get(id) as { data: string } | undefined;
+  if (!old) throw new Error('Save the application first.');
+  db.prepare('UPDATE saved_jobs SET data = ? WHERE id = ?').run(JSON.stringify({ ...JSON.parse(old.data), studio }), id);
+  return studio;
+}
 export const unsaveJob = (id: string) => db.prepare('DELETE FROM saved_jobs WHERE id = ?').run(id);
 
 /* ---------- Dashboard ---------- */
