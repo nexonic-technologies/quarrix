@@ -106,3 +106,39 @@ test('upgrade: an existing database keeps its sends in the daily count and warm-
   assert.equal(db.sendsSince('main', today()), 2);
   db.openDb(join(dir, 'v026.db'));
 });
+
+test('sent report records retain their actual mailbox and delivery metadata', () => {
+  const l = lead('Proof Report');
+  const box = 'proof-box';
+  const at = db.now();
+  const deliveryId = '<proof@test.local>';
+  db.reserveEmail(box, 'outreach', deliveryId, 2);
+  const id = db.addMessage({ lead_id: l, step: 99, status: 'sent', mailbox: box, sent_at: at, message_id: deliveryId });
+  assert.equal(db.messagesFor(l)[0].mailbox, box);
+  assert.equal(db.messagesFor(l)[0].sent_at, at);
+  assert.equal(db.messagesFor(l)[0].message_id, deliveryId);
+  assert.equal(mb.sentToday(box), 1);
+  assert.throws(() => db.updateMessage(id, { message_id: '<changed@test.local>' }), /cannot be changed/);
+});
+
+test('duplicate review separates multiple locations sharing a telephone number', () => {
+  const ids = [lead('Location A', { phone: '+15559990111', city: 'Austin', address: '1 Main St' }), lead('Location B', { phone: '+15559990111', city: 'Dallas', address: '9 Elm St' })];
+  for (const [city, address] of [['Austin', '1 Main St'], ['Dallas', '9 Elm St']]) {
+    const stamp = db.now();
+    ids.push(Number(db.raw().prepare('INSERT INTO leads (name, phone, city, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('Duplicate', '+15559990111', city, address, stamp, stamp).lastInsertRowid));
+  }
+  const groups = crm.duplicateGroups().map(g => g.leads.map(l => l.id));
+  assert.ok(groups.some(g => g.includes(ids[0]) && g.includes(ids[2]) && !g.includes(ids[1])));
+  assert.ok(groups.some(g => g.includes(ids[1]) && g.includes(ids[3]) && !g.includes(ids[0])));
+});
+
+test('merge preserves notes and undo protects later edits', () => {
+  const k = lead('Undo Keep', { notes: 'first' }), r = lead('Undo Removed', { notes: 'second' });
+  crm.mergeLeads(k, [r]);
+  assert.equal(db.getLead(k)!.notes, 'first\n\nsecond');
+  const m = (crm.listMerges() as any[]).find(x => x.kept_id === k);
+  db.updateLead(k, { notes: 'edited after merging' });
+  assert.throws(() => crm.undoMerge(m.id), /changed after/);
+  assert.equal(db.getLead(k)!.notes, 'edited after merging');
+  assert.equal(db.getLead(r), undefined);
+});

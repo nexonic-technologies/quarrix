@@ -173,8 +173,8 @@ function registerIpc() {
     if (!mb.ready(box)) throw new Error('Approve sending from this mailbox first.');
     if (mb.sentToday(box.id) >= mb.capOf(box)) throw new Error(`${box.label} has reached today's limit; the placement test counts towards it.`);
     const sample = db.raw().prepare("SELECT subject, body FROM messages WHERE channel = 'email' AND step = 0 ORDER BY id DESC LIMIT 1").get() as { subject: string; body: string } | undefined;
-    await mail.sendRaw(a, sample?.subject ?? 'Quick question', `${sample?.body ?? 'Hello, this is a deliverability test from Quarrix.'}\n\n${mail.footer(load())}`, '', [], box.id);
-    db.logEvent(null, 'placement', box.id);
+    await mail.sendRaw(a, sample?.subject ?? 'Quick question', `${sample?.body ?? 'Hello, this is a deliverability test from Quarrix.'}\n\n${mail.footer(load())}`, '', [], box.id, 'placement');
+    db.logEvent(null, 'placement_sent', box.id);
     return `https://www.mail-tester.com/${a.split('@')[0]}`;
   });
   handle('crm:stages', () => crm.stages());
@@ -370,7 +370,6 @@ function registerIpc() {
     if (db.isSuppressed(addr)) throw new Error('That address is on your do-not-contact list.');
     // Counted in the send log, so restarting the app does not reset the allowance (0.26).
     if (db.testSendsSince(new Date(Date.now() - 864e5).toISOString()) >= 5) throw new Error('Five test emails a day is the limit.');
-    db.logTestSend('main'); // logged before sending, so parallel clicks cannot pass the cap
     return mail.sendRaw(addr, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`, '', [], 'main', 'test');
   });
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });

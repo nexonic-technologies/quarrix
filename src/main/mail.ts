@@ -39,8 +39,7 @@ export async function sendReport(leadId: number) {
   const body = `Hi ${firstName || `${lead.name} team`},\n\nAs promised, here is the one-page review of ${lead.domain || lead.name}. The first two fixes on it are the quickest wins.\n\nHappy to talk it through if useful.\n\nBest,`;
   const id = await sendRaw(lead.email, first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, `${body}\n\n${footer(s)}`, first?.message_id ?? '', [{ filename: reportName(lead.name, s.profile.company), path: reportPath(leadId) }], box.id);
   // Counted like every other email, so daily limits include it.
-  db.addMessage({ lead_id: leadId, step: 99, subject: first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, body: '(proof report)', status: 'sent', mailbox: box.id } as any);
-  db.raw().prepare("UPDATE messages SET sent_at = ?, message_id = ? WHERE id = (SELECT MAX(id) FROM messages WHERE lead_id = ? AND step = 99)").run(db.now(), id, leadId);
+  db.addMessage({ lead_id: leadId, step: 99, subject: first ? `Re: ${first.subject}` : `Website review for ${lead.name}`, body: '(proof report)', status: 'sent', mailbox: box.id, sent_at: db.now(), message_id: id });
   db.logEvent(leadId, 'sent', 'Proof report sent');
   return id;
 }
@@ -56,7 +55,7 @@ export function footer(s: Settings) {
  * on the do-not-contact list, and anything other than a capped connection test needs an approved mailbox whose address still
  * matches the approval (sender identity) and has room under today's limit.
  */
-export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main', purpose: 'outreach' | 'test' = 'outreach') {
+export async function sendRaw(to: string, subject: string, text: string, inReplyTo = '', attachments: { filename: string; path: string }[] = [], boxId = 'main', purpose: 'outreach' | 'placement' | 'test' = 'outreach') {
   const s = load();
   const box = mb.boxById(boxId, s);
   if (!box) throw new Error('That mailbox was removed or switched off.');
@@ -65,7 +64,7 @@ export async function sendRaw(to: string, subject: string, text: string, inReply
   if (!/^[^@\s,;<>]+@[^@\s,;<>]+\.[a-z]{2,}$/i.test(rcpt)) throw new Error('Not sent: the address is not valid.');
   if (db.isSuppressed(rcpt)) throw new Error('Not sent: the address is on the do-not-contact list.');
   const label = box.label;
-  if (purpose === 'outreach') {
+  if (purpose !== 'test') {
     if (s.email.pausedReason) throw new Error(`Sending is paused: ${s.email.pausedReason}`);
     if (!mb.ready(box, s)) throw new Error(`Not sent: ${label} is not approved for sending, or its address changed since it was approved.`);
     if (mb.sentToday(box.id) >= mb.capOf(box, s)) throw new Error(`Not sent: ${box.label} has reached today's limit.`);
@@ -74,6 +73,7 @@ export async function sendRaw(to: string, subject: string, text: string, inReply
   const from = mb.fromOf(box);
   const host = from.split('@')[1] || 'localhost';
   const messageId = `<${randomBytes(9).toString('hex')}@${host}>`;
+  db.reserveEmail(box.id, purpose, messageId, mb.capOf(box, s));
   await mb.deliver(box, {
     from: { name: box.fromName || s.email.fromName || s.profile.name || from, address: from }, to: rcpt, subject: subject.replace(/[\r\n]+/g, ' '), text, messageId, attachments,
     headers: { 'List-Unsubscribe': `<mailto:${from}?subject=unsubscribe>`, ...(inReplyTo ? { 'In-Reply-To': inReplyTo, References: inReplyTo } : {}) },

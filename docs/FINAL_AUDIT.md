@@ -1,5 +1,12 @@
 # Final audit, v0.26.0
 
+## v0.26.1 candidate (verification pending)
+
+- Proof reports now insert sent metadata and the selected mailbox together. Provider delivery attempts reserve persistent allowance before delivery, and their subsequent sent message records do not count twice. Ambiguous provider failures conservatively retain the reservation.
+- Duplicate review groups compatible locations independently. Merges collect notes, tags, emails, custom fields and field conflicts; incompatible contact records or source permissions abort transactionally. Undo refuses changed records and older merges without verifiable snapshots.
+- Release verification reports use platform-specific filenames; the Rosetta report must explicitly confirm success.
+- Remaining: run CI, installer checks, further provider diagnostics and native Windows ARM64/Intel macOS validation. The 17 existing external blockers remain unchanged.
+
 ## v0.26.0 (data integrity milestone)
 
 Fixed (tests: test/int/v026.int.ts):

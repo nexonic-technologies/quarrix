@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v0.26.1 candidate:** Send accounting, proof-report attribution, merge conflict protection, duplicate grouping and release-report integrity have candidate fixes pending CI. Existing status classifications and external blockers remain unchanged until verified.
+
 Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an automated test (unit tests in Node; integration tests in test/int run in Electron's own Node against real SQLite, real SMTP servers, a real HTTP API, and the real CLI and MCP processes). **Built** = implemented and type-checked, but only checked by hand or in the browser preview; it still needs a live run in the app. **Partial** = some of the item exists, not end to end. **Blocked** = cannot be done with authorised access today (reason given).
 
 | ID | Feature | Pri | Status | Where | Verified by |

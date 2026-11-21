@@ -140,7 +140,7 @@ jobs:
           # Under Rosetta the app can hang on the runner's virtual display, so this run is capped at 5 minutes and reported, not gated.
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
             hdiutil attach -nobrowse -mountpoint /tmp/qx "$(ls dist/*-mac-x64.dmg)" && cp -R /tmp/qx/Quarrix.app /tmp/QuarrixX.app && hdiutil detach /tmp/qx
-            if QUARRIX_SMOKE_OUT="$PWD/smoke-mac-x64.json" perl -e 'alarm 300; exec @ARGV' arch -x86_64 /tmp/QuarrixX.app/Contents/MacOS/Quarrix && [ -f smoke-mac-x64.json ]; then echo "macOS Intel: installed-app run under Rosetta passed" | tee -a signing.txt
+            if QUARRIX_SMOKE_OUT="$PWD/smoke-mac-x64.json" perl -e 'alarm 300; exec @ARGV' arch -x86_64 /tmp/QuarrixX.app/Contents/MacOS/Quarrix && [ -f smoke-mac-x64.json ] && node -e 'if (!require("./smoke-mac-x64.json").ok) process.exit(1)'; then echo "macOS Intel: installed-app run under Rosetta passed" | tee -a signing.txt
             else rm -f smoke-mac-x64.json; echo "macOS Intel: installed-app run under Rosetta did not finish within 5 minutes; CPU type checked" | tee -a signing.txt; fi
           else echo "macOS Intel: installed-app run skipped (no Rosetta on this runner); CPU type checked" | tee -a signing.txt; fi
       - name: Verify architectures (Windows ARM64)
@@ -160,6 +160,12 @@ jobs:
           IMG="$(ls dist/*.AppImage | head -1)"; chmod +x "$IMG"
           QUARRIX_SMOKE_OUT="$PWD/smoke-linux-appimage.json" APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$IMG" --no-sandbox || (cat smoke-linux-appimage.json; exit 1)
           echo "Linux: AppImage installed-app smoke test passed" | tee -a signing.txt
+      - name: Preserve platform-specific verification report
+        if: always()
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then echo "Linux: no installer code signature; SHA-256 checksums published separately" >> signing.txt; fi
+          if [ -f signing.txt ]; then mv signing.txt "signing-$RUNNER_OS.txt"; fi
       - name: Attach smoke reports and signing status
         if: always()
         uses: actions/upload-artifact@v4
@@ -167,7 +173,7 @@ jobs:
           name: verification-${{ runner.os }}
           path: |
             smoke-*.json
-            signing.txt
+            signing-*.txt
           if-no-files-found: ignore
   # Live checks of the keyless providers with the app's own code (GitHub runners have internet access). A report, not a gate.
   live:
@@ -213,7 +219,7 @@ jobs:
           {
             echo "## Verification"
             echo
-            cat verification/signing.txt 2>/dev/null | sed 's/^/- /'
+            for f in verification/signing-*.txt; do [ -f "$f" ] || continue; sed 's/^/- /' "$f"; done
             for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+(process.argv[1].includes('appimage')?' (AppImage)':process.argv[1].includes('linux')?' (deb)':'')+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
             if [ -f verification/live-providers.json ]; then
               node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data; '+(r.outages||0)+' temporary provider outages; '+(r.failures||0)+' failures. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+(x.kind==='outage'?'Outage (provider busy or unreachable), ':'Failure, ')+x.check+': '+x.detail)"

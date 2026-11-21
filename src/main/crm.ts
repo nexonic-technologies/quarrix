@@ -6,6 +6,7 @@ import { load } from './settings';
 import { isPlatformHost } from './util';
 import { compile, evaluate } from './formula';
 import { scopeArgs, scopeSql } from './scope';
+import { sourceInfo } from './sources/catalog';
 
 const raw = () => db.raw();
 const now = () => db.now();
@@ -198,13 +199,19 @@ export function duplicateGroups(limit = 100) {
   const out: { reason: string; leads: any[] }[] = [];
   for (const [k, g0] of groups) {
     // Branches sharing a central phone or email are different places, not duplicates (0.25).
-    const g = g0.filter((r) => !differentPlace(g0[0], r));
+    const clusters: any[][] = [];
+    for (const row of g0) {
+      const match = clusters.find(c => c.every(other => !differentPlace(other, row)));
+      if (match) match.push(row); else clusters.push([row]);
+    }
+    for (const g of clusters) {
     if (g.length < 2) continue;
     const sig = g.map((x) => x.id).sort().join(',');
     if (seen.has(sig) || raw().prepare('SELECT 1 FROM merges WHERE removed LIKE ? AND undone = 0').get(`%"keep_apart":"${sig}"%`)) continue;
     seen.add(sig);
     out.push({ reason: k.includes('#p:') ? 'Same phone number' : k.includes('#e:') ? 'Same email' : 'Same name in the same city', leads: g.slice(0, 6) });
-    if (out.length >= limit) break;
+    if (out.length >= limit) return out;
+    }
   }
   return out;
 }
@@ -214,6 +221,10 @@ function childTables(): string[] {
   return tables.filter((t) => /^[a-z_0-9]+$/.test(t) && (raw().prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).some((c) => c.name === 'lead_id'));
 }
 const empty = (v: unknown) => v == null || v === '' || v === '[]' || v === '{}';
+const mergeSnapshot = (id: number) => ({ lead: db.getLead(id), children: Object.fromEntries(childTables().sort().flatMap(t => {
+  const rows = (raw().prepare(`SELECT * FROM ${t} WHERE lead_id = ?`).all(id) as Record<string, unknown>[]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return rows.length ? [[t, rows]] : [];
+})) });
 /**
  * Merge leads into one: empty fields are filled from the others, their history moves over, and it can be undone (0.26 rework).
  * Every row that belonged to a removed lead is saved in full first. Rows that cannot move because the kept lead already has the
@@ -226,11 +237,27 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
   const removed = [...new Set(removeIds.map(Number))].filter((x) => x !== keepId).map((id) => db.getLead(id)).filter(Boolean) as db.Lead[];
   if (removed.some((r) => (r.client ?? '') !== (keep.client ?? ''))) throw new Error('Leads from different client workspaces cannot be merged.');
   if (!removed.length) throw new Error('Choose at least two leads.');
+  const permissions = (lead: db.Lead) => [sourceInfo(lead.source)?.contact !== false, sourceInfo(lead.source)?.export !== false].join(':');
+  if (removed.some(r => permissions(r) !== permissions(keep))) throw new Error('Leads have different source permissions; keep the records separate.');
   const ids = removed.map((r) => r.id);
   const marks = ids.map(() => '?').join(',');
   raw().transaction(() => {
     const patch: Record<string, unknown> = {};
     for (const r of removed) for (const [k, v] of Object.entries(r)) if (!['id', 'created_at', 'updated_at', 'client'].includes(k) && !empty(v) && empty((keep as any)[k]) && patch[k] == null) patch[k] = v;
+    // Preserve user-entered text, email lists and custom values; retain conflicting scalar values in provenance.
+    const records = [keep, ...removed] as Record<string, any>[];
+    const restrictive = ['do_not_contact', 'lost', 'won', 'interested', 'replied', 'contacted', 'new'];
+    patch.status = restrictive.find(status => records.some(r => r.status === status)) ?? keep.status;
+    patch.wa_consent = records.every(r => r.wa_consent === 1 && r.phone === keep.phone) ? 1 : 0;
+    const conflicts: Record<string, unknown> = {};
+    for (const k of Object.keys(keep).filter(k => !['id', 'created_at', 'updated_at', 'client'].includes(k))) {
+      const values = [...new Set(records.map(r => r[k]).filter(v => !empty(v)))];
+      if (values.length > 1) conflicts[k] = values;
+    }
+    for (const k of ['notes', 'tags']) patch[k] = [...new Set(records.map(r => r[k]).filter(Boolean))].join(k === 'notes' ? '\n\n' : ', ');
+    patch.emails = JSON.stringify([...new Set(records.flatMap(r => [...JSON.parse(r.emails || '[]'), r.email].filter(Boolean)))]);
+    const custom = Object.assign({}, ...records.slice().reverse().map(r => JSON.parse(r.custom || '{}')));
+    patch.provenance = JSON.stringify({ ...JSON.parse(String(patch.provenance ?? keep.provenance ?? '{}')), merge_conflicts: { ...JSON.parse(keep.provenance || '{}').merge_conflicts, ...conflicts } });
     const moved: Record<string, [number, number][]> = {};
     const rows: Record<string, Record<string, unknown>[]> = {};
     const dropped: Record<string, number[]> = {};
@@ -239,21 +266,26 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
       if (!all.length) continue;
       rows[t] = all;
       const hasId = 'id' in all[0];
-      if (!hasId) continue; // tables without their own id are kept as saved rows and restored on undo
+      if (!hasId) throw new Error(`Merge cannot safely move ${t}; no stable row ID.`);
       moved[t] = all.map((x) => [Number(x.id), Number(x.lead_id)]);
       raw().prepare(`UPDATE OR IGNORE ${t} SET lead_id = ? WHERE lead_id IN (${marks})`).run(keepId, ...ids);
       const left = (raw().prepare(`SELECT id FROM ${t} WHERE lead_id IN (${marks})`).all(...ids) as { id: number }[]).map((x) => x.id);
       if (left.length) {
+        for (const row of all.filter(x => left.includes(Number(x.id)))) {
+          const copies = raw().prepare(`SELECT * FROM ${t} WHERE lead_id = ?`).all(keepId) as Record<string, unknown>[];
+          if (!copies.some(copy => Object.keys(row).every(k => ['id', 'lead_id', 'created_at'].includes(k) || copy[k] === row[k]))) throw new Error(`Conflicting ${t} records: reconcile them before merging.`);
+        }
         // Same row already on the kept lead: drop the copy (it is saved above and comes back on undo).
         dropped[t] = left;
         raw().prepare(`DELETE FROM ${t} WHERE id IN (${left.map(() => '?').join(',')})`).run(...left);
       }
     }
-    raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved) VALUES (?, ?, ?, ?, ?)')
-      .run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify({ ...moved, __rows: rows, __dropped: dropped }));
     raw().prepare(`DELETE FROM leads WHERE id IN (${marks})`).run(...ids);
     db.updateLead(keepId, patch);
+    raw().prepare('UPDATE leads SET custom = ?, company_id = COALESCE(company_id, ?) WHERE id = ?').run(JSON.stringify(custom), patch.company_id ?? null, keepId);
     db.logEvent(keepId, 'merge', `Merged ${removed.length} duplicate${removed.length > 1 ? 's' : ''}: ${removed.map((r) => r.name).join(', ')}`);
+    raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved) VALUES (?, ?, ?, ?, ?)')
+      .run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify({ ...moved, __rows: rows, __dropped: dropped, __after: mergeSnapshot(keepId) }));
   })();
   return keepId;
 }
@@ -263,7 +295,7 @@ export function undoMerge(mergeId: number) {
   if (!m) throw new Error('Nothing to undo.');
   const removed = JSON.parse(m.removed) as Record<string, unknown>[];
   const before = JSON.parse(m.kept_before) as Record<string, unknown>;
-  const { __rows: rows = {}, __dropped: _d, ...moved } = JSON.parse(m.moved) as Record<string, any>;
+  const { __rows: rows = {}, __dropped: dropped = {}, __after: expected, ...moved } = JSON.parse(m.moved) as Record<string, any>;
   const removedIds = removed.map((r) => Number(r.id));
   const later = (raw().prepare('SELECT id, kept_id, removed FROM merges WHERE id > ? AND undone = 0 AND kept_id > 0').all(mergeId) as { id: number; kept_id: number; removed: string }[])
     .find((x) => [m.kept_id, ...removedIds].includes(x.kept_id) || (JSON.parse(x.removed) as { id: number }[]).some((r) => [m.kept_id, ...removedIds].includes(Number(r.id))));
@@ -271,7 +303,13 @@ export function undoMerge(mergeId: number) {
   if (!db.getLead(m.kept_id)) throw new Error('The lead these were merged into no longer exists, so the merge cannot be undone.');
   const taken = removedIds.filter((id) => db.getLead(id));
   if (taken.length) throw new Error('A lead with the same number exists again, so the merge cannot be undone safely.');
+  if (!expected) throw new Error('This older merge has no conflict-safe snapshot; restore from a backup instead.');
   raw().transaction(() => {
+    if (JSON.stringify(mergeSnapshot(m.kept_id)) !== JSON.stringify(expected)) throw new Error('The record or its history changed after the merge. Undo would discard edits.');
+    for (const [t, ids] of Object.entries(dropped) as [string, number[]][]) {
+      if (!childTables().includes(t)) throw new Error('Merge history no longer matches the database.');
+      for (const id of ids) if (raw().prepare(`SELECT 1 FROM ${t} WHERE id = ?`).get(id)) throw new Error('A removed row ID has been reused; undo cannot proceed safely.');
+    }
     for (const r of removed) {
       const cols = Object.keys(r).filter((k) => /^[a-z_0-9]+$/.test(k));
       raw().prepare(`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => r[k] as never));
@@ -289,7 +327,7 @@ export function undoMerge(mergeId: number) {
       for (const row of list) {
         if ('id' in row && raw().prepare(`SELECT 1 FROM ${t} WHERE id = ?`).get(row.id as never)) continue;
         const cols = Object.keys(row).filter((k) => have.has(k) && /^[a-z_0-9]+$/.test(k));
-        raw().prepare(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => row[k] as never));
+        raw().prepare(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => row[k] as never));
       }
     }
     const cols = Object.keys(before).filter((k) => /^[a-z_0-9]+$/.test(k) && k !== 'id');
