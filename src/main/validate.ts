@@ -1,6 +1,7 @@
 // Runtime checks for every IPC/API call that changes data (0.25): field allowlists, types and lengths, record existence
 // and integrity between linked records. Runs before the workspace checks (scope.ts) and the handler.
 import * as db from './db';
+import { validDay } from '../shared/application-studio';
 
 export class InputError extends Error { constructor(m: string) { super(m); this.name = 'InputError'; } }
 const fail = (m: string): never => { throw new InputError(m); };
@@ -40,6 +41,11 @@ const ids = (v: unknown) => { if (!Array.isArray(v)) fail('Send a list of record
 type Check = (a: any[]) => any[];
 /** Checks per channel. Exported for tests. */
 export const CHECKS: Record<string, Check> = {
+  'studio:save': ([id, value]) => {
+    if (!isObj(value)) fail('Invalid application notes.');
+    const day = (k: string) => { const d = str(value[k], k, 10); if (!validDay(d)) fail('Choose a valid date.'); return d; };
+    return [str(id, 'Job ID', 1000), { deadline: day('deadline'), interview: day('interview'), followUp: day('followUp'), nextAction: str(value.nextAction, 'Next action', 500), notes: str(value.notes, 'Notes', 20000), practice: str(value.practice, 'Practice notes', 20000), resumeDraft: str(value.resumeDraft, 'Resume draft', 50000), letterDraft: str(value.letterDraft, 'Letter draft', 50000) }];
+  },
   'jobs:trust': ([job, employer]) => {
     if (!isObj(job)) fail('Choose a job to check.');
     return [{ url: str(job.url, 'Job URL', 2000), title: str(job.title, 'Job title', 300), company: str(job.company, 'Company', 300), snippet: str(job.snippet, 'Job description', 30000) }, str(employer ?? '', 'Employer URL', 2000)];

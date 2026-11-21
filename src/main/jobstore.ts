@@ -219,10 +219,10 @@ export async function runAlerts(force = false): Promise<[string, number][]> {
 
 // ── Exports (QF-113) ──
 export function exportSaved(path: string) {
-  const rows = db.savedJobs().map((j: any) => ({ Title: j.title, Company: j.company, Location: j.location, Status: j.status ?? 'Saved', Salary: j.salary, Source: j.source, Posted: j.posted, Link: j.url, Notes: j.notes ?? '' }));
+  const rows = db.savedJobs().map((j: any) => ({ Title: j.title, Company: j.company, Location: j.location, Status: j.status ?? 'Saved', Salary: j.salary, Source: j.source, Posted: j.posted, Link: j.url, Notes: j.studio?.notes ?? j.notes ?? '', Deadline: j.studio?.deadline ?? '', Interview: j.studio?.interview ?? '', FollowUp: j.studio?.followUp ?? '', NextAction: j.studio?.nextAction ?? '' }));
   const ext = extname(path).toLowerCase();
   if (ext === '.json') writeFileSync(path, JSON.stringify(rows, null, 2));
-  else if (ext === '.md') writeFileSync(path, ['# My applications', '', '| Title | Company | Location | Status | Salary | Link |', '|---|---|---|---|---|---|', ...rows.map((r) => `| ${[r.Title, r.Company, r.Location, r.Status, r.Salary, r.Link].map((v) => String(v ?? '').replace(/\|/g, '/')).join(' | ')} |`)].join('\n'));
+  else if (ext === '.md') writeFileSync(path, ['# My applications', '', '| Title | Company | Location | Status | Salary | Link | Deadline | Interview | Follow-up | Next action | Notes |', '|---|---|---|---|---|---|---|---|---|---|---|', ...rows.map((r) => `| ${[r.Title, r.Company, r.Location, r.Status, r.Salary, r.Link, r.Deadline, r.Interview, r.FollowUp, r.NextAction, r.Notes].map((v) => String(v ?? '').replace(/\|/g, '/').replace(/[\r\n]+/g, ' ')).join(' | ')} |`)].join('\n'));
   else writeFileSync(path, '﻿' + Papa.unparse(rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, csvSafe(v)])))));
   return rows.length;
 }

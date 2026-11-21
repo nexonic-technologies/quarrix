@@ -340,6 +340,7 @@ function registerIpc() {
     return r.filePath;
   });
   handle('jobs:saved', () => db.savedJobs());
+  handle('studio:save', (id, studio) => db.saveApplicationStudio(id, studio));
   handle('jobs:save', (job) => {
     const before = (db.savedJobs() as { id: string; status?: string }[]).find((j) => j.id === job.id)?.status;
     if (job.status && job.status !== before) db.logEvent(null as never, 'job_status', `${job.status}: ${job.title} at ${job.company}`);
