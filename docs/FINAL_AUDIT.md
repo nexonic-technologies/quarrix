@@ -16,6 +16,10 @@ Fixed (each with a test in test/v025.test.ts or test/int/v025.int.ts):
 
 Still blocked (no credentials or infrastructure were provided; nothing was invented or scraped): Hunter, ZeroBounce, Google and Microsoft OAuth, SendGrid, HubSpot, Google Sheets, Notion and inbox placement need the owner's accounts (docs/CREDENTIALS.md); hosted collaboration needs a sync service; partner-only job boards need partner access; signing needs an Apple Developer ID certificate with notarization account (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) and a Windows code-signing certificate (WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD) in the repository secrets. Windows ARM64 is verified by CPU type only (no ARM64 runner).
 
+Release evidence (v0.25.0): installed-app smoke 17/17 on Windows x64, macOS arm64, Linux deb and Linux AppImage; CPU types verified for macOS arm64/x86_64 and Windows AMD64/ARM64. Live providers 18/20: Personio (personio.jobs.personio.de) and Pinpoint (workwithus.pinpointhq.com) answered with real postings, so QF-096 is Done. Overpass was unreachable from the runner (outage). NVIDIA's Workday site answered the runner with a web page instead of job data (a bot check on GitHub's network, reported clearly by the new handling; Workday itself was verified in v0.23.0).
+
+Totals: Done 106, Built 0, Blocked 17, Not done 1 (QF-115, demo data, excluded by the owner's real-data rule).
+
 # Earlier: v0.24.0
 
 ## v0.24.0 (owner feedback)
@@ -99,13 +103,9 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 - **QF-121:** needs Apple and Windows signing certificates.
 - **Not done (QF-115, demo data):** intentionally excluded: it conflicts with the owner's "real data only" rule.
 
-## Built, not yet verified live (1 item)
+## Built, not yet verified live (0 items)
 
-| ID | Feature | Why | What is needed |
-|---|---|---|---|
-| QF-096 | Personio/Pinpoint connectors | No public keyless employer feed to test against | A live check against a real Personio or Pinpoint board |
-
-Verified live in the v0.23.0 release (17/17 installed-app checks on Windows, macOS and Linux; 17/18 live providers, 1 temporary Overpass outage, 0 failures): QF-011 diagnostics, QF-013 and QF-117 search preview, QF-094 SmartRecruiters.
+None. QF-096 was verified live in v0.25.0.
 
 ## Blocked on the owner's credentials (adapters tested against recorded API answers)
 
@@ -113,8 +113,8 @@ QF-039 Hunter, QF-042 Hunter/ZeroBounce, QF-059 Google OAuth, QF-060 Microsoft O
 
 ## Totals
 
-- Done: 105
-- Built: 1
+- Done: 106
+- Built: 0
 - Blocked: 17
 - Partial: 0
 - Not done: 1

@@ -99,7 +99,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-093 | Ashby jobs connector | P1 | Done | ats.ts (Ashby posting API) | live provider check in the v0.22.1 release (live-providers.json): 187 Ashby jobs (Ramp) |
 | QF-094 | SmartRecruiters connector | P2 | Done | ats.ts (SmartRecruiters postings API) | typecheck; needs live run; live-verified in v0.23.0 release |
 | QF-095 | Workday careers connector | P2 | Done | ats.ts (Workday public jobs endpoint) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 400 NVIDIA Workday jobs |
-| QF-096 | Personio/Pinpoint connectors | P2 | Built | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run; live checks added against personio.jobs.personio.de and workwithus.pinpointhq.com (v0.25.0) |
+| QF-096 | Personio/Pinpoint connectors | P2 | Done | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run; live checks added against personio.jobs.personio.de and workwithus.pinpointhq.com (v0.25.0); live-verified in v0.25.0 release |
 | QF-097 | Hacker News hiring posts | P2 | Done | ats.hnHiring (HN Algolia API, latest thread) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 48 posts from the latest thread |
 | QF-098 | Glassdoor search connector | P2 | Blocked | Glassdoor has no public jobs API; its terms forbid scraping | — |
 | QF-099 | ZipRecruiter connector | P2 | Blocked | ZipRecruiter API is partner-only; needs a partner account | — |
@@ -131,8 +131,8 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 
 ## Totals
 
-- Done: 105
-- Built: 1
+- Done: 106
+- Built: 0
 - Blocked: 17
 - Partial: 0
 - Not done: 1
