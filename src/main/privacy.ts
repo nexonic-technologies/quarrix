@@ -11,6 +11,7 @@ export function privacySummary() {
     row('Email sending and replies', !!(s.email.smtpUser || s.email.oauthUser), 'Your emails; reading your inbox for replies to them', s.email.auth === 'password' ? `${s.email.smtpHost} / ${s.email.imapHost}` : `${s.email.auth} (OAuth)`, 'Copies of sent emails and replies stay in Quarrix and your mailbox'),
     row('Email verification', s.verify.provider !== 'none', 'The email addresses you check', s.verify.provider, '30-day local cache; the provider\'s own policy applies'),
     row('Job search', true, 'Your keywords and location', 'The job boards and employer hiring systems you choose', 'Seen jobs and alerts saved locally'),
+    row('Career exploration', false, 'No data leaves your device', 'None: bundled occupation data', 'Profile inputs are processed locally and not saved by the explorer'),
     row('CV matching and documents', s.ai.provider !== 'none', 'Your CV text and the job post', s.ai.provider, 'Your CV is stored only on this computer'),
     row('HubSpot, Notion, Google Sheets', !!(s.hubspot?.token || s.notion?.token || s.sheets?.refresh), 'Only the leads you choose to send', 'The tool you send to', 'In that tool, under your account'),
     row('Webhooks', (s.webhooks ?? []).some((w) => w.on), 'Event details, including the lead', (s.webhooks ?? []).filter((w) => w.on).map((w) => { try { return new URL(w.url).host; } catch { return w.url; } }).join(', ') || 'None', 'At the receiving service'),

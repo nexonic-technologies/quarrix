@@ -1,10 +1,14 @@
 # Quarrix
 
-Find businesses, build your own lead database and reach out to them, from a desktop app that keeps everything on your computer.
+**Quarrix — Discover Opportunities. Build Your Career. Grow Your Business.**
+
+A local-first desktop workspace for job discovery, career exploration and business development that keeps your information on your computer.
 
 **Download:** [latest release](https://github.com/nexonic-technologies/quarrix/releases/latest) for macOS (Apple silicon and Intel), Windows and Linux.
 
 ## What it does
+
+- **Explore careers.** Compare your skills and target role against 1,016 occupations, understand matching evidence, explore skills to develop and search for real vacancies, with no mandatory account or model.
 
 - **Find businesses anywhere.** Type a kind of business and a place, for example *dentists in Austin, Texas*. Quarrix searches Google Maps, OpenStreetMap and, with your own key, the Google Places API. Over 140 categories, or type your own.
 - **Fill in the details.** For each business it visits the business's own website for published email addresses, phone numbers and social profiles, reads its address details, and checks the site (HTTPS, mobile-ready, outdated footer, contact form, optional Google PageSpeed score).

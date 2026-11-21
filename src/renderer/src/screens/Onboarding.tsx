@@ -33,6 +33,7 @@ export function Onboarding({ onDone }: { onDone: (ws: Ws | null) => void }) {
         <div style={{ padding: 18, overflow: 'auto', display: 'grid', gap: 12 }}>
           {step === 0 && <>
             <h2 style={{ margin: 0 }}>What will you use Quarrix for?</h2>
+            <p className="muted small" style={{ margin: 0 }}>Discover Opportunities. Build Your Career. Grow Your Business.</p>
             <div className="choice">
               {([['business', Building2, 'Finding clients', 'Find businesses, check their websites, and reach out.'], ['career', Briefcase, 'Finding a job', 'Search every board and employer, match jobs to your CV.'], ['both', Layers, 'Both', 'Everything, side by side.']] as const).map(([k, Icon, t, d]) => (
                 <button key={k} aria-pressed={ws === k} onClick={() => setWs(k)}><Icon size={22} /><b>{t}</b><span className="muted small">{d}</span></button>

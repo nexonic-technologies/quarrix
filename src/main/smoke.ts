@@ -57,6 +57,23 @@ export async function runSmoke(win: BrowserWindow) {
     if (!(n[1] < n[0])) throw new Error(`nav ${n[0]} → ${n[1]}`);
     return `${n[0]} → ${n[1]} menu items`;
   });
+  await check('offline career exploration works without an uploaded CV', async () => {
+    const found = await js<boolean>(`(async () => {
+      [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith('Job search'))?.click();
+      await new Promise(r => setTimeout(r, 700));
+      const panel = document.querySelector('[data-career-explorer]'); if (!panel) return false;
+      panel.open = true;
+      const input = panel.querySelector('input');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Registered Nurse');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      await new Promise(r => setTimeout(r, 100));
+      panel.querySelector('button[type=submit]').click();
+      await new Promise(r => setTimeout(r, 300));
+      return [...panel.querySelectorAll('b[translate=no]')].some(b => b.textContent === 'Registered Nurses');
+    })()`);
+    if (!found) throw new Error('No occupation recommendation was rendered');
+    return 'real occupation returned without a CV or network request';
+  });
   await check('every button has an accessible name (QF-122)', async () => {
     const bad = await js<string[]>(`[...document.querySelectorAll('button, [role=button], a[href]')].filter((b) => !(b.getAttribute('aria-label') || b.getAttribute('title') || b.textContent.trim() || b.getAttribute('aria-labelledby'))).map((b) => b.outerHTML.slice(0, 80))`);
     if (bad.length) throw new Error(`${bad.length} unnamed: ${bad.slice(0, 3).join(' | ')}`);
