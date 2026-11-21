@@ -14,9 +14,9 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-008 | US NPI healthcare registry adapter | P2 | Done | sources/opendata.ts searchNpi (NPI-1/NPI-2) | test/discovery.test.ts (recorded shape) |
 | QF-009 | Wikidata business source | P3 | Done | sources/opendata.ts searchWikidata (SPARQL) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 8 hospitals in London |
 | QF-010 | Source capability catalog | P1 | Done | sources/catalog.ts; SourcesPanel | test/discovery.test.ts |
-| QF-011 | Provider connectivity diagnostics | P1 | Built | health.ts checkSources; SourcesPanel "Check all sources" | typecheck; needs live run |
+| QF-011 | Provider connectivity diagnostics | P1 | Done | health.ts checkSources; SourcesPanel "Check all sources" | typecheck; needs live run; live-verified in v0.23.0 release |
 | QF-012 | Per-provider request budgets | P1 | Done | budget.ts (host-based counting), provider_usage table, limits in Settings | test/int/verify.int.ts (real SQLite and app code; outside services answered by recorded HTTP) |
-| QF-013 | Batch preflight/small-sample preview | P1 | Built | jobs.previewSearch; FindTools PreviewModal | preview UI |
+| QF-013 | Batch preflight/small-sample preview | P1 | Done | jobs.previewSearch; FindTools PreviewModal | preview UI; live-verified in v0.23.0 release |
 | QF-014 | Separated browser navigation workers | P0 | Done | sources/gmaps.ts pageHtml (own window, own session, own queue) | manual (Electron) |
 | QF-015 | Business search map with clustering | P2 | Done | FindTools LeadMap (Leaflet + markercluster), Leads → Map | installed-app smoke test on macOS, Windows and Linux (map with clustering drawn) |
 | QF-016 | Optional company website lookup | P2 | Done | sources/lookup.ts findWebsite + websiteEvidence; provenance.website | test/discovery.test.ts (evidence rule) |
@@ -97,7 +97,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-091 | Greenhouse company jobs connector | P1 | Done | ats.ts employerJobs (Greenhouse board API) | test/jobs.test.ts (recorded shape) |
 | QF-092 | Lever jobs connector | P1 | Done | ats.ts (Lever postings API, US and EU) | test/jobs.test.ts (recorded shape) |
 | QF-093 | Ashby jobs connector | P1 | Done | ats.ts (Ashby posting API) | live provider check in the v0.22.1 release (live-providers.json): 187 Ashby jobs (Ramp) |
-| QF-094 | SmartRecruiters connector | P2 | Built | ats.ts (SmartRecruiters postings API) | typecheck; needs live run |
+| QF-094 | SmartRecruiters connector | P2 | Done | ats.ts (SmartRecruiters postings API) | typecheck; needs live run; live-verified in v0.23.0 release |
 | QF-095 | Workday careers connector | P2 | Done | ats.ts (Workday public jobs endpoint) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 400 NVIDIA Workday jobs |
 | QF-096 | Personio/Pinpoint connectors | P2 | Built | ats.ts (Personio XML, Pinpoint JSON; also Workable, Recruitee) | typecheck; needs live run |
 | QF-097 | Hacker News hiring posts | P2 | Done | ats.hnHiring (HN Algolia API, latest thread) | live provider check in the v0.22.0 release (live-providers.json: real data from the public service): 48 posts from the latest thread |
@@ -120,7 +120,7 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | QF-114 | Guided first-launch wizard | P1 | Done | Onboarding.tsx (purpose, profile, ideal customer, privacy), skippable | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
 | QF-115 | One-click offline sample/demo data | P1 | Not done (owner decision) | Conflicts with the owner's "real data only" rule; the browser preview keeps its demo data, the app does not | — |
 | QF-116 | Distinct Business and Career workspaces | P1 | Done | Business, Career and Both workspaces; menu filtered | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
-| QF-117 | Advanced search preview and estimate | P1 | Built | jobs.previewSearch; Find → Preview (0.13.0) | preview |
+| QF-117 | Advanced search preview and estimate | P1 | Done | jobs.previewSearch; Find → Preview (0.13.0) | preview; live-verified in v0.23.0 release |
 | QF-118 | Safe export wizard with field mapping | P2 | Done | Export columns, do-not-contact left out by default | test/int/records.int.ts |
 | QF-119 | Encrypted database backups and recovery | P1 | Done | Encrypted backup → wrong passphrase refused → restore of data and settings with safety copy | test/int/data.int.ts |
 | QF-120 | Per-feature privacy disclosures | P1 | Done | privacy.ts summary per feature; Settings → Privacy | installed-app smoke test (src/main/smoke.ts) on macOS, Windows and Linux in every release |
@@ -131,8 +131,8 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 
 ## Totals
 
-- Done: 101
-- Built: 5
+- Done: 105
+- Built: 1
 - Blocked: 17
 - Partial: 0
 - Not done: 1

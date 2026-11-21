@@ -71,15 +71,13 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 - **QF-121:** needs Apple and Windows signing certificates.
 - **Not done (QF-115, demo data):** intentionally excluded: it conflicts with the owner's "real data only" rule.
 
-## Built, not yet verified live (5 items)
+## Built, not yet verified live (1 item)
 
 | ID | Feature | Why | What is needed |
 |---|---|---|---|
-| QF-011 | Provider connectivity diagnostics | Needs a live run against the real service | The live check in the next release (live-providers.json) |
-| QF-013 | Batch preflight/small-sample preview | Needs a live run against the real service | The live check in the next release (live-providers.json) |
-| QF-094 | SmartRecruiters connector | Needs a live run against the real service | The live check in the next release (live-providers.json) |
-| QF-096 | Personio/Pinpoint connectors | Needs a live run against the real service | The live check in the next release (live-providers.json) |
-| QF-117 | Advanced search preview and estimate | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+| QF-096 | Personio/Pinpoint connectors | No public keyless employer feed to test against | A live check against a real Personio or Pinpoint board |
+
+Verified live in the v0.23.0 release (17/17 installed-app checks on Windows, macOS and Linux; 17/18 live providers, 1 temporary Overpass outage, 0 failures): QF-011 diagnostics, QF-013 and QF-117 search preview, QF-094 SmartRecruiters.
 
 ## Blocked on the owner's credentials (adapters tested against recorded API answers)
 
@@ -87,8 +85,8 @@ QF-039 Hunter, QF-042 Hunter/ZeroBounce, QF-059 Google OAuth, QF-060 Microsoft O
 
 ## Totals
 
-- Done: 101
-- Built: 5
+- Done: 105
+- Built: 1
 - Blocked: 17
 - Partial: 0
 - Not done: 1
