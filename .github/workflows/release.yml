@@ -273,7 +273,15 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v0.26.1 ]; then
+            if [ "$TAG" = v0.27.0 ]; then
+              echo "## Career Intelligence"
+              echo
+              echo "Quarrix — Discover Opportunities. Build Your Career. Grow Your Business."
+              echo "- Explore 1,016 real occupations offline, with or without a CV."
+              echo "- Review matching evidence and relevant skills, then search available jobs."
+              echo "- Career exploration runs locally without a mandatory account or external processing."
+              echo
+            elif [ "$TAG" = v0.26.1 ]; then
               echo "## Hardening changes"
               echo
               echo "- Persistent email allowance reservations and correct proof-report mailbox attribution."

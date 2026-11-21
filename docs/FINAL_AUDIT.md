@@ -1,5 +1,9 @@
 # Final audit, v0.26.1
 
+## v0.27.0 Career Intelligence candidate
+
+The career explorer uses 1,016 official occupation records and rated skills for 910 occupations, plus software examples. It works without an account, network or CV; shows explicit matching evidence and skills to explore, not a hiring probability. Data attribution and regeneration are documented in [CAREER_DATA.md](CAREER_DATA.md). Full CI and installed-app validation pending; the 17 previously documented external blockers remain unchanged.
+
 ## v0.26.1 (released)
 
 - Proof reports now insert sent metadata and the selected mailbox together. Provider delivery attempts reserve persistent, immutable allowance before delivery, and their subsequent sent message records do not count twice. Ambiguous provider failures conservatively retain the reservation. Historical reports whose original mailbox was not recorded cannot be reattributed reliably.

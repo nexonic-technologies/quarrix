@@ -9,6 +9,7 @@ import { COUNTRIES } from '../countries';
 import { AlertsPanel, CheckLink, EmployersPanel } from './JobsParts';
 import { Combo } from '../Combo';
 import { JOB_TITLES } from '../../../shared/jobtitles';
+import { CareerExplorer } from './CareerExplorer';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -219,6 +220,7 @@ export function Jobs() {
           <span className="btn primary">Upload CV</span>
         </button>
       )}
+      {tab === 'results' && <CareerExplorer profile={cv?.profile} busy={busy} onSearch={title => { setKw(title); void run([title]); }} />}
       {tab === 'results' && (ranking || (cv && jobs.some((j) => j.match != null))) && <p className="muted small rank-note"><Sparkles size={12} /> {ranking ? 'Ranking jobs against your CV…' : `Ranked against your CV ${ai === 'none' ? 'by matching skills (add a model for smarter ranking)' : `with ${ai}`}.`}</p>}
       {tab === 'results' && jobs.length > 0 && <p className="muted small" style={{ margin: '0 0 8px' }}>{jobs.length} jobs, {remoteCount} remote{errors.length ? ` · not available right now: ${errors.map((e) => e.split(':')[0]).join(', ')}` : ''}</p>}
 
