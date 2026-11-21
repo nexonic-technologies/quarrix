@@ -208,52 +208,91 @@ export function duplicateGroups(limit = 100) {
   }
   return out;
 }
-const CHILD_TABLES: [string, string][] = [['messages', 'lead_id'], ['events', 'lead_id'], ['contacts', 'lead_id'], ['signals', 'lead_id'], ['deals', 'lead_id'], ['tasks', 'lead_id'], ['replies', 'lead_id'], ['lead_snapshots', 'lead_id']];
-/** Merge leads into one: empty fields are filled from the others, their history moves over, and it can be undone. */
+/** Every table with a lead_id column (found from the schema, so tables added later are never forgotten). */
+function childTables(): string[] {
+  const tables = (raw().prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT IN ('leads', 'merges', 'send_log') AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map((t) => t.name);
+  return tables.filter((t) => /^[a-z_0-9]+$/.test(t) && (raw().prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).some((c) => c.name === 'lead_id'));
+}
+const empty = (v: unknown) => v == null || v === '' || v === '[]' || v === '{}';
+/**
+ * Merge leads into one: empty fields are filled from the others, their history moves over, and it can be undone (0.26 rework).
+ * Every row that belonged to a removed lead is saved in full first. Rows that cannot move because the kept lead already has the
+ * same one (for example the same contact) are recorded and removed instead of being left behind or silently lost, and undo puts
+ * every saved row back with its original lead.
+ */
 export function mergeLeads(keepId: number, removeIds: number[]) {
   const keep = db.getLead(keepId);
   if (!keep) throw new Error('Lead not found.');
-  const removed = removeIds.filter((x) => x !== keepId).map((id) => db.getLead(id)).filter(Boolean) as db.Lead[];
+  const removed = [...new Set(removeIds.map(Number))].filter((x) => x !== keepId).map((id) => db.getLead(id)).filter(Boolean) as db.Lead[];
   if (removed.some((r) => (r.client ?? '') !== (keep.client ?? ''))) throw new Error('Leads from different client workspaces cannot be merged.');
   if (!removed.length) throw new Error('Choose at least two leads.');
-  const moved: Record<string, [number, number][]> = {};
+  const ids = removed.map((r) => r.id);
+  const marks = ids.map(() => '?').join(',');
   raw().transaction(() => {
     const patch: Record<string, unknown> = {};
-    for (const r of removed) for (const [k, v] of Object.entries(r)) if (!['id', 'created_at', 'updated_at'].includes(k) && v != null && v !== '' && v !== '[]' && v !== '{}' && ((keep as any)[k] == null || (keep as any)[k] === '' || (keep as any)[k] === '[]' || (keep as any)[k] === '{}') && patch[k] == null) patch[k] = v;
-    for (const [t, c] of CHILD_TABLES) {
-      const pairs = (raw().prepare(`SELECT id, ${c} owner FROM ${t} WHERE ${c} IN (${removed.map(() => '?').join(',')})`).all(...removed.map((r) => r.id)) as { id: number; owner: number }[]).map((x) => [x.id, x.owner] as [number, number]);
-      if (!pairs.length) continue;
-      moved[t] = pairs;
-      const ids = pairs.map((x) => x[0]);
-      raw().prepare(`UPDATE OR IGNORE ${t} SET ${c} = ? WHERE id IN (${ids.map(() => '?').join(',')})`).run(keepId, ...ids);
+    for (const r of removed) for (const [k, v] of Object.entries(r)) if (!['id', 'created_at', 'updated_at', 'client'].includes(k) && !empty(v) && empty((keep as any)[k]) && patch[k] == null) patch[k] = v;
+    const moved: Record<string, [number, number][]> = {};
+    const rows: Record<string, Record<string, unknown>[]> = {};
+    const dropped: Record<string, number[]> = {};
+    for (const t of childTables()) {
+      const all = raw().prepare(`SELECT * FROM ${t} WHERE lead_id IN (${marks})`).all(...ids) as Record<string, unknown>[];
+      if (!all.length) continue;
+      rows[t] = all;
+      const hasId = 'id' in all[0];
+      if (!hasId) continue; // tables without their own id are kept as saved rows and restored on undo
+      moved[t] = all.map((x) => [Number(x.id), Number(x.lead_id)]);
+      raw().prepare(`UPDATE OR IGNORE ${t} SET lead_id = ? WHERE lead_id IN (${marks})`).run(keepId, ...ids);
+      const left = (raw().prepare(`SELECT id FROM ${t} WHERE lead_id IN (${marks})`).all(...ids) as { id: number }[]).map((x) => x.id);
+      if (left.length) {
+        // Same row already on the kept lead: drop the copy (it is saved above and comes back on undo).
+        dropped[t] = left;
+        raw().prepare(`DELETE FROM ${t} WHERE id IN (${left.map(() => '?').join(',')})`).run(...left);
+      }
     }
-    raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved) VALUES (?, ?, ?, ?, ?)').run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify(moved));
-    for (const r of removed) raw().prepare('DELETE FROM leads WHERE id = ?').run(r.id);
+    raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved) VALUES (?, ?, ?, ?, ?)')
+      .run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify({ ...moved, __rows: rows, __dropped: dropped }));
+    raw().prepare(`DELETE FROM leads WHERE id IN (${marks})`).run(...ids);
     db.updateLead(keepId, patch);
     db.logEvent(keepId, 'merge', `Merged ${removed.length} duplicate${removed.length > 1 ? 's' : ''}: ${removed.map((r) => r.name).join(', ')}`);
   })();
   return keepId;
 }
-/** Put the merged leads back exactly as they were. */
+/** Put the merged leads back exactly as they were. Later merges that involve these leads must be undone first. */
 export function undoMerge(mergeId: number) {
-  const m = raw().prepare('SELECT * FROM merges WHERE id = ? AND undone = 0').get(mergeId) as any;
+  const m = raw().prepare('SELECT * FROM merges WHERE id = ? AND undone = 0 AND kept_id > 0').get(mergeId) as any;
   if (!m) throw new Error('Nothing to undo.');
   const removed = JSON.parse(m.removed) as Record<string, unknown>[];
   const before = JSON.parse(m.kept_before) as Record<string, unknown>;
-  const moved = JSON.parse(m.moved) as Record<string, [number, number][]>;
+  const { __rows: rows = {}, __dropped: _d, ...moved } = JSON.parse(m.moved) as Record<string, any>;
+  const removedIds = removed.map((r) => Number(r.id));
+  if (!db.getLead(m.kept_id)) throw new Error('The lead these were merged into no longer exists, so the merge cannot be undone.');
+  const later = (raw().prepare('SELECT id, kept_id, removed FROM merges WHERE id > ? AND undone = 0 AND kept_id > 0').all(mergeId) as { id: number; kept_id: number; removed: string }[])
+    .find((x) => [m.kept_id, ...removedIds].includes(x.kept_id) || (JSON.parse(x.removed) as { id: number }[]).some((r) => [m.kept_id, ...removedIds].includes(Number(r.id))));
+  if (later) throw new Error('These leads were merged again later. Undo the later merge first.');
+  const taken = removedIds.filter((id) => db.getLead(id));
+  if (taken.length) throw new Error('A lead with the same number exists again, so the merge cannot be undone safely.');
   raw().transaction(() => {
     for (const r of removed) {
-      const cols = Object.keys(r).filter((k) => /^[a-z_]+$/.test(k));
+      const cols = Object.keys(r).filter((k) => /^[a-z_0-9]+$/.test(k));
       raw().prepare(`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => r[k] as never));
     }
-    // Moved rows go back to their original lead.
-    for (const [t, pairs] of Object.entries(moved)) {
-      const col = CHILD_TABLES.find(([x]) => x === t)?.[1];
-      if (!col) continue;
-      const put = raw().prepare(`UPDATE ${t} SET ${col} = ? WHERE id = ?`);
+    // Moved rows go back to their original lead (older merges recorded only id/owner pairs).
+    for (const [t, pairs] of Object.entries(moved) as [string, [number, number][]][]) {
+      if (!/^[a-z_0-9]+$/.test(t)) continue;
+      const put = raw().prepare(`UPDATE ${t} SET lead_id = ? WHERE id = ?`);
       for (const [id, owner] of pairs) put.run(owner, id);
     }
-    const cols = Object.keys(before).filter((k) => /^[a-z_]+$/.test(k) && k !== 'id');
+    // Saved rows that no longer exist (dropped as same-as-kept, or tables without ids) are put back in full.
+    for (const [t, list] of Object.entries(rows) as [string, Record<string, unknown>[]][]) {
+      if (!/^[a-z_0-9]+$/.test(t) || !list.length) continue;
+      const have = new Set((raw().prepare(`PRAGMA table_info(${t})`).all() as { name: string }[]).map((c) => c.name));
+      for (const row of list) {
+        if ('id' in row && raw().prepare(`SELECT 1 FROM ${t} WHERE id = ?`).get(row.id as never)) continue;
+        const cols = Object.keys(row).filter((k) => have.has(k) && /^[a-z_0-9]+$/.test(k));
+        raw().prepare(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => row[k] as never));
+      }
+    }
+    const cols = Object.keys(before).filter((k) => /^[a-z_0-9]+$/.test(k) && k !== 'id');
     raw().prepare(`UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((k) => before[k] as never), m.kept_id);
     raw().prepare('UPDATE merges SET undone = 1 WHERE id = ?').run(mergeId);
   })();

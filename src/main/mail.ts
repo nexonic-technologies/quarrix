@@ -91,7 +91,7 @@ export async function testMailbox(boxId = 'main') {
 
 /** Today's limit: starts low and grows each day after the first send, up to the daily limit. */
 export function dailyCap(s = load()) {
-  const first = (db.raw().prepare("SELECT MIN(sent_at) t FROM messages WHERE status = 'sent'").get() as { t: string | null }).t;
+  const first = db.firstSend();
   const days = first ? Math.floor((Date.now() - Date.parse(first)) / 86400000) : 0;
   return Math.max(1, Math.min(s.email.dailyLimit, s.email.warmStart + days * s.email.warmStep));
 }

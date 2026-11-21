@@ -84,8 +84,50 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
   for (const [t, c] of [['leads', "contact_name TEXT NOT NULL DEFAULT ''"], ['leads', "contact_role TEXT NOT NULL DEFAULT ''"], ['leads', "email_status TEXT NOT NULL DEFAULT ''"], ['leads', "summary TEXT NOT NULL DEFAULT ''"], ['searches', 'campaign_id INTEGER'], ['leads', 'fit INTEGER'], ['campaigns', 'proof INTEGER NOT NULL DEFAULT 1'], ['leads', 'checked_at TEXT'], ['searches', 'watch_id INTEGER'], ['leads', "needs TEXT NOT NULL DEFAULT ''"], ['searches', "checkpoint TEXT NOT NULL DEFAULT '{}'"], ['searches', "geo TEXT NOT NULL DEFAULT ''"], ['leads', "provenance TEXT NOT NULL DEFAULT '{}'"], ['leads', 'relevance INTEGER'], ['leads', 'evidence INTEGER'], ['leads', "grade TEXT NOT NULL DEFAULT ''"], ['leads', "reasons TEXT NOT NULL DEFAULT '{}'"], ['leads', "details TEXT NOT NULL DEFAULT '{}'"], ['signals', "confidence TEXT NOT NULL DEFAULT 'medium'"], ['signals', "evidence TEXT NOT NULL DEFAULT ''"], ['leads', 'email_checked_at TEXT'], ['leads', 'wa_consent INTEGER NOT NULL DEFAULT 0'], ['leads', 'enrich_tries INTEGER NOT NULL DEFAULT 0'], ['leads', "client TEXT NOT NULL DEFAULT ''"], ['messages', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['messages', "variant TEXT NOT NULL DEFAULT ''"], ['replies', "mailbox TEXT NOT NULL DEFAULT 'main'"], ['searches', "client TEXT NOT NULL DEFAULT ''"], ['watches', "client TEXT NOT NULL DEFAULT ''"], ['campaigns', "client TEXT NOT NULL DEFAULT ''"]]) {
     try { db.exec(`ALTER TABLE ${t} ADD COLUMN ${c}`); } catch { /* already there */ }
   }
+  sendLogSetup();
   return db;
 }
+
+/**
+ * 0.26: every send is written to an append-only log by the database itself (triggers), so deleting or editing messages,
+ * deleting a lead or merging leads can never lower today's count, the warm-up age or the test-email allowance.
+ * Rows cannot be changed, and cannot be deleted for 60 days.
+ */
+function sendLogSetup() {
+  const fresh = !db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'send_log'").get();
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS send_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, mailbox TEXT NOT NULL DEFAULT 'main', purpose TEXT NOT NULL DEFAULT 'outreach', channel TEXT NOT NULL DEFAULT 'email', lead_id INTEGER, message_id INTEGER);
+  CREATE INDEX IF NOT EXISTS send_log_box ON send_log(mailbox, at);
+  CREATE TRIGGER IF NOT EXISTS send_log_insert AFTER INSERT ON messages WHEN NEW.status = 'sent' BEGIN
+    INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) VALUES (COALESCE(NEW.sent_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), COALESCE(NEW.mailbox, 'main'), 'outreach', NEW.channel, NEW.lead_id, NEW.id);
+  END;
+  CREATE TRIGGER IF NOT EXISTS send_log_update AFTER UPDATE OF status ON messages WHEN NEW.status = 'sent' AND OLD.status IS NOT 'sent' BEGIN
+    INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) VALUES (COALESCE(NEW.sent_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), COALESCE(NEW.mailbox, 'main'), 'outreach', NEW.channel, NEW.lead_id, NEW.id);
+  END;
+  CREATE TRIGGER IF NOT EXISTS send_log_placement AFTER INSERT ON events WHEN NEW.type = 'placement' BEGIN
+    INSERT INTO send_log (at, mailbox, purpose, lead_id) VALUES (NEW.at, NEW.detail, 'placement', NEW.lead_id);
+  END;
+  CREATE TRIGGER IF NOT EXISTS send_log_no_update BEFORE UPDATE ON send_log BEGIN SELECT RAISE(ABORT, 'The send history cannot be changed.'); END;
+  CREATE TRIGGER IF NOT EXISTS send_log_no_delete BEFORE DELETE ON send_log WHEN OLD.at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-60 days') BEGIN SELECT RAISE(ABORT, 'The send history cannot be deleted.'); END;
+  CREATE TRIGGER IF NOT EXISTS messages_sent_locked BEFORE UPDATE ON messages WHEN OLD.status = 'sent' AND (NEW.status IS NOT 'sent' OR NEW.subject IS NOT OLD.subject OR NEW.body IS NOT OLD.body
+    OR NEW.channel IS NOT OLD.channel OR NEW.mailbox IS NOT OLD.mailbox OR NEW.step IS NOT OLD.step OR (OLD.sent_at IS NOT NULL AND NEW.sent_at IS NOT OLD.sent_at)) BEGIN
+    SELECT RAISE(ABORT, 'A sent message cannot be changed.');
+  END;`);
+  // First run: copy the history that exists so limits and warm-up carry over.
+  if (fresh) db.exec(`
+    INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) SELECT COALESCE(sent_at, created_at), COALESCE(mailbox, 'main'), 'outreach', channel, lead_id, id FROM messages WHERE status = 'sent';
+    INSERT INTO send_log (at, mailbox, purpose, lead_id) SELECT at, detail, 'placement', lead_id FROM events WHERE type = 'placement';`);
+}
+
+/** Sends of one mailbox since an ISO time (outreach and placement tests; WhatsApp counts as before). */
+export const sendsSince = (mailbox: string, since: string) =>
+  (db.prepare("SELECT COUNT(*) n FROM send_log WHERE mailbox = ? AND purpose IN ('outreach', 'placement') AND at >= ?").get(mailbox, since) as { n: number }).n;
+/** First send of a mailbox (or of any mailbox), for warm-up. */
+export const firstSend = (mailbox?: string) =>
+  (db.prepare(`SELECT MIN(at) t FROM send_log WHERE purpose = 'outreach'${mailbox ? ' AND mailbox = ?' : ''}`).get(...(mailbox ? [mailbox] : [])) as { t: string | null }).t;
+/** Test emails are logged too, so the daily allowance survives restarts. */
+export const logTestSend = (mailbox = 'main') => db.prepare("INSERT INTO send_log (at, mailbox, purpose) VALUES (?, ?, 'test')").run(now(), mailbox);
+export const testSendsSince = (since: string) => (db.prepare("SELECT COUNT(*) n FROM send_log WHERE purpose = 'test' AND at >= ?").get(since) as { n: number }).n;
 
 export const now = () => new Date().toISOString();
 export const raw = () => db;
@@ -383,7 +425,13 @@ export function listMessages(status: string, limit = 200) {
 }
 /** Due emails, oldest first. A follow-up is never due while an earlier step of the same lead is unsent. */
 export const dueMessages = () => db.prepare(DUE_SQL).all(now()) as Message[];
-export const deleteMessage = (id: number) => db.prepare('DELETE FROM messages WHERE id = ?').run(id);
+/** Unsent messages can be deleted; sent ones are history (limits, warm-up and compliance depend on them). */
+export function deleteMessage(id: number) {
+  const m = db.prepare('SELECT status FROM messages WHERE id = ?').get(id) as { status: string } | undefined;
+  if (!m) return { changes: 0 };
+  if (m.status === 'sent' || m.status === 'sending') throw new Error('A sent message cannot be deleted.');
+  return db.prepare("DELETE FROM messages WHERE id = ? AND status NOT IN ('sent', 'sending')").run(id);
+}
 /** Stop every unsent message to a lead (reply, bounce or opt-out). */
 export const cancelPending = (leadId: number, why: string) =>
   db.prepare("UPDATE messages SET status = 'cancelled', error = ? WHERE lead_id = ? AND status IN ('draft','scheduled')").run(why, leadId);
