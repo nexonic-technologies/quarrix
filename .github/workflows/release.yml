@@ -90,7 +90,18 @@ jobs:
             xcrun stapler validate "$APP"
             echo "macOS $ARCH: signed with Developer ID and notarized" | tee -a signing.txt
           else
-            codesign -dv "$APP" 2>&1 | tee /dev/stderr | grep -q "Signature=adhoc" && echo "macOS $ARCH: unsigned (ad-hoc signature only; no Developer ID certificate in secrets)" | tee -a signing.txt
+            if DETAILS=$(codesign -dv "$APP" 2>&1); then
+              printf '%s\n' "$DETAILS"
+              if grep -q 'Signature=adhoc' <<< "$DETAILS"; then
+                echo "macOS $ARCH: ad-hoc signature only (not Developer ID signed)" | tee -a signing.txt
+              else
+                echo "Unexpected signature on $ARCH build without configured signing credentials"; exit 1
+              fi
+            elif grep -q 'code object is not signed at all' <<< "$DETAILS"; then
+              echo "macOS $ARCH: unsigned (no code signature)" | tee -a signing.txt
+            else
+              printf '%s\n' "$DETAILS"; exit 1
+            fi
           fi
           done
       - name: Verify Windows signature
