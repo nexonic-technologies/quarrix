@@ -82,7 +82,6 @@ const validGeo = (g: any): Geo | null => {
   return poly && poly.length >= 3 ? { lat, lon, km, poly } : { lat, lon, km };
 };
 
-let testSends: number[] = [];
 /** WhatsApp: never to do-not-contact leads; Cloud API sends also need your approval and the lead's recorded opt-in. */
 function waGuard(l: db.Lead, cloud: boolean) {
   const digits = l.phone.replace(/\D/g, '');
@@ -364,13 +363,14 @@ function registerIpc() {
   handle('messages:cancel', (leadId: number) => db.cancelPending(leadId, 'Stopped by you'));
 
   handle('mail:test', (boxId?: string) => mail.testMailbox(boxId ? String(boxId) : 'main'));
-  handle('mail:testSend', (to: string) => {
+  handle('mail:testSend', async (to: string) => {
     // A connection test, so approval is not needed, but it is capped and never goes to a do-not-contact address.
     const addr = String(to ?? '').trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(addr)) throw new Error('Type a valid email address.');
     if (db.isSuppressed(addr)) throw new Error('That address is on your do-not-contact list.');
-    if ((testSends = testSends.filter((t) => Date.now() - t < 864e5)).length >= 5) throw new Error('Five test emails a day is the limit.');
-    testSends.push(Date.now());
+    // Counted in the send log, so restarting the app does not reset the allowance (0.26).
+    if (db.testSendsSince(new Date(Date.now() - 864e5).toISOString()) >= 5) throw new Error('Five test emails a day is the limit.');
+    db.logTestSend('main'); // logged before sending, so parallel clicks cannot pass the cap
     return mail.sendRaw(addr, 'Quarrix test email', `This is a test from Quarrix.\n\n${mail.footer(load())}`, '', [], 'main', 'test');
   });
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });

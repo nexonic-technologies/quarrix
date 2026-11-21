@@ -68,11 +68,12 @@ export async function deliver(b: Box, msg: { from: { name: string; address: stri
 export function sentToday(id: string) {
   const day = new Date().toISOString().slice(0, 10);
   // Placement tests (sent to mail-tester.com, not to a lead) count towards the same daily limit.
-  return (db.raw().prepare("SELECT (SELECT COUNT(*) FROM messages WHERE status = 'sent' AND COALESCE(mailbox, 'main') = ? AND sent_at >= ?) + (SELECT COUNT(*) FROM events WHERE type = 'placement' AND detail = ? AND at >= ?) n").get(id, day, id, day) as { n: number }).n;
+  // Counted from the append-only send log (0.26), so deleting messages or leads cannot free up room.
+  return db.sendsSince(id, day);
 }
 /** Warm-up per mailbox: starts low and grows each day after that mailbox's first send. */
 export function capOf(b: Box, s: Settings = load()) {
-  const first = (db.raw().prepare("SELECT MIN(sent_at) t FROM messages WHERE status = 'sent' AND COALESCE(mailbox, 'main') = ?").get(b.id) as { t: string | null }).t;
+  const first = db.firstSend(b.id);
   const days = first ? Math.floor((Date.now() - Date.parse(first)) / 864e5) : 0;
   return Math.max(1, Math.min(b.dailyLimit || s.email.dailyLimit, s.email.warmStart + days * s.email.warmStep));
 }

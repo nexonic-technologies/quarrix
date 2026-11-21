@@ -1,4 +1,22 @@
-# Final audit, v0.25.0
+# Final audit, v0.26.0
+
+## v0.26.0 (data integrity milestone)
+
+Fixed (tests: test/int/v026.int.ts):
+- **Critical: contacts lost when merging duplicates.** Moving a duplicate's rows used `UPDATE OR IGNORE`; a contact already on the kept lead (same name and email) stayed on the removed lead and was deleted with it, and undo did not bring it back. Merge now saves every row of the removed leads in full first, drops only exact copies, and undo restores every row with its original ID and lead.
+- **Merge missed lead-linked tables.** The list of tables was fixed in code (automation log rows were left pointing at deleted leads). Tables are now found from the database schema.
+- **Unsafe undo.** Undoing an earlier merge after the same leads were merged again, after the kept lead was deleted, or when a lead with the same ID exists again could corrupt data. Each case is refused with a clear message; later merges are undone first.
+- **Critical: sent-email history could be used to bypass limits.** Deleting a sent message or its lead lowered today's count and the warm-up age. Every send (outreach, placement tests, test emails) is now written by database triggers to an append-only send log that cannot be changed and cannot be deleted for 60 days; daily limits and warm-up read from it. Sent messages cannot be deleted, and their status, text, mailbox, step and send time are locked by a trigger as well as by the IPC check. Leads (with their messages) can still be deleted; the send still counts.
+- **Test-email limit reset on restart** (it was kept in memory). It is now counted in the send log and recorded before sending, so parallel clicks cannot pass the cap of 5 per day.
+- **Migration:** existing sent messages and placement tests are copied into the send log once on first start, so limits and warm-up continue; no existing data is changed.
+
+Checked again, no change needed: workspace guards on every mutating IPC call (0.25 allowlist; merges, undo and messages stay within the workspace), franchise grouping, Workday and Overpass retries, job alerts, CV matching, AI failover and cancellation (0.25 tests still pass).
+
+Verification: typecheck, 80 unit tests and the integration suite (including v026) run in CI on every pull request; release builds run the installed-app smoke test on every platform. Results are in the release notes.
+
+Still blocked (unchanged, see below): provider accounts, OAuth apps, SendGrid, HubSpot, Sheets, Notion, inbox placement, hosted collaboration, partner-only job boards, code signing; Windows ARM64 verified by CPU type only.
+
+Totals: Done 106, Built 0, Blocked 17, Not done 1 (QF-115, excluded).
 
 ## v0.25.0 (hardening milestone)
 
