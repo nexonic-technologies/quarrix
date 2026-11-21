@@ -261,6 +261,7 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
     const moved: Record<string, [number, number][]> = {};
     const rows: Record<string, Record<string, unknown>[]> = {};
     const dropped: Record<string, number[]> = {};
+    const contactConfirmations: Record<string, string | null> = {};
     for (const t of childTables()) {
       const all = raw().prepare(`SELECT * FROM ${t} WHERE lead_id IN (${marks})`).all(...ids) as Record<string, unknown>[];
       if (!all.length) continue;
@@ -273,7 +274,13 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
       if (left.length) {
         for (const row of all.filter(x => left.includes(Number(x.id)))) {
           const copies = raw().prepare(`SELECT * FROM ${t} WHERE lead_id = ?`).all(keepId) as Record<string, unknown>[];
-          if (!copies.some(copy => Object.keys(row).every(k => ['id', 'lead_id', 'created_at'].includes(k) || copy[k] === row[k]))) throw new Error(`Conflicting ${t} records: reconcile them before merging.`);
+          const copy = copies.find(copy => Object.keys(row).every(k => ['id', 'lead_id', 'created_at'].includes(k) || (t === 'contacts' && k === 'confirmed_at') || copy[k] === row[k]));
+          if (!copy) throw new Error(`Conflicting ${t} records: reconcile them before merging.`);
+          if (t === 'contacts' && String(row.confirmed_at ?? '') > String(copy.confirmed_at ?? '')) {
+            const id = String(copy.id);
+            if (!(id in contactConfirmations)) contactConfirmations[id] = copy.confirmed_at as string | null;
+            raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE id = ?').run(row.confirmed_at, copy.id);
+          }
         }
         // Same row already on the kept lead: drop the copy (it is saved above and comes back on undo).
         dropped[t] = left;
@@ -285,7 +292,7 @@ export function mergeLeads(keepId: number, removeIds: number[]) {
     raw().prepare('UPDATE leads SET custom = ?, company_id = COALESCE(company_id, ?) WHERE id = ?').run(JSON.stringify(custom), patch.company_id ?? null, keepId);
     db.logEvent(keepId, 'merge', `Merged ${removed.length} duplicate${removed.length > 1 ? 's' : ''}: ${removed.map((r) => r.name).join(', ')}`);
     raw().prepare('INSERT INTO merges (at, kept_id, removed, kept_before, moved) VALUES (?, ?, ?, ?, ?)')
-      .run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify({ ...moved, __rows: rows, __dropped: dropped, __after: mergeSnapshot(keepId) }));
+      .run(now(), keepId, JSON.stringify(removed), JSON.stringify(keep), JSON.stringify({ ...moved, __rows: rows, __dropped: dropped, __after: mergeSnapshot(keepId), __contactConfirmations: contactConfirmations }));
   })();
   return keepId;
 }
@@ -295,7 +302,7 @@ export function undoMerge(mergeId: number) {
   if (!m) throw new Error('Nothing to undo.');
   const removed = JSON.parse(m.removed) as Record<string, unknown>[];
   const before = JSON.parse(m.kept_before) as Record<string, unknown>;
-  const { __rows: rows = {}, __dropped: dropped = {}, __after: expected, ...moved } = JSON.parse(m.moved) as Record<string, any>;
+  const { __rows: rows = {}, __dropped: dropped = {}, __after: expected, __contactConfirmations: contactConfirmations = {}, ...moved } = JSON.parse(m.moved) as Record<string, any>;
   const removedIds = removed.map((r) => Number(r.id));
   const later = (raw().prepare('SELECT id, kept_id, removed FROM merges WHERE id > ? AND undone = 0 AND kept_id > 0').all(mergeId) as { id: number; kept_id: number; removed: string }[])
     .find((x) => [m.kept_id, ...removedIds].includes(x.kept_id) || (JSON.parse(x.removed) as { id: number }[]).some((r) => [m.kept_id, ...removedIds].includes(Number(r.id))));
@@ -330,6 +337,7 @@ export function undoMerge(mergeId: number) {
         raw().prepare(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((k) => row[k] as never));
       }
     }
+    for (const [id, confirmed] of Object.entries(contactConfirmations)) raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE id = ?').run(confirmed, Number(id));
     const cols = Object.keys(before).filter((k) => /^[a-z_0-9]+$/.test(k) && k !== 'id');
     raw().prepare(`UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((k) => before[k] as never), m.kept_id);
     raw().prepare('UPDATE merges SET undone = 1 WHERE id = ?').run(mergeId);

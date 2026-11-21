@@ -21,16 +21,19 @@ test('merge keeps every contact, moves all lead-linked rows and undo restores th
   const r = lead('Merge Dupe', { email: 'dupe@merge.co' });
   db.addContact({ lead_id: k, name: 'Ann', email: 'ann@merge.co' });
   db.addContact({ lead_id: r, name: 'Ann', email: 'ann@merge.co' }); // same contact on both: cannot move (UNIQUE), must not be lost
+  db.raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE lead_id = ? AND name = ?').run('2026-01-01T00:00:00Z', k, 'Ann');
+  db.raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE lead_id = ? AND name = ?').run('2026-02-01T00:00:00Z', r, 'Ann');
   db.addContact({ lead_id: r, name: 'Bob', email: 'bob@merge.co' });
   const msg = db.addMessage({ lead_id: r, subject: 'Hello', status: 'sent' });
   db.raw().prepare('INSERT INTO automation_log (at, rule, lead_id, event) VALUES (?, ?, ?, ?)').run(db.now(), 'r1', r, 'x');
   db.logEvent(r, 'note', 'dupe history');
-  const before = rows('SELECT id, lead_id, name FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r);
+  const before = rows('SELECT id, lead_id, name, confirmed_at FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r);
 
   crm.mergeLeads(k, [r, r, k]);
   assert.equal(db.getLead(r), undefined);
   assert.equal(db.getLead(k)!.email, 'dupe@merge.co', 'empty field filled');
   assert.deepEqual(rows('SELECT name FROM contacts WHERE lead_id = ? ORDER BY name', k).map((c) => c.name), ['Ann', 'Bob'], 'no contact lost, no duplicate');
+  assert.equal(rows('SELECT confirmed_at FROM contacts WHERE lead_id = ? AND name = ?', k, 'Ann')[0].confirmed_at, '2026-02-01T00:00:00Z');
   assert.equal(rows('SELECT 1 FROM contacts WHERE lead_id = ?', r).length, 0, 'nothing left pointing at the removed lead');
   assert.equal(rows('SELECT lead_id FROM messages WHERE id = ?', msg)[0].lead_id, k);
   assert.equal(rows('SELECT 1 FROM automation_log WHERE lead_id = ?', r).length, 0, 'tables found from the schema are moved too');
@@ -38,7 +41,7 @@ test('merge keeps every contact, moves all lead-linked rows and undo restores th
   const m = (crm.listMerges() as any[]).find((x) => x.kept_id === k && !x.undone);
   crm.undoMerge(m.id);
   assert.ok(db.getLead(r));
-  assert.deepEqual(rows('SELECT id, lead_id, name FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r), before, 'every contact back with its own lead and id');
+  assert.deepEqual(rows('SELECT id, lead_id, name, confirmed_at FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r), before, 'every contact back with its own lead and id');
   assert.equal(rows('SELECT lead_id FROM messages WHERE id = ?', msg)[0].lead_id, r);
   assert.equal(db.getLead(k)!.email, '', 'kept lead back as it was');
   assert.throws(() => crm.undoMerge(m.id), /Nothing to undo/);
