@@ -142,3 +142,15 @@ test('merge preserves notes and undo protects later edits', () => {
   assert.equal(db.getLead(k)!.notes, 'edited after merging');
   assert.equal(db.getLead(r), undefined);
 });
+
+test('merge preserves restrictive contact preferences and aborts conflicting contact metadata', () => {
+  const k = lead('Contact Keep'), r = lead('Contact Remove', { status: 'do_not_contact' });
+  db.addContact({ lead_id: k, name: 'Ann', email: 'ann@example.test', role: 'Owner' });
+  db.addContact({ lead_id: r, name: 'Ann', email: 'ann@example.test', role: 'Manager' });
+  assert.throws(() => crm.mergeLeads(k, [r]), /Conflicting contacts/);
+  assert.ok(db.getLead(k) && db.getLead(r));
+  assert.equal(rows('SELECT role FROM contacts WHERE lead_id = ?', r)[0].role, 'Manager');
+  const x = lead('Opt-out Record', { status: 'do_not_contact' });
+  crm.mergeLeads(k, [x]);
+  assert.equal(db.getLead(k)!.status, 'do_not_contact');
+});

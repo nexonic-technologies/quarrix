@@ -91,7 +91,7 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
 /**
  * 0.26: every send is written to an append-only log by the database itself (triggers), so deleting or editing messages,
  * deleting a lead or merging leads can never lower today's count, the warm-up age or the test-email allowance.
- * Rows cannot be changed, and cannot be deleted for 60 days.
+ * Rows cannot be changed or deleted; delivery counters are separate from user-deletable lead history.
  */
 function sendLogSetup() {
   const fresh = !db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'send_log'").get();
@@ -102,6 +102,7 @@ function sendLogSetup() {
   CREATE UNIQUE INDEX IF NOT EXISTS send_log_delivery ON send_log(delivery_id);
   DROP TRIGGER IF EXISTS send_log_insert;
   DROP TRIGGER IF EXISTS send_log_update;
+  DROP TRIGGER IF EXISTS send_log_no_delete;
   DROP TRIGGER IF EXISTS messages_sent_locked;
   CREATE TRIGGER send_log_insert AFTER INSERT ON messages WHEN NEW.status = 'sent' AND NOT EXISTS (SELECT 1 FROM send_log WHERE delivery_id = NEW.message_id AND mailbox = NEW.mailbox) BEGIN
     INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) VALUES (COALESCE(NEW.sent_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), COALESCE(NEW.mailbox, 'main'), 'outreach', NEW.channel, NEW.lead_id, NEW.id);
@@ -113,7 +114,7 @@ function sendLogSetup() {
     INSERT INTO send_log (at, mailbox, purpose, lead_id) VALUES (NEW.at, NEW.detail, 'placement', NEW.lead_id);
   END;
   CREATE TRIGGER IF NOT EXISTS send_log_no_update BEFORE UPDATE ON send_log BEGIN SELECT RAISE(ABORT, 'The send history cannot be changed.'); END;
-  CREATE TRIGGER IF NOT EXISTS send_log_no_delete BEFORE DELETE ON send_log WHEN OLD.at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-60 days') BEGIN SELECT RAISE(ABORT, 'The send history cannot be deleted.'); END;
+  CREATE TRIGGER send_log_no_delete BEFORE DELETE ON send_log BEGIN SELECT RAISE(ABORT, 'The send history cannot be deleted.'); END;
   CREATE TRIGGER IF NOT EXISTS messages_sent_locked BEFORE UPDATE ON messages WHEN OLD.status = 'sent' AND (NEW.status IS NOT 'sent' OR NEW.subject IS NOT OLD.subject OR NEW.body IS NOT OLD.body
     OR NEW.channel IS NOT OLD.channel OR NEW.mailbox IS NOT OLD.mailbox OR NEW.step IS NOT OLD.step OR NEW.message_id IS NOT OLD.message_id OR NEW.sent_at IS NOT OLD.sent_at) BEGIN
     SELECT RAISE(ABORT, 'A sent message cannot be changed.');
