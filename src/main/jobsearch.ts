@@ -324,6 +324,18 @@ export function cityPoint(name: string, cc = '', strict = false): { lat: number;
   return best ? { lat: best.loc.coordinates[1], lon: best.loc.coordinates[0] } : null;
 }
 
+/**
+ * The country a place name points to: the searched country when it has a city of that name, otherwise the country of
+ * the largest city with that name (towns under 50,000 people are ignored, to avoid false matches). '' when unknown.
+ */
+export function cityCountry(name: string, preferCc = ''): string {
+  if (preferCc && cityPoint(name, preferCc, true)) return preferCc;
+  const n = name.toLowerCase().trim();
+  if (!n || !byName) cityPoint(n || 'x');
+  const best = (byName?.get(n) ?? []).filter((c: any) => c.population >= 50000).sort((a: any, b: any) => b.population - a.population)[0];
+  return best ? String(best.country) : '';
+}
+
 export async function citiesOf(cc: string): Promise<string[]> {
   if (cityCache.has(cc)) return cityCache.get(cc)!;
   // eslint-disable-next-line @typescript-eslint/no-require-imports

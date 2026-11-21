@@ -60,6 +60,21 @@ export async function runSmoke(win: BrowserWindow) {
     if (bad.length) throw new Error(`${bad.length} unnamed: ${bad.slice(0, 3).join(' | ')}`);
     return 'all named';
   });
+  await check('lead map with clustering draws (QF-015) and the week view of tasks opens (QF-054)', async () => {
+    await ipc('leads:add', { name: 'Map Check Clinic', city: 'Lahore', country: 'PK', lat: 31.52, lon: 74.35 });
+    const r = await js<{ map: boolean; week: boolean; err: string }>(`(async () => {
+      const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+      const nav = (t) => [...document.querySelectorAll('nav.nav button')].find((b) => b.textContent.trim().startsWith(t))?.click();
+      const btn = (t) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === t);
+      nav('Leads'); await wait(700); btn('Map')?.click(); await wait(1500);
+      const map = !!document.querySelector('.leaflet-container');
+      nav('Pipeline'); await wait(700); [...document.querySelectorAll('[role=tab]')].find((b) => /Tasks/.test(b.textContent))?.click(); await wait(500); btn('Week')?.click(); await wait(500);
+      const week = btn('Week')?.className.includes('primary') ?? false;
+      return { map, week, err: document.querySelector('[data-screen-error]')?.textContent ?? '' };
+    })()`);
+    if (r.err || !r.map || !r.week) throw new Error(`map ${r.map}, week ${r.week} ${r.err}`);
+    return 'map and week view drawn';
+  });
   await check('privacy disclosures are listed for each feature (QF-120)', async () => { const p = await ipc('privacy:summary'); const n = Array.isArray(p) ? p.length : Object.keys(p ?? {}).length; if (!n) throw new Error('empty'); return `${n} entries`; });
   await check('database opens and migrates', () => { const t = (db.raw().prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type = 'table'").get() as { n: number }).n; if (t < 15) throw new Error(`${t} tables`); return `${t} tables`; });
   await check('IPC bridge answers', async () => `version ${(await ipc('app:info')).version}`);

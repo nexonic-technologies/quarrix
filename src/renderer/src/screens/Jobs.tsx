@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search as SearchIcon, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2 } from 'lucide-react';
+import { Search as SearchIcon, ChevronDown, Bookmark, BookmarkCheck, ExternalLink, Sparkles, Briefcase, Check, FileUp, FileText, PenLine, X, Copy, Download, Wand2, Square } from 'lucide-react';
 import { call } from '../api';
 import { toast } from '../App';
 import { Avatar, EmptyArt, HeroBg, spotlight, spotlightReset, useSceneMode, RiseText, RotatingWord } from '../Art';
@@ -63,6 +63,7 @@ export function Jobs() {
   const [boards, setBoards] = useState<{ source: string; count: number; error: string; ms: number }[]>([]);
   const [recent, setRecent] = useState<any[]>([]);
   const runSeq = useRef(0);
+  const stopRef = useRef(false);
   // Each board's jobs appear as soon as that board answers; the final list replaces them with the ranked, merged one.
   useEffect(() => {
     const off = (window as any).quarrix?.on((e: string, d: any) => {
@@ -113,8 +114,9 @@ export function Jobs() {
     setBusy(true); setTab('results');
     try {
       const all: Job[] = []; const errs: string[] = [];
-      setJobs([]); setBoards([]);
+      setJobs([]); setBoards([]); stopRef.current = false;
       for (const w of words) {
+        if (stopRef.current) break;
         const runId = ++runSeq.current;
         const r = await call<{ jobs: Job[]; errors: string[] }>('jobs:search', query(w), runId);
         for (const j of r.jobs) if (!all.some((x) => x.id === j.id)) all.push(j);
@@ -166,7 +168,9 @@ export function Jobs() {
           <label className="fbox"><SearchIcon size={16} /><input placeholder="Job title or skill, e.g. Web developer" value={kw} onChange={(e) => setKw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} /></label>
           <CountryInput value={country} onChange={setCountry} />
           <CityInput country={country} value={city} onChange={setCity} onEnter={() => run()} placeholder="City (optional)" />
-          <button className="btn primary go" onClick={() => run()} disabled={busy}>{busy ? 'Searching…' : 'Search jobs'}</button>
+          {busy
+            ? <button className="btn go" onClick={() => { stopRef.current = true; void call('jobs:stop', runSeq.current); }}><Square size={13} /> Stop</button>
+            : <button className="btn primary go" onClick={() => run()}>Search jobs</button>}
         </div>
       </div>
 

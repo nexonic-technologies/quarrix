@@ -14,12 +14,16 @@ import { detectAts, employerJobs, hnHiring } from '../../src/main/ats';
 import { searchJobs } from '../../src/main/jobsearch';
 import { checkDomain } from '../../src/main/deliverability';
 import { fetchText } from '../../src/main/util';
+import { previewSearch } from '../../src/main/jobs';
+import { checkSources } from '../../src/main/health';
 
-type R = { check: string; qf: string; ok: boolean; detail: string; ms: number };
+type R = { check: string; qf: string; ok: boolean; detail: string; ms: number; kind?: 'outage' | 'failure' };
+/** A provider that is busy, rate-limiting or unreachable is a temporary outage, not a defect in Quarrix. */
+const OUTAGE = /busy|HTTP (408|425|429|5\d\d)|timed? ?out|aborted|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|no answer|socket hang up|temporarily/i;
 const out: R[] = [];
 const run = async (check: string, qf: string, fn: () => Promise<string>) => {
   const t = Date.now();
-  try { out.push({ check, qf, ok: true, detail: (await fn()).slice(0, 200), ms: Date.now() - t }); } catch (e: any) { out.push({ check, qf, ok: false, detail: String(e?.message ?? e).slice(0, 200), ms: Date.now() - t }); }
+  try { out.push({ check, qf, ok: true, detail: (await fn()).slice(0, 200), ms: Date.now() - t }); } catch (e: any) { const d = String(e?.message ?? e).slice(0, 200); out.push({ check, qf, ok: false, detail: d, ms: Date.now() - t, kind: OUTAGE.test(d) ? 'outage' : 'failure' }); }
 };
 const need = (n: number, what: string) => { if (n <= 0) throw new Error(`no ${what} returned`); return `${n} ${what}`; };
 const noop = () => undefined;
@@ -35,9 +39,13 @@ const noop = () => undefined;
   await run('Overture Maps release files', 'QF-005', async () => need((await searchOverture('dentist', { s: 30.25, n: 30.30, w: -97.76, e: -97.72 }, 10, noop, 6)).length, 'places from Overture'));
   await run('Email domain checks (SPF/DKIM/DMARC)', 'QF-067', async () => { const r: any = await checkDomain('google.com'); const okN = (r.checks ?? []).filter((c: any) => c.ok).length; if (!okN) throw new Error('no DNS records could be read'); return `${okN} of ${r.checks.length} records found for google.com`; });
   await run('Hacker News hiring posts', 'QF-097', async () => need((await hnHiring('react')).length, 'posts'));
-  for (const [qf, link] of [['QF-093', 'https://jobs.ashbyhq.com/ramp'], ['QF-094', 'https://jobs.smartrecruiters.com/Visa'], ['QF-095', 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite'], ['QF-091', 'https://boards.greenhouse.io/stripe'], ['QF-092', 'https://jobs.lever.co/palantir']] as const) {
+  for (const [qf, link] of [['QF-093', 'https://jobs.ashbyhq.com/ramp'], ['QF-095', 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite'], ['QF-091', 'https://boards.greenhouse.io/stripe'], ['QF-092', 'https://jobs.lever.co/palantir']] as const) {
     await run(`Employer jobs: ${link}`, qf, async () => { const e = detectAts(link); if (!e) throw new Error('link not recognised'); return need((await employerJobs(e)).length, `${e.ats} jobs`); });
   }
+  await run('Employer jobs: SmartRecruiters (first of several known employers)', 'QF-094', async () => {
+    for (const slug of ['SmartRecruiters', 'Visa', 'BoschGroup', 'Ubisoft2', 'IKEA']) { const n = (await employerJobs({ ats: 'smartrecruiters', slug, name: slug })).length; if (n) return `${n} jobs at ${slug}`; }
+    throw new Error('none of the test employers has public SmartRecruiters postings');
+  });
   await run('Job boards without keys', 'QF-099', async () => {
     const r = await searchJobs({ keywords: 'software engineer', country: 'US', countryName: 'United States', city: '' } as any);
     if (!r.jobs.length) throw new Error(`no jobs; failed: ${r.errors.join('; ').slice(0, 150)}`);
@@ -57,7 +65,9 @@ const noop = () => undefined;
     try { await fetchText('https://overturemaps-us-west-2.s3.us-west-2.amazonaws.com/?list-type=2&prefix=release/', { maxBytes: 2000 }); } catch (e: any) { if (/larger than/.test(e.message)) return 'rejected'; throw e; }
     throw new Error('a large response was accepted');
   });
-  writeFileSync(process.env.LIVE_OUT || 'live-providers.json', JSON.stringify({ at: new Date().toISOString(), passed: out.filter((r) => r.ok).length, total: out.length, results: out }, null, 2));
+  await run('Search preview with a real source (OpenStreetMap)', 'QF-013', async () => { const p: any = await previewSearch('dentist', 'Austin, Texas', ['osm'], null); const n = JSON.stringify(p).match(/"name"/g)?.length ?? 0; if (!n) throw new Error(`no preview results: ${JSON.stringify(p).slice(0, 120)}`); return `${n} sample results`; });
+  await run('Provider connectivity diagnostics', 'QF-011', async () => { const h = await checkSources(); const ok = h.filter((x) => x.status === 'ok').length; if (!ok) throw new Error('no source answered'); return `${ok} of ${h.length} sources ok: ${h.filter((x) => x.status !== 'ok' && x.status !== 'off').map((x) => x.id).join(', ') || 'none failing'}`; });
+  writeFileSync(process.env.LIVE_OUT || 'live-providers.json', JSON.stringify({ at: new Date().toISOString(), passed: out.filter((r) => r.ok).length, outages: out.filter((r) => r.kind === 'outage').length, failures: out.filter((r) => r.kind === 'failure').length, total: out.length, results: out }, null, 2));
   for (const r of out) console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.qf} ${r.check}: ${r.detail}`);
   process.exit(0);
 })();

@@ -20,10 +20,39 @@ export const PROVIDERS: Record<string, { label: string; base: string; keyed: boo
 type Ai = Settings['ai'];
 const base = (ai: Ai) => (ai.baseUrl || PROVIDERS[ai.provider]?.base || '').replace(/\/+$/, '');
 
+// OpenRouter with a key but no model chosen: Quarrix picks a good free model itself (before 0.22.2 nothing was used,
+// so a connected key made no difference). Strong general models first; any ':free' model otherwise.
+const FREE_PREFS = ['deepseek/deepseek-chat-v3', 'meta-llama/llama-3.3-70b-instruct', 'google/gemma-3-27b-it', 'qwen/qwen3', 'mistralai/mistral-small'];
+let freePick: { key: string; models: string[] } | null = null;
+/** Free models in preference order. Pure, exported for tests. */
+export function rankFree(ids: string[]) {
+  const free = ids.filter((m) => m.endsWith(':free'));
+  const score = (m: string) => { const i = FREE_PREFS.findIndex((p) => m.startsWith(p)); return i < 0 ? 99 : i; };
+  return free.sort((a, b) => score(a) - score(b) || a.localeCompare(b));
+}
+async function modelsToTry(ai: Ai): Promise<string[]> {
+  const chosen = ai.model || PROVIDERS[ai.provider]?.suggest;
+  if (chosen) return [chosen];
+  if (ai.provider !== 'openrouter' || !ai.apiKey) return [];
+  if (freePick?.key !== ai.apiKey) freePick = { key: ai.apiKey, models: rankFree(await listModels(ai).catch(() => [])).slice(0, 3) };
+  return freePick.models;
+}
+/** The model Quarrix will use, for the settings screen. */
+export async function effectiveModel(ai: Ai) { return (await modelsToTry(ai))[0] ?? ''; }
+
 export async function complete(ai: Ai, system: string, prompt: string, maxTokens = 1500): Promise<string> {
   if (ai.provider === 'none') throw new Error('No writing model is set. Choose one in Settings → Writing.');
-  const model = ai.model || PROVIDERS[ai.provider]?.suggest;
-  if (!model) throw new Error('Choose a model in Settings → Writing.');
+  const models = await modelsToTry(ai);
+  if (!models.length) throw new Error('Choose a model in Settings → Writing.');
+  let last: unknown;
+  // Free models are often busy (rate limits); the next free model is tried before giving up.
+  for (const model of models) {
+    try { return await completeWith(ai, model, system, prompt, maxTokens); } catch (e) { last = e; if (ai.model) break; }
+  }
+  throw last;
+}
+
+async function completeWith(ai: Ai, model: string, system: string, prompt: string, maxTokens: number): Promise<string> {
   if (ai.provider === 'anthropic') {
     const r = await fetchTrusted(`${base(ai)}/messages`, {
       method: 'POST', timeout: 90000,
@@ -180,6 +209,6 @@ export function guessFit(lead: Lead, facts?: Record<string, any>, score?: number
 /** "free" for local or free-tier models (smaller batches, shorter prompts), "paid" for paid keys. */
 export function tier(ai: Ai): 'none' | 'free' | 'paid' {
   if (ai.provider === 'none') return 'none';
-  if (['ollama', 'lmstudio', 'groq'].includes(ai.provider) || /:free\b|free/i.test(ai.model)) return 'free';
+  if (['ollama', 'lmstudio', 'groq'].includes(ai.provider) || /:free\b|free/i.test(ai.model) || (ai.provider === 'openrouter' && !ai.model)) return 'free';
   return 'paid';
 }

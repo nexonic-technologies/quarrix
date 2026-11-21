@@ -52,6 +52,12 @@ function assertCompany(id: unknown, s = current()) {
   if (c && c.client !== s) throw new ScopeError();
 }
 
+function assertSearch(id: unknown, s = current()) {
+  if (!s) return;
+  const r = db.raw().prepare('SELECT client FROM searches WHERE id = ?').get(Number(id)) as { client: string } | undefined;
+  if (r && r.client !== s) throw new ScopeError();
+}
+
 type Guard = (args: any[], s: string) => any[];
 const arg0Lead: Guard = (a, s) => (assertLead(a[0], s), a);
 const arg0Ids: Guard = (a, s) => [filterIds(a[0], s), ...a.slice(1)];
@@ -72,6 +78,9 @@ export const ARG_GUARDS: Record<string, Guard> = {
   'tasks:save': (a, s) => { const t = a[0] ?? {}; if (t.id) assertTask(t.id, s); if (t.lead_id != null) assertLead(t.lead_id, s); if (t.deal_id != null) assertOwned('deals', t.deal_id, s); if (s && !t.id && t.lead_id == null && t.deal_id == null) throw new ScopeError(); return a; },
   'fields:set': (a, s) => (a[0] === 'deal' ? assertOwned('deals', a[1], s) : assertLead(a[1], s), a),
   'fields:computed': (a, s) => (a[0] === 'deal' ? assertOwned('deals', a[1], s) : assertLead(a[1], s), a),
+  'search:stop': (a, s) => (assertSearch(a[0], s), a), 'search:pause': (a, s) => (assertSearch(a[0], s), a),
+  'search:resume': (a, s) => (assertSearch(a[0], s), a), 'search:log': (a, s) => (assertSearch(a[0], s), a),
+  'dupes:undo': (a, s) => { const m = db.raw().prepare('SELECT kept_id FROM merges WHERE id = ?').get(Number(a[0])) as { kept_id: number } | undefined; if (m) assertLead(m.kept_id, s); return a; },
   'dupes:merge': (a, s) => { assertLead(a[0], s); const ids = Array.isArray(a[1]) ? a[1].map(Number) : []; if (filterIds(ids, s).length !== ids.length) throw new ScopeError(); return a; },
 };
 const rows = (r: unknown, s: string) => filterRows(r, s);
@@ -80,6 +89,7 @@ export const RESULT_GUARDS: Record<string, (r: any, s: string) => any> = {
   'messages:list': rows, 'replies:list': rows, 'signals:list': rows,
   'outreach:attention': (r, s) => (r && s ? { ...r, failed: filterRows(r.failed, s), blocked: filterRows(r.blocked, s), review: filterRows(r.review, s) } : r),
   'dupes:list': (r, s) => (Array.isArray(r) && s ? r.map((g: any) => (Array.isArray(g?.leads) ? { ...g, leads: filterRows(g.leads, s, 'id') } : Array.isArray(g) ? filterRows(g, s, 'id') : g)).filter((g: any) => (Array.isArray(g) ? g.length > 1 : (g?.leads?.length ?? 2) > 1)) : r),
+  'dupes:merges': (r, s) => (Array.isArray(r) && s ? filterRows(r, s, 'kept_id') : r),
   'search:list': (r, s) => (Array.isArray(r) && s ? r.filter((x: any) => (x.client ?? '') === s) : r),
 };
 const own = <T>(o: Record<string, T>, k: string) => (Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined);
@@ -99,4 +109,35 @@ export function ownRecord<T extends { id?: number; client?: string }>(table: 'wa
     return out;
   }
   return { ...out, client: s };
+}
+
+// Read-only views of one workspace (0.23). For the duration of a synchronous read, temporary views with the same names as
+// the tables shadow them (SQLite looks in the temp schema first), so dashboards, statistics and counts written for the
+// whole database see only the selected client's rows. Writes never run inside withScope.
+const lead = (s: string) => `lead_id IN (SELECT id FROM main.leads WHERE client = ${s})`;
+const VIEWS: Record<string, (s: string) => string> = {
+  leads: (s) => `client = ${s}`, searches: (s) => `client = ${s}`, companies: (s) => `client = ${s}`,
+  watches: (s) => `client = ${s}`, campaigns: (s) => `client = ${s}`,
+  messages: lead, replies: lead, signals: lead, contacts: lead, events: lead, lead_snapshots: lead, deals: lead,
+  tasks: (s) => `COALESCE(lead_id, (SELECT d.lead_id FROM main.deals d WHERE d.id = deal_id)) IN (SELECT id FROM main.leads WHERE client = ${s})`,
+};
+/** SQL string literal for a client name. Pure, exported for tests. */
+export const sqlText = (v: string) => `'${String(v).replace(/'/g, "''")}'`;
+export function withScope<T>(fn: () => T, s = current()): T {
+  if (!s) return fn();
+  const r = db.raw();
+  const have = new Set((r.prepare("SELECT name FROM main.sqlite_master WHERE type = 'table'").all() as { name: string }[]).map((x) => x.name));
+  const made: string[] = [];
+  try {
+    for (const [t, cond] of Object.entries(VIEWS)) {
+      if (!have.has(t)) continue;
+      r.exec(`DROP VIEW IF EXISTS temp.${t}; CREATE TEMP VIEW ${t} AS SELECT * FROM main.${t} WHERE ${cond(sqlText(s))}`);
+      made.push(t);
+    }
+    const out = fn();
+    if (out && typeof (out as any).then === 'function') throw new Error('withScope only takes synchronous reads');
+    return out;
+  } finally {
+    for (const t of made) r.exec(`DROP VIEW IF EXISTS temp.${t}`);
+  }
 }

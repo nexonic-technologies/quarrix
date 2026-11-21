@@ -5,7 +5,7 @@ import { extname } from 'node:path';
 import Papa from 'papaparse';
 import * as db from './db';
 import { detectAts, employerJobs, isRecruiter, parseSalary, placeScore, postingState, titleScore, type Employer } from './ats';
-import { cityPoint, searchJobs, type Job, type JobQuery } from './jobsearch';
+import { cityCountry, cityPoint, searchJobs, type Job, type JobQuery } from './jobsearch';
 import { distanceKm } from './geo';
 import { countryCode } from './util';
 import { load } from './settings';
@@ -91,10 +91,24 @@ export const clearSearches = () => raw().prepare('DELETE FROM job_search_log').r
 
 export type JobFilters = { strict?: boolean; radiusKm?: number; onlyNew?: boolean; salaryMin?: number; hideRecruiters?: boolean; hideCompanies?: string[]; preferCompanies?: string[]; hideReposts?: boolean; maxAgeDays?: number };
 /** Search every board plus followed employers and HN, then mark new, reposted and old postings, and apply the extra filters. */
-export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source: string; jobs: Annotated[]; error: string; ms: number }) => void = () => undefined) {
+const stopRequests = new Map<number, () => void>();
+/** Stop a running search: it returns at once with what the boards that already answered found. */
+export function stopSearch(runId: number) { stopRequests.get(runId)?.(); }
+
+export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source: string; jobs: Annotated[]; error: string; ms: number }) => void = () => undefined, runId = 0) {
   const started = Date.now();
   const strictOk = (j: Job) => q.strict === false || titleScore(j.title, q.keywords) >= 0.66; // two words: both; three: two of three
-  const { jobs, errors } = await searchJobs(q, (source, list, error, ms) => onBatch({ source, jobs: annotateLight(list.filter(strictOk)), error, ms }));
+  // Jobs in other countries are left out when a country is chosen (remote jobs that name no country stay).
+  const placeOk = (j: Job) => jobCountryOk(j.location, q.country ?? '');
+  const sofar: Job[] = [], failed: string[] = [];
+  let stopped = false;
+  const stop = new Promise<{ jobs: Job[]; errors: string[] }>((res) => { if (runId) stopRequests.set(runId, () => { stopped = true; res({ jobs: [...sofar], errors: [...failed, 'Stopped: the boards that had not answered yet were skipped.'] }); }); });
+  const search = searchJobs(q, (source, list, error, ms) => {
+    if (stopped) return;
+    sofar.push(...list); if (error) failed.push(`${source}: ${error}`);
+    onBatch({ source, jobs: annotateLight(list.filter((j) => strictOk(j) && placeOk(j))), error, ms });
+  });
+  const { jobs, errors } = await Promise.race([search, stop]).finally(() => stopRequests.delete(runId));
   const s = load();
   const hide = [...(q.hideCompanies ?? []), ...(s.jobs?.hideCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
   const prefer = [...(q.preferCompanies ?? []), ...(s.jobs?.preferCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);
@@ -106,6 +120,7 @@ export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source:
   };
   const list = annotate(jobs).filter((j) => {
     if (!strictOk(j)) return false;
+    if (!placeOk(j)) return false;
     if (!near(j)) return false;
     if (q.onlyNew && !j.isNew) return false;
     if (q.hideReposts && j.repost) return false;
@@ -214,6 +229,21 @@ export function exportSaved(path: string) {
  * Distance check for a free-text job location (QF-110). Country names are skipped, a country named in the text
  * overrides the searched country, and the first part that is a known city decides. Unknown places are kept.
  */
+/**
+ * Is the job in the searched country? A job that names another country, or a city that is only in another country,
+ * is left out; remote jobs that name no country and places that can't be recognised are kept. Pure apart from the
+ * offline city list. Exported for tests.
+ */
+export function jobCountryOk(location: string, searchCountry: string) {
+  if (!searchCountry) return true;
+  const parts = location.split(/[,·|/()]|\s-\s/).map((x) => x.replace(/\b(remote|hybrid|on-?site|district|division|city|metropolitan area|area|tehsil|greater)\b/gi, '').trim()).filter((x) => x.length > 2);
+  // Names that are both a country and a US state or region are accepted for either.
+  const both: Record<string, string[]> = { georgia: ['GE', 'US'], jersey: ['JE', 'US'], 'new mexico': ['US'], 'punjab': ['PK', 'IN'] };
+  for (const p of parts) { const b = both[p.toLowerCase()]; if (b) return b.includes(searchCountry); const c = countryCode(p); if (c) return c === searchCountry; }
+  for (const p of parts) { const c = cityCountry(p, searchCountry); if (c) return c === searchCountry; }
+  return true;
+}
+
 export function jobDistanceOk(location: string, centre: { lat: number; lon: number }, km: number, searchCountry: string) {
   const parts = location.split(/[,·|/]|\s-\s/).map((x) => x.replace(/\b(district|division|city|metropolitan area|area|tehsil)\b/gi, '').trim()).filter(Boolean);
   const named = parts.map((p) => countryCode(p)).find(Boolean);

@@ -3,7 +3,20 @@
 import { BOT_UA, fetchText } from '../util';
 
 const getJson = async (url: string) => { const r = await fetchText(url, { ua: BOT_UA, timeout: 20000, headers: { Accept: 'application/json' } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return JSON.parse(r.text); };
-const time = (v: any) => String(v?.time ?? '').replace(/^\+/, '').slice(0, 10);
+/**
+ * A Wikidata time as an ISO date with only the precision Wikidata gives: '2022' (year), '2022-05' (month) or '2022-05-17'.
+ * Wikidata writes unknown parts as 00 ('+2022-00-00T00:00:00Z'), which is not a valid date. Pure, exported for tests.
+ */
+export function wdDate(v: any): string {
+  const m = String(v?.time ?? '').match(/^[+]?(-?\d{1,4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const p = Number(v?.precision ?? 11);
+  const y = m[1].padStart(4, '0');
+  if (p <= 9 || m[2] === '00') return y;
+  if (p === 10 || m[3] === '00') return `${y}-${m[2]}`;
+  return `${y}-${m[2]}-${m[3]}`;
+}
+const time = wdDate;
 
 /** Turn Wikidata claims into size and growth facts. Pure, exported for tests. */
 export function factsFromClaims(id: string, claims: Record<string, any[]>) {

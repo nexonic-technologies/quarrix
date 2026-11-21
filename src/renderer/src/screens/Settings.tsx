@@ -19,6 +19,8 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   const [sec, setSec] = useState<(typeof SECTIONS)[number][0]>('profile');
   const [info, setInfo] = useState<any>(null);
   const [models, setModels] = useState<string[]>([]);
+  const [effective, setEffective] = useState('');
+  useEffect(() => { if (s?.ai?.provider === 'openrouter' && !s.ai.model) call<string>('ai:effective').then(setEffective).catch(() => setEffective('')); }, [s?.ai?.provider, s?.ai?.model, s?.ai?.apiKey]);
   const [dnc, setDnc] = useState<any[]>([]);
   const [dncNew, setDncNew] = useState('');
   const [testTo, setTestTo] = useState('');
@@ -61,7 +63,15 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
               <div className="ai-col paid"><b>Paid key</b><small>Anthropic, OpenAI or Gemini</small>
                 <ul><li>Everything in Free, with better writing and fewer rewrites</li><li>More accurate owner names and summaries</li><li>Fast enough for autopilot at full volume</li><li>Costs about 1 cent or less per lead</li></ul></div>
             </div>
-            <p className="muted small">The model never finds the businesses. Searching uses the maps, web and directories either way. It changes how well Quarrix understands each business and how personal the emails are, and that is what gets replies.</p>
+            <div className="note small">
+              <b>What a model changes, and what it doesn't.</b> Finding businesses and jobs is the same with or without a key: Quarrix searches maps, the web, directories and job boards directly, so a key never adds more leads or more jobs. A model is used for the thinking afterwards:
+              <ul style={{ margin: '6px 0 0 18px' }}>
+                <li>writing a personal first email and follow-ups for each business, from its website and gaps;</li>
+                <li>finding the owner's name and a 2-line summary of each business;</li>
+                <li>ranking jobs against your CV (match score and reason), cover letters and tailored CVs;</li>
+                <li>reading whole business lists out of PDFs, and sorting replies.</li>
+              </ul>
+            </div>
             <label className="field"><span>Writing model</span>
               <select className="select" value={s.ai.provider} onChange={(e) => { set('ai.provider', e.target.value); set('ai.model', ''); setModels([]); }}>
                 <option value="none">None: use built-in templates</option>
@@ -78,6 +88,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
                   <datalist id="models">{models.map((m) => <option key={m} value={m} />)}</datalist>
                   <button className="btn" onClick={async () => { await save(); try { const m = await call<string[]>('ai:models'); setModels(m); toast.push(`${m.length} models available`); } catch (e: any) { toast.push(e.message, true); } }}>Load models</button>
                 </div>
+                {s.ai.provider === 'openrouter' && !s.ai.model && <small>{effective ? <>Empty means Quarrix picks a free model for you: now <b>{effective}</b>.</> : 'Empty means Quarrix picks a free model once the key is saved.'}</small>}
               </label>
             </>}
           </section>}

@@ -47,8 +47,9 @@ export function approve(leadId: number, by = 'you') {
   return true;
 }
 
-export function approveAll() {
-  const ids = (db.raw().prepare("SELECT DISTINCT m.lead_id id FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'draft' AND m.channel = 'email' AND l.email <> ''").all() as { id: number }[]).map((r) => r.id);
+/** Approve every email draft, only in the given client workspace when one is selected ('' = all clients). */
+export function approveAll(client = '') {
+  const ids = (db.raw().prepare("SELECT DISTINCT m.lead_id id FROM messages m JOIN leads l ON l.id = m.lead_id WHERE m.status = 'draft' AND m.channel = 'email' AND l.email <> '' AND (? = '' OR l.client = ?)").all(client, client) as { id: number }[]).map((r) => r.id);
   let n = 0;
   for (const id of ids) { try { approve(id); n++; } catch { /* blocked lead stays a draft */ } }
   return n;

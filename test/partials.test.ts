@@ -63,3 +63,15 @@ test('results without coordinates are kept only when their place agrees', () => 
   assert.equal(placeMatches({}, lahore), true, 'no place at all: kept (for example web search results)');
   assert.equal(placeMatches({ country: 'PK', city: 'Karachi' }, { country: 'PK', city: '', bbox: [23, 37, 60, 78] }), true, 'country search keeps any city');
 });
+
+test('Wikidata dates keep only the precision Wikidata gives (no 00 months or days)', async () => {
+  const { wdDate, factsFromClaims } = await import('../src/main/sources/companyfacts');
+  assert.equal(wdDate({ time: '+2022-00-00T00:00:00Z', precision: 9 }), '2022');
+  assert.equal(wdDate({ time: '+2021-05-00T00:00:00Z', precision: 10 }), '2021-05');
+  assert.equal(wdDate({ time: '+2020-03-17T00:00:00Z', precision: 11 }), '2020-03-17');
+  assert.equal(wdDate({ time: '+2019-00-00T00:00:00Z' }), '2019', 'zero month even without precision');
+  const emp = (n: number, t: string) => ({ mainsnak: { datavalue: { value: { amount: `+${n}` } } }, qualifiers: { P585: [{ datavalue: { value: { time: t, precision: 9 } } }] } });
+  const f: any = factsFromClaims('Q1', { P1128: [emp(1000, '+2018-00-00T00:00:00Z'), emp(2000, '+2022-00-00T00:00:00Z')] });
+  assert.equal(f.employeesAt, '2022');
+  assert.ok(f.employeeGrowthPerYear > 18 && f.employeeGrowthPerYear < 20, 'growth is computed from year-only dates');
+});

@@ -87,3 +87,23 @@ test('job distance: country names, other countries and same-name cities', async 
   assert.equal(jobDistanceOk('Dubai, United Arab Emirates', g, 1000, 'PK'), false, 'another country named');
   assert.equal(jobDistanceOk('Somewhere Unknown', g, 10, 'PK'), true, 'unknown places are kept');
 });
+
+test('jobs in other countries are left out when a country is chosen', async () => {
+  const { jobCountryOk } = await import('../src/main/jobstore');
+  assert.equal(jobCountryOk('Lahore, Punjab, Pakistan', 'PK'), true);
+  assert.equal(jobCountryOk('London, United Kingdom', 'PK'), false);
+  assert.equal(jobCountryOk('Berlin', 'PK'), false, 'a city that is only abroad');
+  assert.equal(jobCountryOk('Hyderabad', 'PK'), true, 'a name the searched country also has');
+  assert.equal(jobCountryOk('Remote', 'PK'), true);
+  assert.equal(jobCountryOk('Remote, Germany', 'PK'), false);
+  assert.equal(jobCountryOk('Atlanta, Georgia', 'US'), true);
+  assert.equal(jobCountryOk('Somewhere unknown', 'PK'), true);
+  assert.equal(jobCountryOk('Karachi', ''), true);
+});
+
+test('bot checks and markup never become a job description', async () => {
+  const { NOT_A_JOB_PAGE } = await import('../src/main/resume');
+  assert.ok(NOT_A_JOB_PAGE.test('<meta content="0;url=/httpservice/retry/enablejs?sei=x" http-equiv="refresh">'));
+  assert.ok(NOT_A_JOB_PAGE.test("If you're having trouble accessing Google Search, please click here"));
+  assert.ok(!NOT_A_JOB_PAGE.test('We are hiring a React developer to build fast websites.'));
+});

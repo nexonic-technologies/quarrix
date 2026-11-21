@@ -82,15 +82,24 @@ export function keywordMatch(cv: Cv, jobs: Job[]) {
 }
 
 /** The full job post text, for writing a letter or tailoring a CV. */
+/** Pages that are a bot check, a consent wall or a "turn on JavaScript" redirect, not the job post. Pure, exported for tests. */
+export const NOT_A_JOB_PAGE = /enablejs|httpservice\/retry|unusual traffic|are not a robot|captcha|just a moment|enable javascript|having trouble accessing google|before you continue to google|cf-browser-verification|access denied/i;
+
+/** The full job post as plain text, or the listing's own summary when the page can't be read honestly. */
 export async function jobText(job: Job) {
+  // Google Jobs links are search pages, not job posts: they only ever return Google's own pages.
+  if (/^https?:\/\/(www\.)?google\.[a-z.]+\//i.test(job.url)) return job.snippet;
   try {
     const li = job.url.match(/linkedin\.com\/jobs\/view\/[^/]*?-?(\d{6,})/);
     const url = li ? `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${li[1]}` : job.url;
     const r = await fetchText(url, { ua: UA, timeout: 20000 });
+    if (!r.ok || NOT_A_JOB_PAGE.test(r.text.slice(0, 20000))) return job.snippet;
     const $ = cheerio.load(r.text);
-    $('script, style, nav, header, footer').remove();
+    $('script, style, noscript, template, iframe, svg, nav, header, footer, meta, link').remove();
     const t = ($('.show-more-less-html__markup').text() || $('main').text() || $('body').text()).replace(/\s+/g, ' ').trim();
-    return t.length > 200 ? t.slice(0, 7000) : job.snippet;
+    // Never show markup as a description.
+    if (t.length <= 200 || /<\/?[a-z][^>]*>|\{display:none\}/i.test(t) || NOT_A_JOB_PAGE.test(t)) return job.snippet;
+    return t.slice(0, 7000);
   } catch { return job.snippet; }
 }
 

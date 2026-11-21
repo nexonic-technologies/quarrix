@@ -184,7 +184,7 @@ jobs:
             cat verification/signing.txt 2>/dev/null | sed 's/^/- /'
             for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
             if [ -f verification/live-providers.json ]; then
-              node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+x.check+': '+x.detail)"
+              node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data; '+(r.outages||0)+' temporary provider outages; '+(r.failures||0)+' failures. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+(x.kind==='outage'?'Outage (provider busy or unreachable), ':'Failure, ')+x.check+': '+x.detail)"
               gh release upload "$TAG" verification/live-providers.json -R "$REPO" --clobber
             fi
             echo

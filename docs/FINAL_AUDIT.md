@@ -1,12 +1,12 @@
-# Final audit, v0.22.1
+# Final audit, v0.23.0
 
 This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exercised the real code path; a successful compile is not counted.
 
 ## How things were tested
 
-- **Unit tests:** 69, in Node.
-- **Integration tests:** 26, in `test/int`, inside Electron's own Node against real SQLite, real SMTP servers, the real local HTTP API, the real CLI and MCP processes and a real webhook receiver.
-- **Installed-app smoke test** (`src/main/smoke.ts`, 16 checks): every release installs each installer the way a user would (DMG, silent NSIS install, `apt install` of the .deb), starts the installed app and checks window, first-launch wizard, every screen, workspaces, accessible names, Arabic right-to-left translation, database, IPC, client isolation, sending approval, network guard, packaged CLI and secret storage. The same test passed here on Linux against the built app.
+- **Unit tests:** 73, in Node.
+- **Integration tests:** 40, in `test/int`, inside Electron's own Node against real SQLite, real SMTP servers, the real local HTTP API, the real CLI and MCP processes and a real webhook receiver.
+- **Installed-app smoke test** (`src/main/smoke.ts`, 17 checks): every release installs each installer the way a user would (DMG, silent NSIS install, `apt install` of the .deb), starts the installed app and checks window, first-launch wizard, every screen, workspaces, accessible names, Arabic right-to-left translation, database, IPC, client isolation, sending approval, network guard, packaged CLI and secret storage. The same test passed here on Linux against the built app.
 - **Signature verification** per platform in every release; the release notes state whether each build is signed.
 - **Live provider checks** (`scripts/live.mjs`): the app's own source code against the real keyless services (OpenStreetMap, Wikidata, NPI, Overture, DNS, Hacker News, Greenhouse, Lever, Ashby, SmartRecruiters, Workday, keyless job boards, a job alert run). They run from CI on every release and are published as `live-providers.json`; they are a report, not a gate.
 
@@ -16,6 +16,29 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 - Fixed in 0.22.1 from these results: Greenhouse, Lever and Ashby feeds of big employers are tens of MB and hit the 3 MB limit (now 40 MB for employer feeds); Overture renamed `categories` to `taxonomy`/`basic_category` in its newer releases (now read whichever the file has).
 - Confirmed in the v0.22.1 release (14 of 16 live): Overture returned 10 places, Greenhouse 781, Lever 308 and Ashby 187 jobs.
 - Not fixed: Overpass was busy at the time (temporary); SmartRecruiters returned no jobs for "Visa" (the test employer may have moved off SmartRecruiters; QF-094 stays Built).
+
+## 0.23.0 (21 Nov 2026)
+
+- **Workspace isolation, completed:**
+  - "Approve all" only schedules emails in the selected client workspace.
+  - Manually added leads are filed in that workspace.
+  - The dashboard, statistics, filters, signal counts, outreach metrics and the send plan read the workspace only. They use temporary views that shadow the tables during a read.
+  - Search stop, pause, resume and log check that the search belongs to the workspace, and so does undoing a merge.
+  - "Mark all seen" only marks the workspace's signals.
+- **Jobs:**
+  - Jobs that name another country, or a city that is only abroad, are left out when a country is chosen.
+  - A search can be stopped at once.
+  - Bot checks and HTML are never shown as a job description; Google Jobs links show the listing summary.
+- **Writing model:**
+  - OpenRouter with a key but no model now picks a free model (best first) and tries the next one if a free model is busy. Before this, nothing was used.
+  - The Writing settings explain that a model never finds more leads or jobs; it writes, summarises and ranks.
+- **Providers:**
+  - Overpass uses four public servers in turn and reports the real cause.
+  - Wikidata dates keep only the precision Wikidata gives ("2022", not "2022-00-00"), which also fixes company growth figures.
+  - The live check now separates temporary provider outages from real failures and tests more SmartRecruiters employers, search preview and source diagnostics.
+- **Localization:** about 100 main-process error messages are translated into all five languages.
+- **Docker-free self-check:** the installed-app smoke test also draws the lead map and the tasks week view (17 checks).
+- **Verification:** test/int/verify.int.ts checks 19 earlier "Built" items end to end. Nine items whose only remaining step is the owner's account are now marked **Blocked (needs owner credentials)**, not Built.
 
 ## Critical fixes (P0), 0.22
 
@@ -48,50 +71,24 @@ This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exe
 - **QF-121:** needs Apple and Windows signing certificates.
 - **Not done (QF-115, demo data):** intentionally excluded: it conflicts with the owner's "real data only" rule.
 
-## Built, not yet verified live (33 items)
+## Built, not yet verified live (5 items)
 
-Each release now runs the keyless ones against the real services from CI (live-providers.json on the release page); items that need the owner's own accounts or keys stay here until those are available.
-
-| ID | Feature | Why it is not verified yet | What is needed |
+| ID | Feature | Why | What is needed |
 |---|---|---|---|
-| QF-002 | Batch search builder | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-011 | Provider connectivity diagnostics | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-012 | Per-provider request budgets | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-013 | Batch preflight/small-sample preview | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-015 | Business search map with clustering | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-026 | Business imagery and profile media | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-029 | Evidence and source provenance per field | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-030 | Field freshness and stale-data warnings | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-031 | Configurable enrichment waterfall | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-032 | Provider conflict reconciliation | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-036 | Business-change watchlists | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-037 | Source snapshots and comparison history | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-039 | Bulk domain-based contact lookup | Needs the live service; this environment cannot reach it | Hunter key |
-| QF-040 | Verified source URLs for discovered contacts | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-042 | Optional provider-backed mailbox verification | Needs the live service; this environment cannot reach it | Hunter or ZeroBounce key |
-| QF-043 | Bulk email validation queue | Needs the live service; this environment cannot reach it | Hunter or ZeroBounce key |
-| QF-045 | Contact freshness and historical changes | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-054 | Calendar-based next-action view | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-059 | Gmail browser-based OAuth | Needs the live service; this environment cannot reach it | Google OAuth client and account |
-| QF-060 | Microsoft 365/Outlook OAuth | Needs the live service; this environment cannot reach it | Azure app and Microsoft 365 account |
-| QF-062 | Unified replies inbox | Needs the live service; this environment cannot reach it | real IMAP mailbox |
-| QF-070 | Optional inbox placement testing | Needs the live service; this environment cannot reach it | mail-tester.com run with a real mailbox |
-| QF-072 | Per-mailbox and per-campaign metrics | Needs the live service; this environment cannot reach it | real sends |
-| QF-075 | Optional transactional email provider adapter | Needs the live service; this environment cannot reach it | SendGrid key and verified sender |
-| QF-085 | HubSpot adapter | Needs the live service; this environment cannot reach it | HubSpot private app token |
-| QF-086 | Google Sheets connector | Needs the live service; this environment cannot reach it | Google OAuth client with Sheets |
-| QF-087 | Notion connector | Needs the live service; this environment cannot reach it | Notion integration token |
-| QF-088 | n8n/Zapier adapters | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-090 | Approved-source browser extension | Needs the live service; this environment cannot reach it | Chrome with the extension loaded |
-| QF-094 | SmartRecruiters connector | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-096 | Personio/Pinpoint connectors | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-113 | Job result exports | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
-| QF-117 | Advanced search preview and estimate | Needs the live service; this environment cannot reach it | A run in the installed app with internet access |
+| QF-011 | Provider connectivity diagnostics | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+| QF-013 | Batch preflight/small-sample preview | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+| QF-094 | SmartRecruiters connector | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+| QF-096 | Personio/Pinpoint connectors | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+| QF-117 | Advanced search preview and estimate | Needs a live run against the real service | The live check in the next release (live-providers.json) |
+
+## Blocked on the owner's credentials (adapters tested against recorded API answers)
+
+QF-039 Hunter, QF-042 Hunter/ZeroBounce, QF-059 Google OAuth, QF-060 Microsoft OAuth, QF-070 placement test (real mailbox), QF-075 SendGrid, QF-085 HubSpot, QF-086 Google Sheets, QF-087 Notion.
 
 ## Totals
 
-- Done: 82
-- Built: 33
-- Blocked: 8
+- Done: 101
+- Built: 5
+- Blocked: 17
 - Partial: 0
 - Not done: 1

@@ -33,7 +33,7 @@ import * as db from './db';
 import * as jobs from './jobs';
 import * as mail from './mail';
 import * as wa from './whatsapp';
-import { listModels, PROVIDERS } from './ai';
+import { effectiveModel, listModels, PROVIDERS } from './ai';
 import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
 import { citiesOf, matchJobs } from './jobsearch';
@@ -111,8 +111,9 @@ function registerIpc() {
   handle('app:info', () => ({ version: app.getVersion(), platform: process.platform, categories: CATEGORIES, providers: PROVIDERS, dataPath: app.getPath('userData') }));
   handle('settings:get', () => publicSettings());
   handle('settings:save', (patch) => { const r = saveFromUi(patch); nativeTheme.themeSource = load().theme; return r; });
-  handle('stats', () => db.stats());
-  handle('facets', () => db.facets());
+  // Workspace-wide numbers are read through withScope, so a client workspace only counts its own records.
+  handle('stats', () => scope.withScope(() => db.stats()));
+  handle('facets', () => scope.withScope(() => db.facets()));
 
   handle('search:start', (category: string, place: string, sources: string[]) => jobs.queueSearch(category, place, sources));
   handle('search:stop', (id: number) => jobs.stopSearch(id));
@@ -149,12 +150,12 @@ function registerIpc() {
   });
   handle('mail:resume', () => { save({ email: { pausedReason: '' } }); return true; });
   handle('mail:dns', (domain?: string) => checkDomain(domain ? String(domain) : undefined));
-  handle('mail:dryrun', (days?: number) => dryRunPlan(Math.min(14, Math.max(1, Number(days) || 3))));
+  handle('mail:dryrun', (days?: number) => scope.withScope(() => dryRunPlan(Math.min(14, Math.max(1, Number(days) || 3)))));
   handle('mail:health', () => ({ ...mail.recentHealth(), paused: load().email.pausedReason, authorized: load().email.authorizedAt, from: load().email.authorizedFrom }));
   handle('replies:list', (all?: boolean) => db.listReplies(!all));
   handle('replies:update', (id: number, patch: { intent?: string; handled?: boolean }) => { db.updateReply(Number(id), { intent: patch?.intent ? String(patch.intent) : undefined, handled: patch?.handled }); return true; });
   handle('outreach:attention', () => db.attention());
-  handle('outreach:metrics', () => { const m = db.outreachMetrics() as any; return { ...m, ab: abResult(m.variants.A, m.variants.B), mailboxes: mb.stats() }; });
+  handle('outreach:metrics', () => { const m = scope.withScope(() => db.outreachMetrics()) as any; return { ...m, ab: abResult(m.variants.A, m.variants.B), mailboxes: mb.stats() }; });
   handle('mailboxes:stats', () => mb.stats());
   handle('fields:computed', (entity: string, id: number) => { const rec = entity === 'deal' ? db.raw().prepare('SELECT * FROM deals WHERE id = ?').get(Number(id)) : db.getLead(Number(id)); return rec ? crm.computed(entity === 'deal' ? 'deal' : 'lead', rec as any) : {}; });
   handle('companies:list', (q?: string) => crm.listCompanies(String(q ?? '')));
@@ -262,15 +263,16 @@ function registerIpc() {
   handle('leads:update', (id: number, patch) => { db.updateLead(id, patch); if (patch.status === 'do_not_contact') { const l = db.getLead(id); if (l?.email) db.suppress(l.email, 'marked do not contact'); db.cancelPending(id, 'Marked do not contact'); } return db.getLead(id); });
   handle('leads:delete', (ids: number[]) => db.deleteLeads(ids));
   handle('leads:enrich', async (ids: number[]) => { for (const id of ids) db.updateLead(id, { enriched_at: null }); await jobs.runEnrichment([...ids]); return ids.length; });
-  handle('leads:add', (l) => db.upsertLead({ ...l, source: 'manual' })[0]);
+  handle('leads:add', (l) => db.upsertLead({ ...(l ?? {}), source: 'manual', client: scope.current() })[0]); // filed in the selected workspace
 
   handle('draft:create', (ids: number[]) => createDrafts(ids, () => send('drafts')));
   handle('messages:list', (status: string) => db.listMessages(status));
   handle('messages:update', (id: number, patch) => db.updateMessage(id, patch));
   handle('messages:delete', (id: number) => db.deleteMessage(id));
   handle('messages:approve', (leadId: number) => approve(leadId));
-  handle('messages:approveAll', () => approveAll());
-  handle('jobs:search', (q, runId?: number) => jobstore.searchAll(q ?? {}, (b) => send('jobs-batch', { runId, ...b })));
+  handle('messages:approveAll', () => approveAll(scope.current()));
+  handle('jobs:search', (q, runId?: number) => jobstore.searchAll(q ?? {}, (b) => send('jobs-batch', { runId, ...b }), Number(runId) || 0));
+  handle('jobs:stop', (runId: number) => { jobstore.stopSearch(Number(runId)); return true; });
   handle('jobs:recent', () => jobstore.recentSearches());
   handle('jobs:clearRecent', () => jobstore.clearSearches());
   handle('employers:list', () => jobstore.listEmployers());
@@ -329,15 +331,15 @@ function registerIpc() {
     return db.saveJob(job);
   });
   handle('signals:list', (f) => db.listSignals(f ?? {}));
-  handle('signals:counts', () => db.signalCounts());
+  handle('signals:counts', () => scope.withScope(() => db.signalCounts()));
   handle('signals:update', (id: number, patch) => db.updateSignal(id, patch));
-  handle('signals:seenAll', () => db.markAllSeen());
+  handle('signals:seenAll', () => db.markAllSeen(scope.current()));
   handle('signals:run', () => signals.run(send, true));
   handle('signals:check', async (id: number) => { const l = db.getLead(id); return l ? signals.checkLead(l) : 0; });
   handle('watches:list', () => scope.byClient(db.listWatches()));
   handle('watches:save', (w) => db.saveWatch(scope.ownRecord('watches', w ?? {})));
   handle('watches:delete', (id: number) => { scope.ownRecord('watches', { id }); return db.deleteWatch(id); });
-  handle('dash:get', (days: number) => db.dashboard(days || 30));
+  handle('dash:get', (days: number) => scope.withScope(() => db.dashboard(days || 30)));
   handle('jobs:unsave', (id: string) => db.unsaveJob(id));
   handle('geo:cities', (cc: string) => citiesOf(cc));
   handle('search:log', (id: number) => jobs.searchLog(id));
@@ -360,6 +362,7 @@ function registerIpc() {
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
   handle('ai:models', () => listModels(load().ai));
+  handle('ai:effective', () => effectiveModel(load().ai));
 
   handle('wa:open', async (leadId: number, text: string) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, false); const n = await wa.openChat(l.phone, l.country, text); db.logEvent(leadId, 'whatsapp', 'Opened WhatsApp with a drafted message'); return n; });
   handle('wa:cloud', async (leadId: number, body) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, true); const id = await wa.cloudSend(l.phone, l.country, body); db.logEvent(leadId, 'whatsapp', 'Sent with the WhatsApp Cloud API'); return id; });

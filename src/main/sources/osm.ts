@@ -45,7 +45,7 @@ export async function searchOsm(category: string, place: string, limit: number, 
   }
   const q = `[out:json][timeout:180];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center${Number.isFinite(limit) ? ' ' + limit * 2 : ''};`;
   const r = await overpass(q, 190000);
-  if (!r.ok) throw new Error(`OpenStreetMap is busy (HTTP ${r.status}). Try again in a few minutes.`);
+  if (!r.ok) throw new Error(`OpenStreetMap is busy (${r.status ? `HTTP ${r.status}` : (r as any).why || 'no answer'}). Try again in a few minutes.`);
   const els = (JSON.parse(r.text).elements ?? []) as any[];
   const out: Candidate[] = [];
   for (const e of els) {
@@ -86,11 +86,17 @@ export async function subAreas(place: string | Place | null, max = 40): Promise<
   } catch { return []; }
 }
 
-/** Overpass with a retry on a second public server when the main one is busy. */
+/** Public Overpass servers, tried in order when one is busy, blocked or down. */
+export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+/** Overpass with a retry on the other public servers; the last problem is kept so the message says what happened. */
 async function overpass(q: string, timeout: number) {
-  const send = (url: string) => fetchText(url, { method: 'POST', ua: BOT_UA, timeout, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-  let r = await send('https://overpass-api.de/api/interpreter').catch(() => ({ ok: false, status: 0, text: '' }) as Awaited<ReturnType<typeof fetchText>>);
-  if (!r.ok) { await sleep(4000); r = await send('https://overpass.kumi.systems/api/interpreter').catch(() => r); }
+  const send = (url: string) => fetchText(url, { method: 'POST', ua: BOT_UA, timeout, maxBytes: 20_000_000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+  let r = { ok: false, status: 0, text: '' } as Awaited<ReturnType<typeof fetchText>> & { why?: string };
+  for (const [i, url] of OVERPASS.entries()) {
+    if (i) await sleep(2000);
+    r = await send(url).catch((e: any) => ({ ok: false, status: 0, text: '', why: String(e?.message ?? e).slice(0, 120) }) as any);
+    if (r.ok) return r;
+  }
   return r;
 }
 

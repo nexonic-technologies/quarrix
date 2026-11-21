@@ -233,7 +233,7 @@ export function listSignals(f: { type?: string; all?: boolean } = {}) {
 export const signalCounts = () => db.prepare('SELECT type, level, COUNT(*) n, SUM(seen = 0) unseen FROM signals WHERE dismissed = 0 GROUP BY type, level').all();
 export const leadSignals = (leadId: number) => db.prepare('SELECT * FROM signals WHERE lead_id = ? AND dismissed = 0 ORDER BY id DESC LIMIT 5').all(leadId) as Signal[];
 export const updateSignal = (id: number, patch: { seen?: number; dismissed?: number }) => db.prepare(`UPDATE signals SET ${Object.keys(patch).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(patch), id);
-export const markAllSeen = () => db.prepare('UPDATE signals SET seen = 1 WHERE seen = 0').run();
+export const markAllSeen = (client = '') => db.prepare("UPDATE signals SET seen = 1 WHERE seen = 0 AND (? = '' OR lead_id IN (SELECT id FROM leads WHERE client = ?))").run(client, client);
 export const listWatches = () => db.prepare('SELECT w.*, (SELECT COUNT(*) FROM signals s JOIN leads l ON l.id = s.lead_id JOIN searches se ON se.id = l.search_id WHERE se.watch_id = w.id AND s.type = \'new_listing\') found FROM watches w ORDER BY id DESC').all();
 export function saveWatch(w: { id?: number; category?: string; place?: string; sources?: string; every_days?: number; enabled?: number; last_run?: string; runs?: number; client?: string }) {
   const cols = ['category', 'place', 'sources', 'every_days', 'enabled', 'last_run', 'runs', 'client'].filter((k) => (w as Record<string, unknown>)[k] !== undefined);
