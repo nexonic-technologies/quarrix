@@ -66,7 +66,7 @@ const owned = (t: Parameters<typeof assertOwned>[0]): Guard => (a, s) => (assert
 export const ARG_GUARDS: Record<string, Guard> = {
   'leads:get': arg0Lead, 'leads:update': arg0Lead, 'leads:trend': arg0Lead, 'leads:intel': arg0Lead, 'messages:approve': arg0Lead, 'deals:forLead': arg0Lead,
   'email:find': arg0Lead, 'proof:make': arg0Lead, 'proof:info': arg0Lead, 'proof:open': arg0Lead, 'proof:send': arg0Lead, 'proof:save': arg0Lead,
-  'signals:check': arg0Lead, 'wa:open': arg0Lead, 'wa:cloud': arg0Lead, 'contacts:list': arg0Lead,
+  'signals:check': arg0Lead, 'messages:cancel': arg0Lead, 'wa:open': arg0Lead, 'wa:cloud': arg0Lead, 'contacts:list': arg0Lead,
   'leads:delete': arg0Ids, 'leads:enrich': arg0Ids, 'draft:create': arg0Ids, 'email:verify': arg0Ids, 'dupes:apart': arg0Ids,
   'sync:hubspot': arg0Ids, 'sync:notion': arg0Ids, 'sync:postgres': arg0Ids, 'sync:s3': arg0Ids, 'sync:sheets': arg0Ids,
   'messages:update': owned('messages'), 'messages:delete': owned('messages'), 'replies:update': owned('replies'), 'signals:update': owned('signals'),

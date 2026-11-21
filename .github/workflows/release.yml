@@ -128,6 +128,34 @@ jobs:
           BIN="$(dpkg -L quarrix | grep -E '/opt/.*/quarrix$' | head -1)"
           QUARRIX_SMOKE_OUT="$PWD/smoke-linux.json" xvfb-run -a "$BIN" --no-sandbox || (cat smoke-linux.json; exit 1)
           cat smoke-linux.json
+      # Every shipped architecture is checked (0.25): the binary's CPU type, and a second installed-app run where the runner can.
+      - name: Verify architectures and the second package (macOS Intel)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          A=$(lipo -archs dist/mac-arm64/Quarrix.app/Contents/MacOS/Quarrix); X=$(lipo -archs dist/mac/Quarrix.app/Contents/MacOS/Quarrix)
+          [ "$A" = arm64 ] && [ "$X" = x86_64 ] || { echo "wrong CPU types: arm64 build=$A, Intel build=$X"; exit 1; }
+          echo "macOS: Apple Silicon build is arm64, Intel build is x86_64" | tee -a signing.txt
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            hdiutil attach -nobrowse -mountpoint /tmp/qx "$(ls dist/*-mac-x64.dmg)" && cp -R /tmp/qx/Quarrix.app /tmp/QuarrixX.app && hdiutil detach /tmp/qx
+            QUARRIX_SMOKE_OUT="$PWD/smoke-mac-x64.json" arch -x86_64 /tmp/QuarrixX.app/Contents/MacOS/Quarrix || (cat smoke-mac-x64.json; exit 1)
+          else echo "macOS Intel: installed-app run skipped (no Rosetta on this runner); CPU type checked" | tee -a signing.txt; fi
+      - name: Verify architectures (Windows ARM64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          function Machine($f) { $b = [IO.File]::ReadAllBytes($f); $pe = [BitConverter]::ToInt32($b, 0x3c); '{0:X4}' -f [BitConverter]::ToUInt16($b, $pe + 4) }
+          $x = Machine "dist\win-unpacked\Quarrix.exe"; $a = Machine "dist\win-arm64-unpacked\Quarrix.exe"
+          if ($x -ne "8664" -or $a -ne "AA64") { throw "wrong CPU types: x64 build=$x, ARM64 build=$a" }
+          if (-not (Get-ChildItem dist -Filter "*-arm64-setup.exe")) { throw "no ARM64 installer" }
+          "Windows: x64 build is AMD64, ARM64 build is ARM64 (installed-app run needs an ARM64 runner)" | Tee-Object -Append signing.txt
+      - name: Smoke test the AppImage (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          IMG="$(ls dist/*.AppImage | head -1)"; chmod +x "$IMG"
+          QUARRIX_SMOKE_OUT="$PWD/smoke-linux-appimage.json" APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$IMG" --no-sandbox || (cat smoke-linux-appimage.json; exit 1)
+          echo "Linux: AppImage installed-app smoke test passed" | tee -a signing.txt
       - name: Attach smoke reports and signing status
         if: always()
         uses: actions/upload-artifact@v4
@@ -182,7 +210,7 @@ jobs:
             echo "## Verification"
             echo
             cat verification/signing.txt 2>/dev/null | sed 's/^/- /'
-            for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
+            for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+(process.argv[1].includes('appimage')?' (AppImage)':process.argv[1].includes('linux')?' (deb)':'')+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
             if [ -f verification/live-providers.json ]; then
               node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data; '+(r.outages||0)+' temporary provider outages; '+(r.failures||0)+' failures. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+(x.kind==='outage'?'Outage (provider busy or unreachable), ':'Failure, ')+x.check+': '+x.detail)"
               gh release upload "$TAG" verification/live-providers.json -R "$REPO" --clobber

@@ -1,5 +1,6 @@
 // CRM (phase 5): deals and pipeline stages, tasks and reminders, custom fields, saved views,
 // duplicate review with undo, and forecast numbers. Uses the same SQLite file as the leads.
+import { differentPlace } from './safety';
 import * as db from './db';
 import { load } from './settings';
 import { isPlatformHost } from './util';
@@ -183,7 +184,7 @@ export const deleteView = (id: number) => raw().prepare('DELETE FROM saved_views
 // ── Duplicate review with undo (QF-053) ──
 const norm = (s = '') => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function duplicateGroups(limit = 100) {
-  const rows = raw().prepare('SELECT id, name, phone, email, domain, city, address, source, created_at, client FROM leads').all() as any[];
+  const rows = raw().prepare('SELECT id, name, phone, email, domain, city, address, lat, lon, source, created_at, client FROM leads').all() as any[];
   const groups = new Map<string, any[]>();
   const add = (k: string, r: any) => { if (!k) return; const g = groups.get(k) ?? []; g.push(r); groups.set(k, g); };
   for (const r of rows) {
@@ -195,7 +196,9 @@ export function duplicateGroups(limit = 100) {
   }
   const seen = new Set<string>();
   const out: { reason: string; leads: any[] }[] = [];
-  for (const [k, g] of groups) {
+  for (const [k, g0] of groups) {
+    // Branches sharing a central phone or email are different places, not duplicates (0.25).
+    const g = g0.filter((r) => !differentPlace(g0[0], r));
     if (g.length < 2) continue;
     const sig = g.map((x) => x.id).sort().join(',');
     if (seen.has(sig) || raw().prepare('SELECT 1 FROM merges WHERE removed LIKE ? AND undone = 0').get(`%"keep_apart":"${sig}"%`)) continue;

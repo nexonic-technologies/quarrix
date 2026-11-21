@@ -10,6 +10,7 @@ import * as oauth from './oauth';
 import * as scope from './scope';
 import { prepareSmoke, runSmoke, smokeOut } from './smoke';
 import * as crm from './crm';
+import * as validate from './validate';
 import * as career from './career';
 import * as jobstore from './jobstore';
 import * as automation from './automation';
@@ -105,7 +106,7 @@ const handle = (ch: string, fn: (...a: any[]) => unknown) =>
     if (!from.startsWith('file:') && !(devOrigin() && from.startsWith(devOrigin() + '/'))) return { ok: false, error: 'Blocked a call from an unknown page.' };
     try { if (JSON.stringify(args ?? []).length > 5_000_000) return { ok: false, error: 'Request too large.' }; } catch { return { ok: false, error: 'Request not readable.' }; }
     // Client workspace isolation: record IDs are checked and lists are limited to the selected workspace.
-    try { const s = scope.current(); return { ok: true, data: scope.guardResult(ch, await fn(...scope.guardArgs(ch, args, s)), s) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
+    try { const s = scope.current(); return { ok: true, data: scope.guardResult(ch, await fn(...scope.guardArgs(ch, validate.check(ch, args), s)), s) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   });
 
 function registerIpc() {

@@ -42,6 +42,9 @@ const noop = () => undefined;
   for (const [qf, link] of [['QF-093', 'https://jobs.ashbyhq.com/ramp'], ['QF-095', 'https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite'], ['QF-091', 'https://boards.greenhouse.io/stripe'], ['QF-092', 'https://jobs.lever.co/palantir']] as const) {
     await run(`Employer jobs: ${link}`, qf, async () => { const e = detectAts(link); if (!e) throw new Error('link not recognised'); return need((await employerJobs(e)).length, `${e.ats} jobs`); });
   }
+  // Personio and Pinpoint (QF-096): real public feeds (Personio's and Pinpoint's own careers boards).
+  await run('Employer jobs: https://personio.jobs.personio.de', 'QF-096', async () => need((await employerJobs(detectAts('https://personio.jobs.personio.de')!)).length, 'personio jobs'));
+  await run('Employer jobs: https://workwithus.pinpointhq.com', 'QF-096', async () => need((await employerJobs(detectAts('https://workwithus.pinpointhq.com')!)).length, 'pinpoint jobs'));
   await run('Employer jobs: SmartRecruiters (first of several known employers)', 'QF-094', async () => {
     for (const slug of ['SmartRecruiters', 'Visa', 'BoschGroup', 'Ubisoft2', 'IKEA']) { const n = (await employerJobs({ ats: 'smartrecruiters', slug, name: slug })).length; if (n) return `${n} jobs at ${slug}`; }
     throw new Error('none of the test employers has public SmartRecruiters postings');

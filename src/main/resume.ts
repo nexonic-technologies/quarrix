@@ -67,16 +67,24 @@ export function saveProfile(profile: CvProfile) {
 }
 
 /** Without a model: how many of the CV skills and target words appear in the job. */
+// Words in a target role that say nothing about the skill ("Senior React Developer": only "react" counts).
+const ROLE_FILLER = new Set(['developer', 'engineer', 'manager', 'senior', 'junior', 'lead', 'specialist', 'officer', 'executive', 'assistant', 'associate', 'intern', 'head', 'staff', 'principal', 'and', 'the', 'for']);
+const esc = (w: string) => w.replace(/[.*+?^${}()|[\]\\/#]/g, (c) => '\\' + c);
+/** Whole-word (or whole-term) match, so "java" does not match "javascript" and "go" not "google". Pure. */
+export const hasTerm = (hay: string, w: string) => new RegExp(`(^|[^a-z0-9+#.])${esc(w)}($|[^a-z0-9+#])`, 'i').test(hay);
+/** Without a model: how many of the CV skills and target words appear in the job. */
 export function keywordMatch(cv: Cv, jobs: Job[]) {
-  const words = [...cv.profile.skills, ...cv.profile.roles.flatMap((r) => r.split(/\s+/))].map((w) => w.toLowerCase()).filter((w) => w.length > 2);
+  const roleWords = (cv.profile.roles ?? []).flatMap((r) => r.toLowerCase().split(/[\s/,]+/)).filter((w) => w.length > 1 && !ROLE_FILLER.has(w));
+  const words = [...new Set([...(cv.profile.skills ?? []).map((w) => w.toLowerCase().trim()), ...roleWords])].filter((w) => w.length > 1);
   const out: Record<string, { match: number; why: string }> = {};
   for (const j of jobs) {
-    const hay = `${j.title} ${j.tags.join(' ')} ${j.snippet}`.toLowerCase();
-    const hits = [...new Set(words.filter((w) => hay.includes(w)))];
-    const titleHit = cv.profile.roles.some((r) => r.toLowerCase().split(/\s+/).filter((w) => w.length > 2).every((w) => j.title.toLowerCase().includes(w)));
-    const levelOk = !cv.profile.level || j.level === cv.profile.level || !j.level;
+    const title = String(j.title ?? '');
+    const hay = `${title} ${(Array.isArray(j.tags) ? j.tags : []).join(' ')} ${j.snippet ?? ''}`.toLowerCase();
+    const hits = words.filter((w) => hasTerm(hay, w));
+    const titleHit = (cv.profile.roles ?? []).some((r) => { const ws = r.toLowerCase().split(/\s+/).filter((w) => w.length > 2); return ws.length > 0 && ws.every((w) => hasTerm(title.toLowerCase(), w)); });
+    const levelOk = !cv.profile.level || !j.level || j.level === cv.profile.level;
     const match = Math.min(98, Math.round(hits.length * 9 + (titleHit ? 35 : 0) + (levelOk ? 8 : -10)));
-    out[j.id] = { match: Math.max(0, match), why: hits.length ? `Matches ${hits.slice(0, 4).join(', ')}` : 'Few of your skills mentioned' };
+    out[j.id] = { match: hits.length || titleHit ? Math.max(0, match) : 0, why: hits.length ? `Matches ${hits.slice(0, 4).join(', ')}` : 'Few of your skills mentioned' };
   }
   return out;
 }

@@ -82,21 +82,37 @@ export async function employerJobs(e: Employer): Promise<Job[]> {
     }
     case 'pinpoint': {
       const j = await getJson(`https://${e.slug}.pinpointhq.com/postings.json`);
-      return (j.data ?? []).map((x: any) => job(e, { id: String(x.id), title: x.title, url: x.url, location: x.location?.name ?? '', workplace: remote(x.workplace_type ?? ''), type: x.employment_type_text ?? '', salary: x.compensation ?? '', posted: '' }));
+      // Older feeds put the fields under "attributes" (JSON:API); newer ones flatten them.
+      return (j.data ?? []).map((r: any) => { const x = { ...(r.attributes ?? {}), ...r }; return job(e, { id: String(x.id), title: String(x.title ?? ''), url: x.url ?? `https://${e.slug}.pinpointhq.com/postings/${x.id}`, location: x.location?.name ?? x.location_name ?? '', workplace: remote(x.workplace_type ?? x.workplace_type_text ?? ''), type: x.employment_type_text ?? '', salary: typeof x.compensation === 'string' ? x.compensation : '', posted: iso(x.published_at ?? '') }); }).filter((x: Job) => x.title);
     }
-    case 'workday': {
-      const out: Job[] = [];
-      for (let offset = 0; offset < 400; offset += 20) {
-        const r = await fetchText(`https://${e.host}/wday/cxs/${e.slug}/${e.site}/jobs`, { method: 'POST', ua: BOT_UA, timeout: 25000, body: JSON.stringify({ appliedFacets: {}, limit: 20, offset, searchText: '' }), headers: { 'Content-Type': 'application/json', Accept: 'application/json' } });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const j = JSON.parse(r.text);
-        for (const x of j.jobPostings ?? []) out.push(job(e, { id: x.externalPath ?? x.title, title: x.title, url: `https://${e.host}/${e.site}${x.externalPath}`, location: x.locationsText ?? '', workplace: remote(x.locationsText ?? ''), posted: '' }));
-        if ((j.jobPostings ?? []).length < 20) break;
-      }
-      return out;
-    }
+    case 'workday': return workdayJobs(e);
   }
   throw new Error(`Unknown hiring system ${e.ats}`);
+}
+
+/**
+ * Workday's public job search (0.25): retries busy answers (429/5xx) with a growing pause, explains HTML answers
+ * (maintenance or bot pages) instead of failing on JSON, and keeps the postings already read when a later page fails.
+ */
+export async function workdayJobs(e: Employer, pause = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<Job[]> {
+  const out: Job[] = [];
+  let total = Infinity;
+  for (let offset = 0; offset < 400 && offset < total; offset += 20) {
+    let j: any = null, why = '';
+    for (let attempt = 0; attempt < 3 && !j; attempt++) {
+      if (attempt) await pause(1500 * 2 ** (attempt - 1));
+      const r = await fetchText(`https://${e.host}/wday/cxs/${e.slug}/${e.site}/jobs`, { method: 'POST', ua: BOT_UA, timeout: 25000, body: JSON.stringify({ appliedFacets: {}, limit: 20, offset, searchText: '' }), headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Accept-Language': 'en-US' } }).catch((err: any) => ({ ok: false, status: 0, text: String(err?.message ?? err) }) as Awaited<ReturnType<typeof fetchText>>);
+      if (r.status === 404) throw new Error('job board not found (check the careers link)');
+      if (r.ok && /^\s*[{[]/.test(r.text)) { try { j = JSON.parse(r.text); } catch { why = 'the answer was not readable'; } continue; }
+      why = r.ok ? 'Workday answered with a web page instead of job data (maintenance or a bot check)' : r.status ? `HTTP ${r.status}` : r.text.slice(0, 120);
+      if (r.status && r.status < 500 && r.status !== 429 && r.status !== 408) break; // not worth retrying
+    }
+    if (!j) { if (out.length) break; throw new Error(`Workday: ${why}`); }
+    if (Number.isFinite(Number(j.total)) && Number(j.total) > 0) total = Number(j.total);
+    for (const x of j.jobPostings ?? []) if (x?.title) out.push(job(e, { id: x.externalPath ?? x.title, title: x.title, url: `https://${e.host}/${e.site}${x.externalPath ?? ''}`, location: x.locationsText ?? '', workplace: remote(x.locationsText ?? ''), posted: '' }));
+    if ((j.jobPostings ?? []).length < 20) break;
+  }
+  return out;
 }
 
 /** The latest Hacker News "Ask HN: Who is hiring?" thread, filtered by keywords (QF-097). */

@@ -1,4 +1,22 @@
-# Final audit, v0.24.0
+# Final audit, v0.25.0
+
+## v0.25.0 (hardening milestone)
+
+Fixed (each with a test in test/v025.test.ts or test/int/v025.int.ts):
+- **Critical: column-name injection and signal reassignment.** `signals:update` built SQL from the caller's keys; a crafted key could rewrite `lead_id` (move a signal to another client's lead). Now only `seen`/`dismissed` (0/1) at both the IPC check and the database function.
+- **Critical: lead transfer between clients.** `leads:update` accepted any lead column, including `client`, `search_id` and `source`. New runtime allowlist (src/main/validate.ts) for every mutating channel: types, lengths, email format, status values, record existence. Protected fields are refused with a clear message.
+- Sent messages can no longer be edited; message edits are limited to subject, body and send time. Tasks cannot link a deal to a different lead. `messages:cancel` now has the workspace guard. `leads:add` refuses workspace/source fields and needs a name.
+- **Franchise dedupe:** a shared central phone or domain no longer merges branches; another city, another street address or more than 300 m apart means another place (safety.differentPlace), in imports and the duplicate review.
+- **Career signals:** followed-employer postings are recognised by the employer's ID prefix (they were never classified before); CV matching is whole-word ("Java" no longer matches "JavaScript"; generic role words like "developer" no longer count); the unread badge counts each posting once and skips dismissed ones.
+- **Workday:** busy answers (429/5xx/timeouts) retried with backoff, HTML answers explained, pages already read are kept, `total` respected. **Overpass:** a second, slower round on the two main servers for busy answers; HTML answers treated as busy.
+- **Job search Stop** now cancels the requests still in flight (AbortSignal through AsyncLocalStorage into every fetch); the Google Jobs hidden window still ends at its own timeout.
+- **AI failover:** timeouts, connection resets and empty answers also move to the next model/key.
+- **Dependencies:** uuid forced to 11.1.1 (exceljs advisory GHSA-w5hq-g745-h8pq); `npm audit --omit=dev` reports 0. Remaining: 2 moderate advisories in build-time tooling only (minimatch inside electron-builder), no non-breaking fix; not shipped in the app.
+- **Release checks:** CPU type of every shipped build is verified (macOS arm64/x86_64 with lipo, Windows AMD64/ARM64 from the PE header), the Linux AppImage gets its own installed-app smoke run, and the macOS Intel build is run under Rosetta when the runner has it.
+
+Still blocked (no credentials or infrastructure were provided; nothing was invented or scraped): Hunter, ZeroBounce, Google and Microsoft OAuth, SendGrid, HubSpot, Google Sheets, Notion and inbox placement need the owner's accounts (docs/CREDENTIALS.md); hosted collaboration needs a sync service; partner-only job boards need partner access; signing needs an Apple Developer ID certificate with notarization account (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) and a Windows code-signing certificate (WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD) in the repository secrets. Windows ARM64 is verified by CPU type only (no ARM64 runner).
+
+# Earlier: v0.24.0
 
 ## v0.24.0 (owner feedback)
 

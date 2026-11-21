@@ -54,19 +54,32 @@ export function isSafeExternalUrl(url: string): boolean {
 const norm = (s = '') => s.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const digits = (s = '') => s.replace(/\D/g, '').slice(-9);
 
-type Biz = { name?: string; domain?: string; phone?: string; city?: string; address?: string };
+type Biz = { name?: string; domain?: string; phone?: string; city?: string; address?: string; lat?: number | null; lon?: number | null };
+const km = (a: Biz, b: Biz) => {
+  const r = Math.PI / 180, dLat = (b.lat! - a.lat!) * r, dLon = (b.lon! - a.lon!) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat! * r) * Math.cos(b.lat! * r) * Math.sin(dLon / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+};
+/** Two records that clearly sit in different places: other city, other street address, or more than 300 m apart. Pure. */
+export function differentPlace(a: Biz, b: Biz) {
+  const cityA = norm(a.city), cityB = norm(b.city);
+  if (cityA && cityB && cityA !== cityB) return true;
+  if (a.address && b.address && norm(a.address) !== norm(b.address)) return true;
+  if (a.lat != null && a.lon != null && b.lat != null && b.lon != null && km(a, b) > 0.3) return true;
+  return false;
+}
 /**
- * Same business? A shared domain alone is NOT enough, because chains and franchises share one website
- * across many branches. A match needs the domain plus the same phone, or the same city and address/name.
+ * Same business? A shared domain or phone alone is NOT enough: chains and franchises share one website and often one
+ * central phone number across many branches (0.25). A match needs the same place as well: same city and address,
+ * or coordinates within 300 m, and for a domain match also the same phone or name.
  */
 export function sameBusiness(a: Biz, b: Biz): boolean {
+  if (differentPlace(a, b)) return false;
   if (a.phone && b.phone && digits(a.phone) && digits(a.phone) === digits(b.phone)) return true;
   if (!a.domain || a.domain !== b.domain) return false;
-  const cityA = norm(a.city), cityB = norm(b.city);
-  if (cityA && cityB && cityA !== cityB) return false;
-  if (a.address && b.address) return norm(a.address) === norm(b.address);
+  if (a.address && b.address) return true; // same address (differentPlace checked)
   if (a.phone && b.phone) return false;
-  return norm(a.name) === norm(b.name) || !cityA || !cityB;
+  return norm(a.name) === norm(b.name) || !norm(a.city) || !norm(b.city);
 }
 
 /** Why outreach to this lead must not happen, or '' when it may. */

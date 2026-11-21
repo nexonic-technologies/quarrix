@@ -1,7 +1,7 @@
 {
   "name": "quarrix",
   "productName": "Quarrix",
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "Find businesses, build your lead database and reach out, from a local desktop app.",
   "homepage": "https://github.com/nexonic-technologies/quarrix",
   "author": {
@@ -66,5 +66,8 @@
     "smtp-server": "^3.21.7",
     "typescript": "^6.0.0",
     "vite": "^8.3.8"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

@@ -4,6 +4,7 @@ export const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 export const BOT_UA = 'Quarrix/1.0 (+https://github.com/nexonic-technologies/quarrix)';
 
 import { lookup } from 'node:dns/promises';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { lookup as dnsLookup } from 'node:dns';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { isIP } from 'node:net';
@@ -11,7 +12,7 @@ import { isBlockedHost, isPrivateAddress } from './safety';
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type FetchOpts = { timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number; partial?: boolean };
+type FetchOpts = { signal?: AbortSignal; timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number; partial?: boolean };
 
 /** Thrown when a response is bigger than the caller allows. Quarrix never works on silently cut-off data. */
 export class TooLargeError extends Error {
@@ -71,9 +72,16 @@ export const onRequest = (fn: (host: string) => void) => { requestHook = fn; };
  * Fetch a page as text. Redirects are followed by hand (up to 5) so every hop is checked, and the body is capped
  * (3 MB by default). Pass allowLocal only for endpoints the user typed themselves, such as a local AI server.
  */
+/** Requests started inside fetchScope.run(signal, …) are cancelled when that signal aborts (0.25: real Stop for searches). */
+export const fetchScope = new AsyncLocalStorage<AbortSignal>();
+export class CancelledError extends Error { constructor() { super('Stopped'); this.name = 'CancelledError'; } }
 export async function fetchText(url: string, opts: FetchOpts = {}) {
+  const outer = opts.signal ?? fetchScope.getStore();
+  if (outer?.aborted) throw new CancelledError();
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), opts.timeout ?? 15000);
+  const onAbort = () => ctrl.abort();
+  outer?.addEventListener('abort', onAbort, { once: true });
   const start = Date.now();
   const max = opts.maxBytes ?? 3_000_000;
   try {
@@ -109,8 +117,12 @@ export async function fetchText(url: string, opts: FetchOpts = {}) {
       if (cut && !opts.partial) throw new TooLargeError(max, cur);
       return { ok: r.ok, status: r.status, url: cur, text, ms: Date.now() - start, type: r.headers.get('content-type') ?? '', link: r.headers.get('link') ?? '', truncated: cut };
     }
+  } catch (e) {
+    if (outer?.aborted) throw new CancelledError();
+    throw e;
   } finally {
     clearTimeout(t);
+    outer?.removeEventListener('abort', onAbort);
   }
 }
 

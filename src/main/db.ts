@@ -108,7 +108,9 @@ export function findDuplicate(l: Partial<Lead>): Lead | undefined {
     if (hit) return hit;
   }
   if (l.phone && l.name) {
-    return db.prepare('SELECT * FROM leads WHERE phone = ? AND lower(name) = lower(?) AND client = ? LIMIT 1').get(l.phone, l.name, client) as Lead | undefined;
+    // Branches of a chain share the name and often a central phone number: the place must match too.
+    const hits = db.prepare('SELECT * FROM leads WHERE phone = ? AND lower(name) = lower(?) AND client = ? LIMIT 50').all(l.phone, l.name, client) as Lead[];
+    return hits.find((h) => sameBusiness(l, h));
   }
   return undefined;
 }
@@ -233,7 +235,12 @@ export function listSignals(f: { type?: string; all?: boolean } = {}) {
 }
 export const signalCounts = () => db.prepare('SELECT type, level, COUNT(*) n, SUM(seen = 0) unseen FROM signals WHERE dismissed = 0 GROUP BY type, level').all();
 export const leadSignals = (leadId: number) => db.prepare('SELECT * FROM signals WHERE lead_id = ? AND dismissed = 0 ORDER BY id DESC LIMIT 5').all(leadId) as Signal[];
-export const updateSignal = (id: number, patch: { seen?: number; dismissed?: number }) => db.prepare(`UPDATE signals SET ${Object.keys(patch).map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...Object.values(patch), id);
+export function updateSignal(id: number, patch: { seen?: number; dismissed?: number }) {
+  // Only these two flags; never the lead, type or text (0.25: closed a column-name injection and signal reassignment).
+  const cols = (['seen', 'dismissed'] as const).filter((k) => patch?.[k] !== undefined);
+  if (!cols.length) return;
+  db.prepare(`UPDATE signals SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((k) => (patch[k] ? 1 : 0)), id);
+}
 export const markAllSeen = (client = '') => db.prepare("UPDATE signals SET seen = 1 WHERE seen = 0 AND (? = '' OR lead_id IN (SELECT id FROM leads WHERE client = ?))").run(client, client);
 export const listWatches = () => db.prepare('SELECT w.*, (SELECT COUNT(*) FROM signals s JOIN leads l ON l.id = s.lead_id JOIN searches se ON se.id = l.search_id WHERE se.watch_id = w.id AND s.type = \'new_listing\') found FROM watches w ORDER BY id DESC').all();
 export function saveWatch(w: { id?: number; category?: string; place?: string; sources?: string; every_days?: number; enabled?: number; last_run?: string; runs?: number; client?: string }) {

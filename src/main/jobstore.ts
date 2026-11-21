@@ -9,7 +9,7 @@ import { cityCountry, cityPoint, searchJobs, type Job, type JobQuery } from './j
 import { distanceKm } from './geo';
 import { countryCode } from './util';
 import { load } from './settings';
-import { csvSafe, fetchText, UA } from './util';
+import { csvSafe, fetchScope, fetchText, UA } from './util';
 
 const raw = () => db.raw();
 const now = () => db.now();
@@ -102,12 +102,14 @@ export async function searchAll(q: JobQuery & JobFilters, onBatch: (b: { source:
   const placeOk = (j: Job) => jobCountryOk(j.location, q.country ?? '');
   const sofar: Job[] = [], failed: string[] = [];
   let stopped = false;
-  const stop = new Promise<{ jobs: Job[]; errors: string[] }>((res) => { if (runId) stopRequests.set(runId, () => { stopped = true; res({ jobs: [...sofar], errors: [...failed, 'Stopped: the boards that had not answered yet were skipped.'] }); }); });
-  const search = searchJobs(q, (source, list, error, ms) => {
+  // Stop cancels the requests still in flight (0.25), not only the wait for them.
+  const ctrl = new AbortController();
+  const stop = new Promise<{ jobs: Job[]; errors: string[] }>((res) => { if (runId) stopRequests.set(runId, () => { stopped = true; ctrl.abort(); res({ jobs: [...sofar], errors: [...failed, 'Stopped: the boards that had not answered yet were skipped.'] }); }); });
+  const search = fetchScope.run(ctrl.signal, () => searchJobs(q, (source, list, error, ms) => {
     if (stopped) return;
     sofar.push(...list); if (error) failed.push(`${source}: ${error}`);
     onBatch({ source, jobs: annotateLight(list.filter((j) => strictOk(j) && placeOk(j))), error, ms });
-  });
+  }));
   const { jobs, errors } = await Promise.race([search, stop]).finally(() => stopRequests.delete(runId));
   const s = load();
   const hide = [...(q.hideCompanies ?? []), ...(s.jobs?.hideCompanies ?? [])].map((x) => x.toLowerCase().trim()).filter(Boolean);

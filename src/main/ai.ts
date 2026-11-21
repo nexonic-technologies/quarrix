@@ -36,7 +36,7 @@ export function isQuotaError(e: unknown) {
   const st = Number((e as any)?.status) || 0;
   const m = String((e as any)?.message ?? e);
   return [402, 408, 409, 425, 429, 500, 502, 503, 504, 529].includes(st)
-    || /quota|rate.?limit|too many requests|credit|billing|payment|insufficient|exceeded|exhausted|overloaded|capacity|unavailable|temporarily|no endpoints|not a valid model|model.*(not found|does not exist|disabled)|requires.*(paid|upgrade)/i.test(m);
+    || /quota|rate.?limit|too many requests|credit|billing|payment|insufficient|exceeded|exhausted|overloaded|capacity|unavailable|temporarily|no endpoints|not a valid model|model.*(not found|does not exist|disabled)|requires.*(paid|upgrade)|abort|timed? ?out|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|fetch failed|empty answer/i.test(m);
 }
 const rested = new Map<string, number>();
 const restKey = (ai: Ai, model: string) => `${ai.provider}|${ai.apiKey.slice(-6)}|${model}`;
@@ -133,7 +133,9 @@ async function completeWith(ai: Ai, model: string, system: string, prompt: strin
   });
   const j = parseBody(r.text);
   if (!r.ok || j.error) throw fail(r, j);
-  return j.choices?.[0]?.message?.content ?? '';
+  const text = j.choices?.[0]?.message?.content ?? '';
+  if (!String(text).trim()) throw Object.assign(new Error('The model sent an empty answer.'), { status: 503 });
+  return text;
 }
 
 export async function listModels(ai: Ai): Promise<string[]> {

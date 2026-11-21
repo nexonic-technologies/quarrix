@@ -52,6 +52,9 @@ export function ensureRadar(edit?: Partial<Radar>) {
 /** Back to the CV's own keywords. */
 export function resetRadar() { const r = row(); if (r) raw().prepare('UPDATE job_alerts SET auto = 1 WHERE id = ?').run(r.id); return ensureRadar(); }
 
+/** Is this posting from an employer the person follows? Pure. */
+export const isFollowed = (jobId: string, prefixes: string[]) => prefixes.some((p) => jobId.startsWith(p));
+
 export type CareerSignal = { id: string; at: string; isNew: boolean; type: 'match' | 'alert' | 'employer'; level: 'hot' | 'warm' | 'info'; match: number | null; why: string; alert: string; job: any };
 
 /** Level from the CV match score. Pure. */
@@ -62,6 +65,8 @@ export function signals(days = 21): CareerSignal[] {
   const rows = raw().prepare(`SELECT h.job_id, h.at, h.data, h.seen, a.name, a.auto FROM job_alert_hits h JOIN job_alerts a ON a.id = h.alert_id
     WHERE h.at >= ? AND a.enabled = 1 ORDER BY h.seen ASC, h.at DESC LIMIT 600`).all(since) as { job_id: string; at: string; data: string; seen: number; name: string; auto: number }[];
   const dismissed = new Set((raw().prepare('SELECT job_id FROM career_dismissed').all() as { job_id: string }[]).map((r) => r.job_id));
+  // Jobs from followed employers carry the employer's own ID prefix ("greenhouse:stripe:123"); the source name is the company's.
+  const followed = (raw().prepare('SELECT ats, slug FROM employers').all() as { ats: string; slug: string }[]).map((e) => `${e.ats}:${e.slug}:`);
   const seen = new Set<string>();
   const items: CareerSignal[] = [];
   for (const r of rows) {
@@ -69,7 +74,7 @@ export function signals(days = 21): CareerSignal[] {
     seen.add(r.job_id);
     let job: any; try { job = JSON.parse(r.data); } catch { continue; }
     if (!job?.title) continue;
-    items.push({ id: r.job_id, at: r.at, isNew: !r.seen, type: job.source === 'employers' ? 'employer' : r.auto ? 'match' : 'alert', level: 'info', match: null, why: '', alert: r.name, job });
+    items.push({ id: r.job_id, at: r.at, isNew: !r.seen, type: isFollowed(String(job.id ?? r.job_id), followed) ? 'employer' : r.auto ? 'match' : 'alert', level: 'info', match: null, why: '', alert: r.name, job });
   }
   const cv = getCv();
   if (cv) {
@@ -86,7 +91,9 @@ export function dismiss(jobId: string) {
   raw().prepare('INSERT OR IGNORE INTO career_dismissed (job_id, at) VALUES (?, ?)').run(String(jobId), db.now());
 }
 export const markSeen = () => raw().prepare('UPDATE job_alert_hits SET seen = 1 WHERE seen = 0').run();
-export const unseenCount = () => (raw().prepare('SELECT COUNT(*) n FROM job_alert_hits h JOIN job_alerts a ON a.id = h.alert_id WHERE h.seen = 0 AND a.enabled = 1').get() as { n: number }).n;
+/** Unread job signals: distinct postings, not dismissed, from enabled alerts, in the same window the screen shows. */
+export const unseenCount = (days = 21) => (raw().prepare(`SELECT COUNT(DISTINCT h.job_id) n FROM job_alert_hits h JOIN job_alerts a ON a.id = h.alert_id
+  WHERE h.seen = 0 AND a.enabled = 1 AND h.at >= ? AND h.job_id NOT IN (SELECT job_id FROM career_dismissed)`).get(new Date(Date.now() - days * 864e5).toISOString()) as { n: number }).n;
 
 /** Scan now: refresh the radar from the CV, then run every alert. */
 export async function scan() { ensureRadar(); return runAlerts(true); }

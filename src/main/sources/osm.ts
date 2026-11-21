@@ -92,10 +92,15 @@ export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://ove
 async function overpass(q: string, timeout: number) {
   const send = (url: string) => fetchText(url, { method: 'POST', ua: BOT_UA, timeout, maxBytes: 20_000_000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
   let r = { ok: false, status: 0, text: '' } as Awaited<ReturnType<typeof fetchText>> & { why?: string };
-  for (const [i, url] of OVERPASS.entries()) {
-    if (i) await sleep(2000);
-    r = await send(url).catch((e: any) => ({ ok: false, status: 0, text: '', why: String(e?.message ?? e).slice(0, 120) }) as any);
-    if (r.ok) return r;
+  // Two rounds over every server (0.25): a busy answer (429, 5xx, timeout) waits and tries again; other answers stop.
+  for (let round = 0; round < 2; round++) {
+    for (const [i, url] of (round ? OVERPASS.slice(0, 2) : OVERPASS).entries()) {
+      if (i || round) await sleep(round ? 5000 : 2000);
+      r = await send(url).catch((e: any) => ({ ok: false, status: 0, text: '', why: String(e?.message ?? e).slice(0, 120) }) as any);
+      if (r.ok && /^\s*\{/.test(r.text)) return r;
+      if (r.ok) r = { ...r, ok: false, status: 503, why: 'answered with a web page instead of data' } as any;
+    }
+    if (r.status && r.status !== 429 && r.status < 500) break;
   }
   return r;
 }
