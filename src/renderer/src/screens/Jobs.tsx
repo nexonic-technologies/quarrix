@@ -7,6 +7,9 @@ import { RadarToy } from '../Toy';
 import { CityInput, CountryInput } from '../CityInput';
 import { COUNTRIES } from '../countries';
 import { AlertsPanel, CheckLink, EmployersPanel } from './JobsParts';
+import { Combo } from '../Combo';
+import { JOB_TITLES } from '../../../shared/jobtitles';
+const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
 type Job = { firstSeen?: string; isNew?: boolean; repost?: boolean; ageDays?: number | null; recruiter?: boolean; salaryYearly?: { min: number; max: number; currency: string; period: string } | null; status?: string; id: string; source: string; title: string; company: string; location: string; workplace: string; type: string; level: string; salary: string; url: string; posted: string; tags: string[]; snippet: string; match?: number; why?: string };
@@ -165,7 +168,7 @@ export function Jobs() {
           <RiseText as="p" text="LinkedIn, Indeed, Google Jobs, Rozee and remote boards, searched together and matched to your CV." />
         </div>
         <div className="finder-form">
-          <label className="fbox"><SearchIcon size={16} /><input placeholder="Job title or skill, e.g. Web developer" value={kw} onChange={(e) => setKw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && run()} /></label>
+          <Combo free typed options={TITLE_OPTIONS} value={kw} onChange={setKw} onEnter={() => run()} icon={<SearchIcon size={16} />} placeholder="Job title or skill: pick or type your own" />
           <CountryInput value={country} onChange={setCountry} />
           <CityInput country={country} value={city} onChange={setCity} onEnter={() => run()} placeholder="City (optional)" />
           {busy

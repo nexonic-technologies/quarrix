@@ -10,6 +10,7 @@ import * as oauth from './oauth';
 import * as scope from './scope';
 import { prepareSmoke, runSmoke, smokeOut } from './smoke';
 import * as crm from './crm';
+import * as career from './career';
 import * as jobstore from './jobstore';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -33,7 +34,7 @@ import * as db from './db';
 import * as jobs from './jobs';
 import * as mail from './mail';
 import * as wa from './whatsapp';
-import { effectiveModel, listModels, PROVIDERS } from './ai';
+import { effectiveModel, listModels, PROVIDERS, rankFree, useBackups } from './ai';
 import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
 import { citiesOf, matchJobs } from './jobsearch';
@@ -301,9 +302,21 @@ function registerIpc() {
   handle('cv:get', () => cv.getCv());
   handle('cv:upload', async () => {
     const r = await dialog.showOpenDialog(win!, { title: 'Choose your CV', properties: ['openFile'], filters: [{ name: 'CV', extensions: ['pdf', 'docx', 'txt', 'md'] }] });
-    return r.canceled || !r.filePaths[0] ? null : cv.loadCv(r.filePaths[0]);
+    if (r.canceled || !r.filePaths[0]) return null;
+    const loaded = await cv.loadCv(r.filePaths[0]);
+    career.ensureRadar();
+    return loaded;
   });
-  handle('cv:profile', (p) => cv.saveProfile(p));
+  handle('cv:profile', (p) => { const r = cv.saveProfile(p); career.ensureRadar(); return r; });
+  // Career signals (0.24)
+  handle('career:signals', () => career.signals());
+  handle('career:radar', () => career.radar());
+  handle('career:saveRadar', (r) => { career.ensureRadar({ keywords: String(r?.keywords ?? ''), country: String(r?.country ?? ''), countryName: String(r?.countryName ?? ''), city: String(r?.city ?? '') }); return career.radar(); });
+  handle('career:resetRadar', () => { career.resetRadar(); return career.radar(); });
+  handle('career:scan', async () => { const hits = await career.scan(); send('alerts'); return hits; });
+  handle('career:dismiss', (id: string) => career.dismiss(String(id)));
+  handle('career:seen', () => career.markSeen());
+  handle('career:unseen', () => career.unseenCount());
   handle('proof:make', (id: number) => proof.makeReport(id));
   handle('proof:info', (id: number) => proof.reportInfo(id));
   handle('proof:open', (id: number) => shell.openPath(proof.reportPath(id)));
@@ -361,7 +374,8 @@ function registerIpc() {
   });
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
-  handle('ai:models', () => listModels(load().ai));
+  // Free models first, so the list shows what a free OpenRouter key can actually use.
+  handle('ai:models', async () => { const ai = load().ai; const ids = await listModels(ai); const free = ai.provider === 'openrouter' ? rankFree(ids) : []; return [...free, ...ids.filter((m) => !free.includes(m))]; });
   handle('ai:effective', () => effectiveModel(load().ai));
 
   handle('wa:open', async (leadId: number, text: string) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, false); const n = await wa.openChat(l.phone, l.country, text); db.logEvent(leadId, 'whatsapp', 'Opened WhatsApp with a drafted message'); return n; });
@@ -400,8 +414,11 @@ app.whenReady().then(() => {
   const restored = backup.applyPendingRestore();
   db.openDb();
   db.migrateData();
+  useBackups(() => load().aiKeys ?? {});
   crm.migrate();
   jobstore.migrate();
+  career.migrateTables();
+  try { career.ensureRadar(); } catch { /* the radar is created on the next scan */ }
   automation.migrate();
   automation.setDrafter((ids) => createDrafts(ids));
   db.onEvent((leadId, type, detail) => void automation.handle(leadId, type, detail).catch(() => undefined));

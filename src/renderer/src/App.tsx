@@ -1,5 +1,5 @@
 import { Component, useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, KanbanSquare, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, KanbanSquare, BellRing, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
@@ -11,11 +11,12 @@ import { Autopilot } from './screens/Autopilot';
 import { Jobs } from './screens/Jobs';
 import { Dashboard } from './screens/Dashboard';
 import { Signals } from './screens/Signals';
+import { CareerSignals } from './screens/CareerSignals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
 import { setLang, t } from './i18n';
 
-export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'files' | 'settings';
+export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'jobradar' | 'files' | 'settings';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
@@ -24,7 +25,7 @@ export const toast = { push: (_t: string, _err?: boolean) => undefined as void }
 export function App() {
   const [screen, setScreen] = useState<Screen>((location.hash.slice(1) as Screen) || 'dashboard');
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0, signals: 0 });
+  const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0, signals: 0, jobs: 0 });
   const [tick, setTick] = useState(0);
   const [me, setMe] = useState({ name: '', company: '' });
   const [ws, setWs] = useState<'both' | 'business' | 'career'>('both');
@@ -38,8 +39,8 @@ export function App() {
   };
 
   const refreshCounts = useCallback(async () => {
-    const [s, cap, sig] = await Promise.all([call('stats'), call<number>('mail:cap'), call<{ unseen: number }[]>('signals:counts').catch(() => [])]);
-    setCounts({ drafts: s.drafts, sentToday: s.sentToday, cap, signals: sig.reduce((n, x) => n + (x.unseen || 0), 0) });
+    const [s, cap, sig, jobs] = await Promise.all([call('stats'), call<number>('mail:cap'), call<{ unseen: number }[]>('signals:counts').catch(() => []), call<number>('career:unseen').catch(() => 0)]);
+    setCounts({ drafts: s.drafts, sentToday: s.sentToday, cap, signals: sig.reduce((n, x) => n + (x.unseen || 0), 0), jobs });
   }, []);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export function App() {
     call('settings:get').then((s) => { setLang(s.language ?? 'en'); setLangTick((n) => n + 1); setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); setWs(s.workspace ?? 'both'); if (s.onboarded === false && !s.profile?.name) setOnboard(true); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
-      if (e === 'drafts' || e === 'leads' || e === 'signals') void refreshCounts();
+      if (e === 'drafts' || e === 'leads' || e === 'signals' || e === 'alerts') void refreshCounts();
       setTick((n) => n + 1);
     });
   }, [refreshCounts]);
@@ -59,6 +60,7 @@ export function App() {
     find: ['Find businesses', 'Maps, web search, directories and job posts, checked and enriched for you.'],
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
     autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
+    jobradar: ['Job signals', 'New jobs that fit your CV, your alerts and the employers you follow, as soon as they appear.'],
     jobs: ['Job search', 'LinkedIn, Indeed, Google Jobs, Rozee and remote boards, matched to your CV.'],
     outreach: ['Outreach', 'Read, tweak and approve. Follow-ups stop when someone replies.'],
     files: ['Import and export', 'Bring in the lists you have, or take your leads anywhere.'],
@@ -67,13 +69,13 @@ export function App() {
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
   const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
   const nav: [Screen, string, typeof Compass, number?][] = [
-    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['pipeline', 'Pipeline', KanbanSquare], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
+    ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['pipeline', 'Pipeline', KanbanSquare], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['jobradar', 'Job signals', BellRing, counts.jobs], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
   // Workspaces (QF-116): sales and job-hunting screens can be shown apart.
-  const CAREER: Screen[] = ['jobs'];
+  const CAREER: Screen[] = ['jobs', 'jobradar'];
   const shown = nav.filter(([id]) => ws === 'both' || ['dashboard', 'settings'].includes(id) || (ws === 'career' ? CAREER.includes(id) : !CAREER.includes(id)));
-  const switchWs = async (v: typeof ws) => { setWs(v); await call('settings:save', { workspace: v }); if (v === 'career' && !['dashboard', 'jobs', 'settings'].includes(screen)) go('jobs'); if (v === 'business' && screen === 'jobs') go('dashboard'); };
+  const switchWs = async (v: typeof ws) => { setWs(v); await call('settings:save', { workspace: v }); if (v === 'career' && !['dashboard', 'jobs', 'jobradar', 'settings'].includes(screen)) go('jobs'); if (v === 'business' && CAREER.includes(screen)) go('dashboard'); };
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
@@ -117,12 +119,13 @@ export function App() {
           <ScreenGuard>
           {screen === 'dashboard' && <Dashboard tick={tick} go={go} />}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
-          {screen === 'signals' && <Signals tick={tick} go={go} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
+          {screen === 'signals' && <Signals tick={tick} go={go} />}
           {screen === 'find' && <Find tick={tick} go={go} />}
           {screen === 'leads' && <Leads tick={tick} go={go} />}
           {screen === 'outreach' && <Outreach tick={tick} go={go} />}
           {screen === 'autopilot' && <Autopilot tick={tick} go={go} />}
           {screen === 'jobs' && <Jobs />}
+          {screen === 'jobradar' && <CareerSignals tick={tick} go={go} onSeen={refreshCounts} />}
           {screen === 'files' && <ImportExport go={go} />}
           {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
           </ScreenGuard>

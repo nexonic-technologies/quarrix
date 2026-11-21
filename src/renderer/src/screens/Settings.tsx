@@ -20,7 +20,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   const [info, setInfo] = useState<any>(null);
   const [models, setModels] = useState<string[]>([]);
   const [effective, setEffective] = useState('');
-  useEffect(() => { if (s?.ai?.provider === 'openrouter' && !s.ai.model) call<string>('ai:effective').then(setEffective).catch(() => setEffective('')); }, [s?.ai?.provider, s?.ai?.model, s?.ai?.apiKey]);
+  useEffect(() => { if (s?.ai && s.ai.provider !== 'none') call<string>('ai:effective').then(setEffective).catch(() => setEffective('')); }, [s?.ai?.provider, s?.ai?.model, s?.ai?.apiKey]);
   const [dnc, setDnc] = useState<any[]>([]);
   const [dncNew, setDncNew] = useState('');
   const [testTo, setTestTo] = useState('');
@@ -84,12 +84,29 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
               {(s.ai.provider === 'custom' || prov?.local) && T('ai.baseUrl', 'Server address', prov?.local ? 'Leave empty to use the standard address.' : 'For example https://api.example.com/v1')}
               <label className="field"><span>Model</span>
                 <div className="row" style={{ flexWrap: 'nowrap' }}>
-                  <input className="input" list="models" value={s.ai.model} placeholder={prov?.suggest || 'model name'} onChange={(e) => set('ai.model', e.target.value)} />
-                  <datalist id="models">{models.map((m) => <option key={m} value={m} />)}</datalist>
+                  {models.length
+                    ? <select className="select" value={s.ai.model} onChange={(e) => set('ai.model', e.target.value)} aria-label="Model">
+                        <option value="">Auto: best available model, switches when one runs out</option>
+                        {s.ai.model && !models.includes(s.ai.model) && <option value={s.ai.model}>{s.ai.model}</option>}
+                        {s.ai.provider === 'openrouter' ? <>
+                          <optgroup label="Free">{models.filter((m) => m.endsWith(':free')).map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
+                          <optgroup label="Paid (needs credit on your OpenRouter account)">{models.filter((m) => !m.endsWith(':free')).map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
+                        </> : models.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    : <input className="input" value={s.ai.model} placeholder={prov?.suggest || 'Auto (leave empty)'} onChange={(e) => set('ai.model', e.target.value)} aria-label="Model" />}
                   <button className="btn" onClick={async () => { await save(); try { const m = await call<string[]>('ai:models'); setModels(m); toast.push(`${m.length} models available`); } catch (e: any) { toast.push(e.message, true); } }}>Load models</button>
                 </div>
-                {s.ai.provider === 'openrouter' && !s.ai.model && <small>{effective ? <>Empty means Quarrix picks a free model for you: now <b>{effective}</b>.</> : 'Empty means Quarrix picks a free model once the key is saved.'}</small>}
+                <small>{effective ? <>Now using <b>{effective}</b>. </> : ''}When a model runs out of quota, is rate-limited or needs billing, Quarrix switches to the next one by itself{s.ai.provider === 'openrouter' ? ' (every free model, best first)' : ''}, then to your backup keys below.</small>
               </label>
+              <details className="field">
+                <summary>Backup keys (used in turn when the main key runs out)</summary>
+                {Object.entries(providers).filter(([k, p]: any) => p.keyed && k !== 'custom').map(([k, p]: any) => (
+                  <label key={k} className="field"><span>{p.label}</span>
+                    <input className="input" type="password" placeholder="API key (optional)" value={s.aiKeys?.[k] ?? ''} onChange={(e) => set('aiKeys', { ...(s.aiKeys ?? {}), [k]: e.target.value.trim() })} />
+                  </label>
+                ))}
+                <small>With no model chosen, each backup uses its provider's free or suggested models. Keys are encrypted with your computer's keychain.</small>
+              </details>
             </>}
           </section>}
 

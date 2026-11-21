@@ -1,4 +1,14 @@
-# Final audit, v0.23.0
+# Final audit, v0.24.0
+
+## v0.24.0 (owner feedback)
+
+- **Job signals (career workspace):** a profile search built from the CV (first target role, else title, else top skills; empty means all jobs) runs every 6 hours with the job alerts. Its postings, the person's own alerts and new jobs at followed employers are scored against the CV (70%+ strong, 45%+ fair) and shown as signals with Open posting, Save and Dismiss. The role, country and city can be changed; "Use my CV" goes back. Test: test/int/v024.int.ts.
+- **AI switching:** quota, rate-limit, billing and busy answers (402/429/5xx and their messages) move to the next model: every free OpenRouter model best first, other Gemini/Groq models, then each backup key in Settings → Writing. Models that ran out rest for 5 minutes (busy) or an hour (quota). Wrong keys fail at once. The model list shows Auto, Free and Paid groups. Tests: test/v024.test.ts, test/int/v024.int.ts.
+- **Job title picker:** about 190 predefined titles in 14 groups, and anything typed is kept.
+- **Signals Open:** opens the business in place instead of moving to Leads.
+- **Names from web results:** page titles such as "Contact us" are skipped; the business name comes from the rest of the title or the domain. Existing leads and their signal titles are repaired on start.
+
+# Earlier: v0.23.0
 
 This audit covers v0.22.0 on 20 Nov 2026. "Verified" means an automated test exercised the real code path; a successful compile is not counted.
 

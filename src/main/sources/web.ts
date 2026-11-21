@@ -6,8 +6,15 @@ import type { Candidate, Progress } from './types';
 // Results from these sites are lists, news or social pages, not the business itself.
 export const SKIP = /(^|\.)(google|bing|duckduckgo|yahoo|wikipedia|wikimedia|youtube|facebook|instagram|linkedin|twitter|x|tiktok|pinterest|reddit|quora|medium|yelp|yellowpages|yell|tripadvisor|clutch|goodfirms|glassdoor|indeed|crunchbase|mapquest|foursquare|bbb|trustpilot|angi|houzz|thumbtack|upwork|fiverr|amazon|apple|microsoft|github|gov|edu|forbes|nytimes|bloomberg|businesswire|prnewswire|zoominfo|dnb|manta|chamberofcommerce|expertise|designrush|sortlist|themanifest|topdevelopers)\.[a-z.]+$/i;
 
-function clean(title: string) {
-  return title.split(/\s[|–—-]\s|\s·\s|:\s/)[0].replace(/\b(home|homepage|official site|welcome to)\b/gi, '').trim().slice(0, 120);
+// Page titles that name the page, not the business ("Contact us | Moorfields Dubai").
+export const GENERIC_TITLE = /^(contact( us)?|about( us)?|home( ?page)?|welcome|services?|our services|book( an)? appointment|appointments?|locations?|find us|get in touch|team|our team|doctors?|faq|blog|news|careers?|jobs|gallery|pricing|products?|shop|index|untitled|page not found|404|login|sign in|privacy policy)$/i;
+/** A readable name from a domain: moorfields-dubai.ae → "Moorfields Dubai". Pure. */
+export const nameFromDomain = (d: string) => d.replace(/^www\./, '').split('.')[0].split(/[-_]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+/** The business name from a search result title, skipping generic parts; falls back to the domain. Pure, exported for tests. */
+export function clean(title: string, domain = '') {
+  const parts = title.split(/\s[|–—-]\s|\s·\s|:\s/).map((p) => p.replace(/\b(home|homepage|official site|welcome to)\b/gi, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const good = parts.find((p) => !GENERIC_TITLE.test(p) && p.length > 1);
+  return (good ?? (domain ? nameFromDomain(domain) : '')).slice(0, 120);
 }
 
 export async function bing(q: string, page: number) {
@@ -41,7 +48,7 @@ export async function searchWeb(category: string, place: string, limit: number, 
         if (!d || seen.has(d) || SKIP.test(d) || isPlatformHost(d)) continue;
         seen.add(d);
         fresh++;
-        out.push({ source: 'web', source_ref: d, name: clean(r.title) || d, category, address: '', city: '', region: '', country: '', postcode: '', lat: null, lon: null, phone: '', email: '', website: `https://${d}` });
+        out.push({ source: 'web', source_ref: d, name: clean(r.title, d) || d, category, address: '', city: '', region: '', country: '', postcode: '', lat: null, lon: null, phone: '', email: '', website: `https://${d}` });
       }
       progress(`Web search: ${out.length} business websites found`, out.length);
       if (!fresh) break;

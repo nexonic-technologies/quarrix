@@ -5,14 +5,16 @@ export type ComboOption = { value: string; label: string; prefix?: string; hint?
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /** A themed, type-to-filter dropdown. With `free`, anything typed is accepted (for cities). */
-export function Combo({ options, value, onChange, placeholder, icon, free, loading, onEnter, className = '' }: {
+export function Combo({ options, value, onChange, placeholder, icon, free, typed, loading, onEnter, className = '' }: {
   options: ComboOption[]; value: string; onChange: (v: string) => void; placeholder: string; icon: React.ReactNode;
-  free?: boolean; loading?: boolean; onEnter?: () => void; className?: string;
+  /** With `typed`, Enter keeps what was typed unless a suggestion was chosen with the arrow keys. */
+  free?: boolean; typed?: boolean; loading?: boolean; onEnter?: () => void; className?: string;
 }) {
   const selected = options.find((o) => o.value === value);
   const [text, setText] = useState(free ? value : selected?.label ?? '');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
+  const [moved, setMoved] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -37,11 +39,11 @@ export function Combo({ options, value, onChange, placeholder, icon, free, loadi
       {selected?.prefix && !open && <span className="combo-prefix">{selected.prefix}</span>}
       <input ref={input} value={text} placeholder={placeholder}
         onFocus={(e) => { setOpen(true); setHi(0); e.currentTarget.select(); }}
-        onChange={(e) => { setText(e.target.value); setOpen(true); setHi(0); if (free) onChange(e.target.value); }}
+        onChange={(e) => { setText(e.target.value); setOpen(true); setHi(0); setMoved(false); if (free) onChange(e.target.value); }}
         onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, shown.length - 1)); }
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setMoved(true); setHi((h) => Math.min(h + 1, shown.length - 1)); }
           else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
-          else if (e.key === 'Enter') { e.preventDefault(); if (open && shown[hi]) pick(shown[hi]); else onEnter?.(); }
+          else if (e.key === 'Enter') { e.preventDefault(); if (open && shown[hi] && (!typed || moved)) pick(shown[hi]); else { setOpen(false); onEnter?.(); } setMoved(false); }
           else if (e.key === 'Escape') { setOpen(false); input.current?.blur(); }
           else if (e.key === 'Tab') setOpen(false);
         }} />

@@ -20,6 +20,8 @@ export type Settings = {
   theme: 'system' | 'light' | 'dark';
   profile: { skills: string; company: string; name: string; title: string; website: string; phone: string; address: string; services: string; tone: string; language: string };
   ai: { provider: Provider; model: string; baseUrl: string; apiKey: string };
+  /** Backup AI keys by provider (0.24): used in turn when the main key runs out of quota or is rate-limited. Encrypted like other secrets. */
+  aiKeys: Record<string, string>;
   sources: { googleMaps: boolean; osm: boolean; places: boolean; placesKey: string; pagespeedKey: string; mapsDelayMs: number; maxPerSearch: number; adzunaId: string; adzunaKey: string; joobleKey: string; tomtomKey: string; foursquareKey: string };
   enrich: { auto: boolean; audit: boolean; pages: number };
   email: {
@@ -79,6 +81,7 @@ export const defaults: Settings = {
   theme: 'light',
   profile: { skills: '', company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
   ai: { provider: 'none', model: '', baseUrl: '', apiKey: '' },
+  aiKeys: {},
   sources: { googleMaps: true, osm: true, places: false, placesKey: '', pagespeedKey: '', mapsDelayMs: 1400, maxPerSearch: 0, adzunaId: '', adzunaKey: '', joobleKey: '', tomtomKey: '', foursquareKey: '' },
   enrich: { auto: true, audit: false, pages: 3 },
   email: {
@@ -159,6 +162,7 @@ export function load(): Settings {
   for (const p of SECRET_PATHS) set(s, p, dec(get(s, p)));
   s.mailboxes = (s.mailboxes ?? []).map((b) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, dec(b[k])])) }));
   s.sdkKeys = Object.fromEntries(Object.entries(s.sdkKeys ?? {}).map(([k, v]) => [k, dec(String(v))]));
+  s.aiKeys = Object.fromEntries(Object.entries(s.aiKeys ?? {}).map(([k, v]) => [k, dec(String(v))]));
   cache = s;
   // 0.22: the single shared OAuth client is split into a Google client and a Microsoft app, by the ID's format.
   if (s.email.oauthClientId) {
@@ -181,6 +185,7 @@ export function save(patch: unknown): Settings {
   for (const p of SECRET_PATHS) set(out, p, enc(get(out, p)));
   out.mailboxes = (out.mailboxes ?? []).map((b: Mailbox) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, enc(b[k])])) }));
   out.sdkKeys = Object.fromEntries(Object.entries(out.sdkKeys ?? {}).map(([k, v]) => [k, enc(String(v))]));
+  out.aiKeys = Object.fromEntries(Object.entries(out.aiKeys ?? {}).map(([k, v]) => [k, enc(String(v))]));
   writeFileSync(file(), JSON.stringify(out, null, 2));
   return s;
 }
@@ -191,6 +196,7 @@ export function publicSettings() {
   for (const p of SECRET_PATHS) set(s, p, get(s, p) ? '••••••••' : '');
   s.mailboxes = (s.mailboxes ?? []).map((b: Mailbox) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, b[k] ? '••••••••' : ''])) }));
   s.sdkKeys = Object.fromEntries(Object.keys(s.sdkKeys ?? {}).map((k) => [k, s.sdkKeys[k] ? '••••••••' : '']));
+  s.aiKeys = Object.fromEntries(Object.keys(s.aiKeys ?? {}).map((k) => [k, s.aiKeys[k] ? '••••••••' : '']));
   s.secretsSessionOnly = !secureStore();
   return s as Settings;
 }
@@ -205,6 +211,7 @@ export function saveFromUi(patch: Record<string, any>) {
   // Fields only the main process may change: sending approval, the safety pause and the OAuth session.
   if (p.email) for (const k of ['authorizedAt', 'authorizedFrom', 'pausedReason', 'oauthRefresh', 'oauthUser', 'auth']) delete p.email[k];
   if (p.whatsapp) { delete p.whatsapp.authorizedAt; delete p.whatsapp.authorizedFor; }
+  if (p.aiKeys && typeof p.aiKeys === 'object') { const old = load().aiKeys ?? {}; p.aiKeys = Object.fromEntries(Object.entries(p.aiKeys).map(([k, v]) => [k, v === '••••••••' ? old[k] ?? '' : String(v)])); }
   if (p.sdkKeys && typeof p.sdkKeys === 'object') { const old = load().sdkKeys; p.sdkKeys = Object.fromEntries(Object.entries(p.sdkKeys).map(([k, v]) => [k, v === '••••••••' ? old[k] ?? '' : String(v)])); }
   if (Array.isArray(p.mailboxes)) {
     const old = load().mailboxes;

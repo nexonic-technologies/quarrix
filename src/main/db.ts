@@ -1,6 +1,7 @@
 // Local SQLite database: everything stays on this computer.
 import { DUE_SQL, outreachBlock, sameBusiness } from './safety';
 import { sourceInfo } from './sources/catalog';
+import { GENERIC_TITLE, nameFromDomain } from './sources/web';
 import { signalConfidence } from './intel';
 import Database from 'better-sqlite3';
 import { app } from 'electron';
@@ -271,6 +272,26 @@ export const listSearches = (limit = 30) => db.prepare('SELECT * FROM searches O
 export function migrateData() {
   // "ok" used to mean only that the domain has MX records; say exactly that now (QF-041).
   db.prepare("UPDATE leads SET email_status = 'mx-ok' WHERE email_status = 'ok'").run();
+  fixGenericNames();
+}
+/** 0.24: web results named after the page ("Contact us") get the business's name from its domain, in leads and their signals. */
+export function fixGenericNames() {
+  const rows = db.prepare("SELECT id, name, domain, website FROM leads WHERE source = 'web'").all() as { id: number; name: string; domain: string; website: string }[];
+  const setName = db.prepare('UPDATE leads SET name = ? WHERE id = ?');
+  const setSig = db.prepare('UPDATE signals SET title = ? || substr(title, ?) WHERE lead_id = ? AND substr(title, 1, ?) = ?');
+  let n = 0;
+  db.transaction(() => {
+    for (const r of rows) {
+      if (!GENERIC_TITLE.test(r.name.trim())) continue;
+      const d = r.domain || (r.website || '').replace(/^https?:\/\//, '').split('/')[0];
+      const name = d ? nameFromDomain(d) : '';
+      if (!name) continue;
+      setName.run(name, r.id);
+      setSig.run(name, r.name.length + 1, r.id, r.name.length, r.name);
+      n++;
+    }
+  })();
+  return n;
 }
 export const listContacts = (leadId: number) => db.prepare('SELECT * FROM contacts WHERE lead_id = ? ORDER BY confirmed_at DESC NULLS LAST, id').all(leadId);
 export function addContact(c: { lead_id: number; name?: string; role?: string; email?: string; phone?: string; source?: string; source_url?: string }) {

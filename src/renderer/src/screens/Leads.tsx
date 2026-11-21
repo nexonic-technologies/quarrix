@@ -171,7 +171,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   );
 }
 
-function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => void; onChange: () => void; go: (s: Screen) => void }) {
+export function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose: () => void; onChange: () => void; go: (s: Screen) => void }) {
   const [d, setD] = useState<{ lead: Lead; messages: Message[]; events: any[] } | null>(null);
   const [notes, setNotes] = useState('');
   const reload = () => call('leads:get', id).then((x) => { setD(x); setNotes(x.lead.notes); });

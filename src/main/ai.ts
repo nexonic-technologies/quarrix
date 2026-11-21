@@ -20,37 +20,88 @@ export const PROVIDERS: Record<string, { label: string; base: string; keyed: boo
 type Ai = Settings['ai'];
 const base = (ai: Ai) => (ai.baseUrl || PROVIDERS[ai.provider]?.base || '').replace(/\/+$/, '');
 
-// OpenRouter with a key but no model chosen: Quarrix picks a good free model itself (before 0.22.2 nothing was used,
-// so a connected key made no difference). Strong general models first; any ':free' model otherwise.
+// Model choice and automatic switching (0.24).
+// - OpenRouter with an empty Model: every free model, best first. A chosen model is tried first, then the free ones.
+// - Other providers: the chosen (or suggested) model, then the provider's other models when its quota or rate limit is hit.
+// - Then each backup key in Settings → Writing, in order. A model that ran out is rested for a while and skipped.
 const FREE_PREFS = ['deepseek/deepseek-chat-v3', 'meta-llama/llama-3.3-70b-instruct', 'google/gemma-3-27b-it', 'qwen/qwen3', 'mistralai/mistral-small'];
-let freePick: { key: string; models: string[] } | null = null;
 /** Free models in preference order. Pure, exported for tests. */
 export function rankFree(ids: string[]) {
   const free = ids.filter((m) => m.endsWith(':free'));
   const score = (m: string) => { const i = FREE_PREFS.findIndex((p) => m.startsWith(p)); return i < 0 ? 99 : i; };
   return free.sort((a, b) => score(a) - score(b) || a.localeCompare(b));
 }
-async function modelsToTry(ai: Ai): Promise<string[]> {
-  const chosen = ai.model || PROVIDERS[ai.provider]?.suggest;
-  if (chosen) return [chosen];
-  if (ai.provider !== 'openrouter' || !ai.apiKey) return [];
-  if (freePick?.key !== ai.apiKey) freePick = { key: ai.apiKey, models: rankFree(await listModels(ai).catch(() => [])).slice(0, 3) };
-  return freePick.models;
+/** Errors that mean "this model or key is out of quota, rate-limited, unpaid or busy right now": try the next one. Pure. */
+export function isQuotaError(e: unknown) {
+  const st = Number((e as any)?.status) || 0;
+  const m = String((e as any)?.message ?? e);
+  return [402, 408, 409, 425, 429, 500, 502, 503, 504, 529].includes(st)
+    || /quota|rate.?limit|too many requests|credit|billing|payment|insufficient|exceeded|exhausted|overloaded|capacity|unavailable|temporarily|no endpoints|not a valid model|model.*(not found|does not exist|disabled)|requires.*(paid|upgrade)/i.test(m);
 }
-/** The model Quarrix will use, for the settings screen. */
+const rested = new Map<string, number>();
+const restKey = (ai: Ai, model: string) => `${ai.provider}|${ai.apiKey.slice(-6)}|${model}`;
+/** Tests only. */
+export const resetRest = () => rested.clear();
+const listCache = new Map<string, string[]>();
+async function cachedList(ai: Ai) {
+  const k = `${ai.provider}|${ai.baseUrl}|${ai.apiKey}`;
+  if (!listCache.has(k)) listCache.set(k, await listModels(ai).catch(() => []));
+  return listCache.get(k)!;
+}
+/** Other models of the same provider worth trying when the chosen one runs out. Pure, exported for tests. */
+export function alternates(provider: string, ids: string[], chosen: string) {
+  if (provider === 'openrouter') return rankFree(ids).filter((m) => m !== chosen);
+  if (provider === 'gemini') return ids.filter((m) => /flash|gemma/i.test(m) && !/image|tts|audio|live|embedding|vision/i.test(m) && m !== chosen).slice(0, 6);
+  if (provider === 'groq') return ids.filter((m) => !/whisper|guard|tts|embed/i.test(m) && m !== chosen).slice(0, 6);
+  return [];
+}
+async function modelsToTry(ai: Ai): Promise<string[]> {
+  const chosen = ai.model || PROVIDERS[ai.provider]?.suggest || '';
+  const keyless = PROVIDERS[ai.provider]?.local || ai.provider === 'custom';
+  const more = !keyless && (ai.apiKey || !PROVIDERS[ai.provider]?.keyed) ? alternates(ai.provider, await cachedList(ai), chosen) : [];
+  const all = [...(chosen ? [chosen] : []), ...more];
+  const now = Date.now();
+  const ready = all.filter((m) => (rested.get(restKey(ai, m)) ?? 0) <= now);
+  return (ready.length ? ready : all).slice(0, 12);
+}
+/** The main model and then each backup key, as separate model settings. */
+export function chain(ai: Ai, backups: Record<string, string> = {}): Ai[] {
+  const out: Ai[] = ai.provider === 'none' ? [] : [ai];
+  for (const [provider, apiKey] of Object.entries(backups)) {
+    if (!apiKey || !PROVIDERS[provider]?.keyed || provider === 'custom' || (provider === ai.provider && apiKey === ai.apiKey)) continue;
+    out.push({ provider: provider as Ai['provider'], apiKey, model: '', baseUrl: '' });
+  }
+  return out;
+}
+/** The model Quarrix will use first, for the settings screen. */
 export async function effectiveModel(ai: Ai) { return (await modelsToTry(ai))[0] ?? ''; }
+
+let backupKeys: () => Record<string, string> = () => ({});
+/** Set by the main process so complete() can reach the backup keys without importing settings here. */
+export const useBackups = (f: () => Record<string, string>) => { backupKeys = f; };
 
 export async function complete(ai: Ai, system: string, prompt: string, maxTokens = 1500): Promise<string> {
   if (ai.provider === 'none') throw new Error('No writing model is set. Choose one in Settings → Writing.');
-  const models = await modelsToTry(ai);
-  if (!models.length) throw new Error('Choose a model in Settings → Writing.');
-  let last: unknown;
-  // Free models are often busy (rate limits); the next free model is tried before giving up.
-  for (const model of models) {
-    try { return await completeWith(ai, model, system, prompt, maxTokens); } catch (e) { last = e; if (ai.model) break; }
+  let last: unknown = null, tried = 0;
+  for (const one of chain(ai, backupKeys())) {
+    const models = await modelsToTry(one);
+    for (const model of models) {
+      tried++;
+      try { return await completeWith(one, model, system, prompt, maxTokens); } catch (e) {
+        last = e;
+        if (!isQuotaError(e)) { if (one === ai) throw e; break; }
+        // Rest a model that ran out: an hour for quota and billing, five minutes for a busy model.
+        rested.set(restKey(one, model), Date.now() + (/quota|credit|billing|payment|insufficient|exhausted/i.test(String((e as any)?.message)) || (e as any)?.status === 402 ? 36e5 : 3e5));
+      }
+    }
   }
-  throw last;
+  if (!tried) throw new Error('Choose a model in Settings → Writing.');
+  const msg = String((last as any)?.message ?? last);
+  throw new Error(tried > 1 ? `Every model and key Quarrix tried is out of quota or busy (${tried} tried). Last answer: ${msg}` : msg);
 }
+
+const parseBody = (t: string): any => { try { return JSON.parse(t || '{}'); } catch { return { error: { message: t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200) } }; } };
+const fail = (r: { status: number }, j: any) => Object.assign(new Error(j?.error?.message ?? (typeof j?.error === 'string' ? j.error : `HTTP ${r.status}`)), { status: r.status });
 
 async function completeWith(ai: Ai, model: string, system: string, prompt: string, maxTokens: number): Promise<string> {
   if (ai.provider === 'anthropic') {
@@ -59,8 +110,8 @@ async function completeWith(ai: Ai, model: string, system: string, prompt: strin
       headers: { 'content-type': 'application/json', 'x-api-key': ai.apiKey, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content: prompt }] }),
     });
-    const j = JSON.parse(r.text || '{}');
-    if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+    const j = parseBody(r.text);
+    if (!r.ok) throw fail(r, j);
     return (j.content ?? []).map((c: any) => c.text ?? '').join('');
   }
   if (ai.provider === 'gemini') {
@@ -68,8 +119,8 @@ async function completeWith(ai: Ai, model: string, system: string, prompt: strin
       method: 'POST', timeout: 90000, headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { maxOutputTokens: maxTokens } }),
     });
-    const j = JSON.parse(r.text || '{}');
-    if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+    const j = parseBody(r.text);
+    if (!r.ok) throw fail(r, j);
     return (j.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('');
   }
   const r = await fetchTrusted(`${base(ai)}/chat/completions`, {
@@ -80,8 +131,8 @@ async function completeWith(ai: Ai, model: string, system: string, prompt: strin
     if (PROVIDERS[ai.provider]?.local) throw new Error(`${PROVIDERS[ai.provider].label.split(' (')[0]} is not running on this computer. Start it and try again.`);
     throw e;
   });
-  const j = JSON.parse(r.text || '{}');
-  if (!r.ok) throw new Error(j.error?.message ?? `HTTP ${r.status}`);
+  const j = parseBody(r.text);
+  if (!r.ok || j.error) throw fail(r, j);
   return j.choices?.[0]?.message?.content ?? '';
 }
 

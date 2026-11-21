@@ -4,6 +4,7 @@ import { call } from '../api';
 import { toast, type Screen } from '../App';
 import { Avatar, CountUp, EmptyArt } from '../Art';
 import { CategoryInputLite } from './SignalsParts';
+import { LeadDrawer } from './Leads';
 
 type Sig = { id: number; lead_id: number; at: string; type: string; level: 'hot' | 'warm' | 'info'; title: string; detail: string; seen: number; name: string; category: string; city: string; country: string; email: string; website: string; domain: string };
 type Watch = { id: number; category: string; place: string; every_days: number; last_run: string | null; runs: number; enabled: number; found: number };
@@ -18,7 +19,8 @@ const TYPES: Record<string, [string, typeof Store, string]> = {
 };
 const ago = (iso: string) => { const s = (Date.now() - +new Date(iso)) / 1000; return s < 3600 ? `${Math.max(1, Math.floor(s / 60))} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : `${Math.floor(s / 86400)} d ago`; };
 
-export function Signals({ tick, go, openLead }: { tick: number; go: (s: Screen) => void; openLead: (id: number) => void }) {
+export function Signals({ tick, go }: { tick: number; go: (s: Screen) => void }) {
+  const [open, setOpen] = useState<number | null>(null);
   const [list, setList] = useState<Sig[]>([]);
   const [type, setType] = useState('');
   const [watches, setWatches] = useState<Watch[]>([]);
@@ -63,12 +65,12 @@ export function Signals({ tick, go, openLead }: { tick: number; go: (s: Screen) 
                 <div className="sig-top"><span className={`lvl ${sg.level}`}>{sg.level}</span><span className="muted small">{label} · {ago(sg.at)}</span></div>
                 <b className="sig-title">{sg.title}</b>
                 <p>{sg.detail}</p>
-                <div className="sig-lead" onClick={() => openLead(sg.lead_id)}><Avatar name={sg.name ?? '?'} size={22} /><span>{sg.name}</span><em>{[sg.category, sg.city, sg.country].filter(Boolean).join(' · ')}</em></div>
+                <div className="sig-lead" onClick={() => setOpen(sg.lead_id)}><Avatar name={sg.name ?? '?'} size={22} /><span>{sg.name}</span><em>{[sg.category, sg.city, sg.country].filter(Boolean).join(' · ')}</em></div>
                 <p className="why">{why}</p>
               </div>
               <div className="sig-actions">
                 <button className="btn primary small" onClick={() => write(sg)}><PenLine size={13} /> Write email</button>
-                <button className="btn small" onClick={() => openLead(sg.lead_id)}><Eye size={13} /> Open</button>
+                <button className="btn small" onClick={() => setOpen(sg.lead_id)}><Eye size={13} /> Open</button>
                 <button className="btn ghost small" title="Dismiss" aria-label="Dismiss signal" onClick={async () => { await call('signals:update', sg.id, { dismissed: 1 }); load(); }}><X size={14} /></button>
               </div>
             </div>
@@ -99,6 +101,7 @@ export function Signals({ tick, go, openLead }: { tick: number; go: (s: Screen) 
           </div>
         </div>
       </div>
+      {open && <LeadDrawer id={open} onClose={() => setOpen(null)} onChange={load} go={go} />}
     </div>
   );
 }
