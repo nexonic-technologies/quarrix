@@ -14,6 +14,7 @@ export type JobQuery = {
   keywords: string; country?: string; countryName?: string; city?: string; posted?: '' | '1' | '7' | '30';
   workplace?: string[]; type?: string[]; level?: string[]; sources?: string[];
 };
+export type JobList = Job[] & { partialReason?: string };
 
 const strip = (h: string) => cheerio.load(`<div>${h ?? ''}</div>`)('div').text().replace(/\s+/g, ' ').trim();
 const iso = (v: unknown) => { const d = typeof v === 'number' ? new Date(v < 1e12 ? v * 1000 : v) : new Date(String(v)); return isNaN(+d) ? '' : d.toISOString(); };
@@ -39,10 +40,10 @@ const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
     const loc = [q.city, q.countryName].filter(Boolean).join(', ') || 'Worldwide';
     const tpr = q.posted ? `&f_TPR=r${Number(q.posted) * 86400}` : '';
     const wt = (q.workplace ?? []).map((w) => ({ onsite: '1', remote: '2', hybrid: '3' } as Record<string, string>)[w]).filter(Boolean).join(',');
-    const out: Job[] = [];
+    const out: JobList = [];
     for (let start = 0; start < 200; start += 25) {
       const r = await fetchText(`https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(q.keywords)}&location=${encodeURIComponent(loc)}${tpr}${wt ? `&f_WT=${wt}` : ''}&start=${start}`, { ua: UA, timeout: 20000 });
-      if (!r.ok) { if (start === 0) throw new Error(`HTTP ${r.status}`); break; }
+      if (!r.ok) { if (start === 0) throw new Error(`HTTP ${r.status}`); out.partialReason = `Partial results: HTTP ${r.status} on a later page`; break; }
       const $ = cheerio.load(r.text);
       const cards = $('li');
       if (!cards.length) break;
@@ -253,8 +254,10 @@ export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Jo
     const t = Date.now();
     if (!SOURCES[s]) return [] as Job[];
     try {
-      const list = filterJobs(await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000, s), q);
-      onBatch(s, list, '', Date.now() - t);
+      const result = await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000, s) as JobList;
+      const list = filterJobs(result, q);
+      if (result.partialReason) errors.push(`${s}: ${result.partialReason}`);
+      onBatch(s, list, result.partialReason ?? '', Date.now() - t);
       return list;
     } catch (e: any) {
       const msg = String(e?.message ?? e).replace(/^Error:\s*/, '').slice(0, 140);

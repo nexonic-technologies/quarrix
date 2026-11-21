@@ -52,7 +52,7 @@ export async function followedJobs(keywords: string): Promise<Job[]> {
   await Promise.all(listEmployers().map(async (e) => {
     try {
       const jobs = await employerJobs(e);
-      raw().prepare('UPDATE employers SET last_run = ?, last_count = ?, error = \'\' WHERE id = ?').run(now(), jobs.length, e.id);
+      raw().prepare('UPDATE employers SET last_run = ?, last_count = ?, error = ? WHERE id = ?').run(now(), jobs.length, (jobs as Job[] & { partialReason?: string }).partialReason ?? '', e.id);
       out.push(...jobs.filter((j) => !words.length || words.some((w) => `${j.title} ${j.tags.join(' ')}`.toLowerCase().includes(w))));
     } catch (err: any) { raw().prepare('UPDATE employers SET last_run = ?, error = ? WHERE id = ?').run(now(), String(err.message ?? err).slice(0, 200), e.id); }
   }));

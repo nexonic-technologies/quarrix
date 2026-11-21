@@ -5,7 +5,7 @@
 - Proof reports now insert sent metadata and the selected mailbox together. Provider delivery attempts reserve persistent allowance before delivery, and their subsequent sent message records do not count twice. Ambiguous provider failures conservatively retain the reservation.
 - Duplicate review groups compatible locations independently. Merges collect notes, tags, emails, custom fields and field conflicts; incompatible contact records or source permissions abort transactionally. Undo refuses changed records and older merges without verifiable snapshots.
 - Release verification reports use platform-specific filenames; the Rosetta report must explicitly confirm success.
-- Remaining: run CI, installer checks, further provider diagnostics and native Windows ARM64/Intel macOS validation. The 17 existing external blockers remain unchanged.
+- Overpass stops on explicit rate limits/access refusals and rejects incomplete provider data; later-page job-board errors preserve results with a partial-result warning. Further provider diagnostics and native Windows ARM64/Intel macOS validation remain pending, along with CI and installer checks. The 17 existing external blockers remain unchanged.
 
 ## v0.26.0 (data integrity milestone)
 

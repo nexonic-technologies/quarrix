@@ -94,8 +94,8 @@ export async function employerJobs(e: Employer): Promise<Job[]> {
  * Workday's public job search (0.25): retries busy answers (429/5xx) with a growing pause, explains HTML answers
  * (maintenance or bot pages) instead of failing on JSON, and keeps the postings already read when a later page fails.
  */
-export async function workdayJobs(e: Employer, pause = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<Job[]> {
-  const out: Job[] = [];
+export async function workdayJobs(e: Employer, pause = (ms: number) => new Promise((r) => setTimeout(r, ms))): Promise<Job[] & { partialReason?: string }> {
+  const out: Job[] & { partialReason?: string } = [];
   let total = Infinity;
   for (let offset = 0; offset < 400 && offset < total; offset += 20) {
     let j: any = null, why = '';
@@ -105,9 +105,9 @@ export async function workdayJobs(e: Employer, pause = (ms: number) => new Promi
       if (r.status === 404) throw new Error('job board not found (check the careers link)');
       if (r.ok && /^\s*[{[]/.test(r.text)) { try { j = JSON.parse(r.text); } catch { why = 'the answer was not readable'; } continue; }
       why = r.ok ? 'Workday answered with a web page instead of job data (maintenance or a bot check)' : r.status ? `HTTP ${r.status}` : r.text.slice(0, 120);
-      if (r.status && r.status < 500 && r.status !== 429 && r.status !== 408) break; // not worth retrying
+      if (r.ok || (r.status && r.status < 500 && r.status !== 408)) break; // don't retry an access refusal, rate limit or bot page
     }
-    if (!j) { if (out.length) break; throw new Error(`Workday: ${why}`); }
+    if (!j) { if (out.length) { out.partialReason = `Partial results: ${why}`; break; } throw new Error(`Workday: ${why}`); }
     if (Number.isFinite(Number(j.total)) && Number(j.total) > 0) total = Number(j.total);
     for (const x of j.jobPostings ?? []) if (x?.title) out.push(job(e, { id: x.externalPath ?? x.title, title: x.title, url: `https://${e.host}/${e.site}${x.externalPath ?? ''}`, location: x.locationsText ?? '', workplace: remote(x.locationsText ?? ''), posted: '' }));
     if ((j.jobPostings ?? []).length < 20) break;

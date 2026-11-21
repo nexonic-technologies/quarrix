@@ -97,8 +97,15 @@ async function overpass(q: string, timeout: number) {
     for (const [i, url] of (round ? OVERPASS.slice(0, 2) : OVERPASS).entries()) {
       if (i || round) await sleep(round ? 5000 : 2000);
       r = await send(url).catch((e: any) => ({ ok: false, status: 0, text: '', why: String(e?.message ?? e).slice(0, 120) }) as any);
-      if (r.ok && /^\s*\{/.test(r.text)) return r;
-      if (r.ok) r = { ...r, ok: false, status: 503, why: 'answered with a web page instead of data' } as any;
+      if (r.ok) {
+        try {
+          const data = JSON.parse(r.text);
+          if (Array.isArray(data.elements) && !data.remark) return r;
+          r = { ...r, ok: false, status: 503, why: data.remark ? 'returned an incomplete result' : 'returned an unexpected response' } as any;
+        } catch { return { ...r, ok: false, status: 502, why: 'returned an unreadable response' }; }
+      }
+      // Explicit access refusals and rate limits must not be routed around via another endpoint.
+      if (r.status >= 400 && r.status < 500) return r;
     }
     if (r.status && r.status !== 429 && r.status < 500) break;
   }
