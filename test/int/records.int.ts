@@ -56,6 +56,8 @@ test('interrupted searches resume; re-contact rule; attention queue', () => {
   db.updateMessage(m, { status: 'sent', sent_at: db.now() });
   assert.equal(contactedRecently(db.getLead(b)!, 90), true, 'same company, other branch');
   assert.equal(contactedRecently(db.getLead(b)!, 0), false);
-  db.updateMessage(m, { status: 'failed', error: 'Mailbox full' });
+  // A sent message cannot become a failure (0.26 lock); a separate message fails.
+  const f = db.addMessage({ lead_id: a, step: 1, subject: 's', body: 'b' });
+  db.updateMessage(f, { status: 'failed', error: 'Mailbox full' });
   assert.ok((db.attention().failed as any[]).some((x) => x.error === 'Mailbox full'));
 });
