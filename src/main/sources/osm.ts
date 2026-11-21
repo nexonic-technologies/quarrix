@@ -45,7 +45,7 @@ export async function searchOsm(category: string, place: string, limit: number, 
   }
   const q = `[out:json][timeout:180];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center${Number.isFinite(limit) ? ' ' + limit * 2 : ''};`;
   const r = await overpass(q, 190000);
-  if (!r.ok) throw new Error(`OpenStreetMap is busy (${r.status ? `HTTP ${r.status}` : (r as any).why || 'no answer'}). Try again in a few minutes.`);
+  if (!r.ok) throw new Error(`OpenStreetMap could not complete the search (${r.why || (r.status ? `HTTP ${r.status}` : 'no answer')}). Try again later.`);
   const els = (JSON.parse(r.text).elements ?? []) as any[];
   const out: Candidate[] = [];
   for (const e of els) {
@@ -101,7 +101,7 @@ async function overpass(q: string, timeout: number) {
         try {
           const data = JSON.parse(r.text);
           if (Array.isArray(data.elements) && !data.remark) return r;
-          r = { ...r, ok: false, status: 503, why: data.remark ? 'returned an incomplete result' : 'returned an unexpected response' } as any;
+          return { ...r, ok: false, status: 502, why: data.remark ? 'returned an incomplete result' : 'returned an unexpected response' };
         } catch { return { ...r, ok: false, status: 502, why: 'returned an unreadable response' }; }
       }
       // Explicit access refusals and rate limits must not be routed around via another endpoint.
