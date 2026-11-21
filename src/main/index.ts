@@ -13,6 +13,7 @@ import * as crm from './crm';
 import * as validate from './validate';
 import * as career from './career';
 import * as jobstore from './jobstore';
+import { marketReport, marketCsv } from './market';
 import { checkJobTrust } from './job-trust';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -261,6 +262,15 @@ function registerIpc() {
   handle('search:list', () => db.listSearches());
 
   handle('leads:query', (q) => db.queryLeads(scope.scopedQuery({ ...(q ?? {}) })));
+  handle('market:report', (group, country, category) => marketReport(group, country, category, scope.current()));
+  handle('market:export', async (group, country, category) => {
+    const client = scope.current();
+    const r = await dialog.showSaveDialog(win!, { defaultPath: 'quarrix-market-report.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
+    if (r.canceled || !r.filePath) return null;
+    const report = marketReport(group, country, category, client);
+    (await import('node:fs')).writeFileSync(r.filePath, marketCsv(report, group, country, category));
+    return report.groups.length;
+  });
   handle('leads:get', (id: number) => ({ lead: db.getLead(id), messages: db.messagesFor(id), events: db.eventsFor(id) }));
   handle('leads:update', (id: number, patch) => { db.updateLead(id, patch); if (patch.status === 'do_not_contact') { const l = db.getLead(id); if (l?.email) db.suppress(l.email, 'marked do not contact'); db.cancelPending(id, 'Marked do not contact'); } return db.getLead(id); });
   handle('leads:delete', (ids: number[]) => db.deleteLeads(ids));

@@ -1,0 +1,26 @@
+import { readFileSync, writeFileSync } from 'node:fs';
+const rows = [
+ ['Market intelligence','مارکیٹ انٹیلیجنس','ذكاء السوق','Inteligencia de mercado','Intelligence de marché','Marktintelligenz'],
+ ['Compare the records already stored in this workspace. These samples do not establish market size, market share or revenue potential.','اس ورک اسپیس میں پہلے سے محفوظ ریکارڈز کا موازنہ کریں۔ یہ نمونے مارکیٹ کا حجم، حصہ یا آمدنی کا امکان ثابت نہیں کرتے۔','قارن السجلات المخزنة في مساحة العمل. هذه العينات لا تحدد حجم السوق أو حصته أو الإيرادات المحتملة.','Compara los registros guardados en este espacio. Estas muestras no establecen el tamaño o cuota del mercado ni los ingresos potenciales.','Comparez les enregistrements de cet espace. Ces échantillons ne déterminent ni la taille ou part du marché ni le potentiel de revenus.','Vergleichen Sie gespeicherte Datensätze dieses Arbeitsbereichs. Diese Stichproben belegen weder Marktgröße, Marktanteil noch Umsatzpotenzial.'],
+ ['Group by','گروپ بندی','تجميع حسب','Agrupar por','Regrouper par','Gruppieren nach'],
+ ['Export market report','مارکیٹ رپورٹ برآمد کریں','تصدير تقرير السوق','Exportar informe de mercado','Exporter le rapport de marché','Marktbericht exportieren'],
+ ['Market report exported','مارکیٹ رپورٹ برآمد ہوگئی','تم تصدير تقرير السوق','Informe de mercado exportado','Rapport de marché exporté','Marktbericht exportiert'],
+ ['Market report unavailable.','مارکیٹ رپورٹ دستیاب نہیں۔','تقرير السوق غير متاح.','Informe de mercado no disponible.','Rapport de marché indisponible.','Marktbericht nicht verfügbar.'],
+ ['Loading market report…','مارکیٹ رپورٹ لوڈ ہو رہی ہے…','جارٍ تحميل تقرير السوق…','Cargando informe de mercado…','Chargement du rapport de marché…','Marktbericht wird geladen…'],
+ ['Business records','کاروباری ریکارڈز','سجلات الأعمال','Registros comerciales','Enregistrements d’entreprise','Geschäftsdatensätze'],
+ ['Linked companies','منسلک کمپنیاں','الشركات المرتبطة','Empresas vinculadas','Entreprises liées','Verknüpfte Unternehmen'],
+ ['Unlinked records','غیر منسلک ریکارڈز','سجلات غير مرتبطة','Registros sin vincular','Enregistrements non liés','Nicht verknüpfte Datensätze'],
+ ['Checked in last 90 days','گزشتہ 90 دن میں جانچ','تم التحقق خلال آخر 90 يوماً','Comprobados en los últimos 90 días','Vérifiés dans les 90 derniers jours','In den letzten 90 Tagen geprüft'],
+ ['Records with a website:','ویب سائٹ والے ریکارڈز:','سجلات لها موقع إلكتروني:','Registros con sitio web:','Enregistrements avec site web :','Datensätze mit Website:'],
+ ['Rated records:','درجہ بندی والے ریکارڈز:','السجلات المقيّمة:','Registros valorados:','Enregistrements évalués :','Bewertete Datensätze:'],
+ ['Rated records','درجہ بندی والے ریکارڈز','السجلات المقيّمة','Registros valorados','Enregistrements évalués','Bewertete Datensätze'],
+ ['Scored records:','اسکور والے ریکارڈز:','السجلات المسجلة بنقاط:','Registros con puntuación:','Enregistrements notés :','Datensätze mit Punktwert:'],
+ ['Scored records','اسکور والے ریکارڈز','السجلات المسجلة بنقاط','Registros con puntuación','Enregistrements notés','Datensätze mit Punktwert'],
+ ['Won records:','کامیاب ریکارڈز:','السجلات الناجحة:','Registros ganados:','Enregistrements gagnés :','Gewonnene Datensätze:'],
+ ['Mean recorded fit uses scored records only. Unknown data is not assumed to be zero. Company counts may overlap across groups.','اوسط مطابقت صرف اسکور والے ریکارڈز پر ہے۔ نامعلوم ڈیٹا کو صفر نہیں سمجھا جاتا۔ کمپنیاں مختلف گروپس میں مشترک ہو سکتی ہیں۔','يستخدم متوسط الملاءمة السجلات ذات النقاط فقط. لا تُعتبر البيانات المجهولة صفراً. قد تتداخل الشركات بين المجموعات.','La adecuación media solo usa registros puntuados. Los datos desconocidos no se consideran cero. Las empresas pueden repetirse entre grupos.','La correspondance moyenne utilise uniquement les enregistrements notés. Les données inconnues ne valent pas zéro. Les entreprises peuvent apparaître dans plusieurs groupes.','Der mittlere Fit nutzt nur bewertete Datensätze. Unbekannte Daten gelten nicht als null. Unternehmen können in mehreren Gruppen vorkommen.'],
+ ['Recent checks','حالیہ جانچ','عمليات التحقق الحديثة','Comprobaciones recientes','Vérifications récentes','Aktuelle Prüfungen'],
+ ['Mean fit','اوسط مطابقت','متوسط الملاءمة','Adecuación media','Correspondance moyenne','Mittlerer Fit'],
+ ['No records match these filters.','ان فلٹرز سے کوئی ریکارڈ نہیں ملا۔','لا سجلات تطابق هذه المرشحات.','No hay registros que coincidan con estos filtros.','Aucun enregistrement ne correspond à ces filtres.','Keine Datensätze entsprechen diesen Filtern.'],
+ ['Showing the 100 largest groups. Totals include every matching record.','100 سب سے بڑے گروپس دکھائے جا رہے ہیں۔ مجموعے میں تمام متعلقہ ریکارڈز شامل ہیں۔','عرض أكبر 100 مجموعة. تشمل الإجماليات جميع السجلات المطابقة.','Se muestran los 100 grupos más grandes. Los totales incluyen todos los registros coincidentes.','Affichage des 100 groupes les plus importants. Les totaux incluent tous les enregistrements correspondants.','Die 100 größten Gruppen werden angezeigt. Summen umfassen alle passenden Datensätze.'],
+];
+for (const [i, lang] of ['ur','ar','es','fr','de'].entries()) { const file = new URL(`../src/renderer/src/locales/${lang}.json`, import.meta.url); const d = JSON.parse(readFileSync(file,'utf8')); for (const row of rows) d[row[0]] = row[i+1]; writeFileSync(file, JSON.stringify(d)); }

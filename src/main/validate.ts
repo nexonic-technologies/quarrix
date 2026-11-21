@@ -41,6 +41,11 @@ const ids = (v: unknown) => { if (!Array.isArray(v)) fail('Send a list of record
 type Check = (a: any[]) => any[];
 /** Checks per channel. Exported for tests. */
 export const CHECKS: Record<string, Check> = {
+  'market:report': ([group, country, category]) => {
+    if (!['category', 'country', 'city', 'source', 'company'].includes(String(group))) fail('Unknown market grouping.');
+    return [String(group), str(country ?? '', 'Country', 80), str(category ?? '', 'Category', 120)];
+  },
+  'market:export': (a) => CHECKS['market:report'](a),
   'studio:save': ([id, value]) => {
     if (!isObj(value)) fail('Invalid application notes.');
     const day = (k: string) => { const d = str(value[k], k, 10); if (!validDay(d)) fail('Choose a valid date.'); return d; };

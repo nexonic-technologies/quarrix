@@ -273,7 +273,14 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v0.29.0 ]; then
+            if [ "$TAG" = v0.30.0 ]; then
+              echo "## Business and Market Intelligence"
+              echo
+              echo "- Compare recorded businesses by category, country, city, source and linked company."
+              echo "- Distinguish linked companies, locations, data coverage, recency and recorded fit."
+              echo "- Workspace-scoped local analysis and aggregate CSV export; no market-size or revenue claims."
+              echo
+            elif [ "$TAG" = v0.29.0 ]; then
               echo "## Resume, Interview and Application Studio"
               echo
               echo "- Text-based resume review, skill evidence and interview practice prompts."
