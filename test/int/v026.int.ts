@@ -6,11 +6,12 @@ import { join } from 'node:path';
 import * as db from '../../src/main/db';
 import * as crm from '../../src/main/crm';
 import * as mb from '../../src/main/mailboxes';
+import * as automation from '../../src/main/automation';
 import { check } from '../../src/main/validate';
 
 const dir = process.env.QUARRIX_TEST_DIR!;
 const today = () => new Date().toISOString().slice(0, 10);
-before(() => { db.openDb(join(dir, 'v026.db')); db.migrateData(); crm.migrate(); });
+before(() => { db.openDb(join(dir, 'v026.db')); db.migrateData(); crm.migrate(); automation.migrate(); });
 
 const lead = (name: string, extra: Record<string, unknown> = {}) => db.upsertLead({ name, source: 'import', source_ref: `${name}-${Math.random()}`, client: '', ...extra } as any)[0];
 const rows = (sql: string, ...a: unknown[]) => db.raw().prepare(sql).all(...(a as never[])) as any[];
