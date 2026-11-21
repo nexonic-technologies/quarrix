@@ -32,7 +32,9 @@ export async function runSmoke(win: BrowserWindow) {
 
   await check('window loads the packaged interface', async () => { const n = await js<number>('document.querySelectorAll("#root *").length'); if (n < 20) throw new Error(`only ${n} elements rendered`); return `${n} elements`; });
   await check('first-launch wizard is shown, and can be skipped (QF-114)', async () => {
-    const shown = await js<boolean>('[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Skip setup")');
+    // settings load asynchronously; slower runners (Windows) can take several seconds before the wizard mounts
+    let shown = false;
+    for (let i = 0; i < 40 && !shown; i++) { shown = await js<boolean>('[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Skip setup")'); if (!shown) await new Promise((r) => setTimeout(r, 250)); }
     if (!shown) throw new Error('no setup wizard on first launch');
     await js('[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Skip setup").click()');
     await new Promise((r) => setTimeout(r, 600));
