@@ -1,8 +1,8 @@
-# Final audit, v0.27.0
+# Final audit, v0.28.0
 
-## v0.28.0 candidate
+## v0.28.0 (released)
 
-Job trust checks report observable evidence, not a fraud verdict. On request, Quarrix checks the listing and a user-supplied employer careers page, matches the exact vacancy and company, and displays contextual warning excerpts and the evidence score. The [method and limitations](JOB_TRUST.md) are documented. Full CI and installed-app validation pending; the 17 external blockers remain unchanged.
+Job trust checks report observable evidence, not a fraud verdict. On request, Quarrix checks the listing and a user-supplied employer careers page, matches the exact vacancy and company, and displays contextual warning excerpts and the evidence score. The [method and limitations](JOB_TRUST.md) are documented. [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44933745481) passed. [Release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.28.0) confirms 114/114 checks across six installed-app runs. Live providers: 19/20 returned real data, one temporary Overpass outage, zero failures; the 17 external blockers remain unchanged.
 
 ## v0.27.0 Career Intelligence (released)
 
