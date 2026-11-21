@@ -90,7 +90,7 @@ test('the final sending guard: approval, identity, do-not-contact, limits; tests
   assert.equal(mb.ready(mb.boxById('main')), false, 'a changed sender address needs a new approval');
   save({ email: { ...load().email, fromEmail: 'me@sender.test' } });
   db.logEvent(null, 'placement', 'main');
-  assert.equal(mb.sentToday('main'), 3, 'placement tests count towards the daily limit');
+  assert.equal(mb.sentToday('main'), 4, 'direct sends and placement tests count towards the daily limit');
 });
 
 test('WhatsApp approval is tied to one business number and cannot be set from the interface', () => {

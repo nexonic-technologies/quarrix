@@ -99,6 +99,7 @@ test('Workday: busy answers are retried, HTML pages explained, partial results k
   const e = { ats: 'workday', slug: 'acme', name: 'Acme', host: 'acme.wd1.myworkdayjobs.com', site: 'Ext' } as any;
   const jobs = await workdayJobs(e, async () => undefined);
   assert.equal(jobs.length, 20); // first page kept although the second answered with a web page
+  assert.match(jobs.partialReason ?? '', /Partial results/);
   globalThis.fetch = (async () => new Response('<html>bot check</html>', { status: 200 })) as typeof fetch;
   await assert.rejects(workdayJobs(e, async () => undefined), /web page instead of job data/);
 });

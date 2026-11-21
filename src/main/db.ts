@@ -91,26 +91,32 @@ export function openDb(file = join(app.getPath('userData'), 'quarrix.db')) {
 /**
  * 0.26: every send is written to an append-only log by the database itself (triggers), so deleting or editing messages,
  * deleting a lead or merging leads can never lower today's count, the warm-up age or the test-email allowance.
- * Rows cannot be changed, and cannot be deleted for 60 days.
+ * Rows cannot be changed or deleted; delivery counters are separate from user-deletable lead history.
  */
 function sendLogSetup() {
   const fresh = !db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'send_log'").get();
+  db.exec("CREATE TABLE IF NOT EXISTS send_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, mailbox TEXT NOT NULL DEFAULT 'main', purpose TEXT NOT NULL DEFAULT 'outreach', channel TEXT NOT NULL DEFAULT 'email', lead_id INTEGER, message_id INTEGER, delivery_id TEXT)");
+  if (!db.prepare("SELECT 1 FROM pragma_table_info('send_log') WHERE name = 'delivery_id'").get()) db.exec('ALTER TABLE send_log ADD COLUMN delivery_id TEXT');
   db.exec(`
-  CREATE TABLE IF NOT EXISTS send_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, mailbox TEXT NOT NULL DEFAULT 'main', purpose TEXT NOT NULL DEFAULT 'outreach', channel TEXT NOT NULL DEFAULT 'email', lead_id INTEGER, message_id INTEGER);
   CREATE INDEX IF NOT EXISTS send_log_box ON send_log(mailbox, at);
-  CREATE TRIGGER IF NOT EXISTS send_log_insert AFTER INSERT ON messages WHEN NEW.status = 'sent' BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS send_log_delivery ON send_log(delivery_id);
+  DROP TRIGGER IF EXISTS send_log_insert;
+  DROP TRIGGER IF EXISTS send_log_update;
+  DROP TRIGGER IF EXISTS send_log_no_delete;
+  DROP TRIGGER IF EXISTS messages_sent_locked;
+  CREATE TRIGGER send_log_insert AFTER INSERT ON messages WHEN NEW.status = 'sent' AND NOT EXISTS (SELECT 1 FROM send_log WHERE delivery_id = NEW.message_id AND mailbox = NEW.mailbox) BEGIN
     INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) VALUES (COALESCE(NEW.sent_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), COALESCE(NEW.mailbox, 'main'), 'outreach', NEW.channel, NEW.lead_id, NEW.id);
   END;
-  CREATE TRIGGER IF NOT EXISTS send_log_update AFTER UPDATE OF status ON messages WHEN NEW.status = 'sent' AND OLD.status IS NOT 'sent' BEGIN
+  CREATE TRIGGER send_log_update AFTER UPDATE OF status ON messages WHEN NEW.status = 'sent' AND OLD.status IS NOT 'sent' AND NOT EXISTS (SELECT 1 FROM send_log WHERE delivery_id = NEW.message_id AND mailbox = NEW.mailbox) BEGIN
     INSERT INTO send_log (at, mailbox, purpose, channel, lead_id, message_id) VALUES (COALESCE(NEW.sent_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')), COALESCE(NEW.mailbox, 'main'), 'outreach', NEW.channel, NEW.lead_id, NEW.id);
   END;
   CREATE TRIGGER IF NOT EXISTS send_log_placement AFTER INSERT ON events WHEN NEW.type = 'placement' BEGIN
     INSERT INTO send_log (at, mailbox, purpose, lead_id) VALUES (NEW.at, NEW.detail, 'placement', NEW.lead_id);
   END;
   CREATE TRIGGER IF NOT EXISTS send_log_no_update BEFORE UPDATE ON send_log BEGIN SELECT RAISE(ABORT, 'The send history cannot be changed.'); END;
-  CREATE TRIGGER IF NOT EXISTS send_log_no_delete BEFORE DELETE ON send_log WHEN OLD.at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-60 days') BEGIN SELECT RAISE(ABORT, 'The send history cannot be deleted.'); END;
+  CREATE TRIGGER send_log_no_delete BEFORE DELETE ON send_log BEGIN SELECT RAISE(ABORT, 'The send history cannot be deleted.'); END;
   CREATE TRIGGER IF NOT EXISTS messages_sent_locked BEFORE UPDATE ON messages WHEN OLD.status = 'sent' AND (NEW.status IS NOT 'sent' OR NEW.subject IS NOT OLD.subject OR NEW.body IS NOT OLD.body
-    OR NEW.channel IS NOT OLD.channel OR NEW.mailbox IS NOT OLD.mailbox OR NEW.step IS NOT OLD.step OR (OLD.sent_at IS NOT NULL AND NEW.sent_at IS NOT OLD.sent_at)) BEGIN
+    OR NEW.channel IS NOT OLD.channel OR NEW.mailbox IS NOT OLD.mailbox OR NEW.step IS NOT OLD.step OR NEW.message_id IS NOT OLD.message_id OR NEW.sent_at IS NOT OLD.sent_at) BEGIN
     SELECT RAISE(ABORT, 'A sent message cannot be changed.');
   END;`);
   // First run: copy the history that exists so limits and warm-up carry over.
@@ -128,6 +134,15 @@ export const firstSend = (mailbox?: string) =>
 /** Test emails are logged too, so the daily allowance survives restarts. */
 export const logTestSend = (mailbox = 'main') => db.prepare("INSERT INTO send_log (at, mailbox, purpose) VALUES (?, ?, 'test')").run(now(), mailbox);
 export const testSendsSince = (since: string) => (db.prepare("SELECT COUNT(*) n FROM send_log WHERE purpose = 'test' AND at >= ?").get(since) as { n: number }).n;
+/** Reserve before contacting the provider. Ambiguous failures retain their allowance rather than risk exceeding it. */
+export function reserveEmail(mailbox: string, purpose: 'outreach' | 'placement' | 'test', deliveryId: string, cap: number) {
+  db.transaction(() => {
+    if (purpose === 'test') {
+      if (testSendsSince(new Date(Date.now() - 864e5).toISOString()) >= 5) throw new Error('Five test emails a day is the limit.');
+    } else if (sendsSince(mailbox, now().slice(0, 10)) >= cap) throw new Error("Not sent: mailbox has reached today's limit.");
+    db.prepare('INSERT INTO send_log (at, mailbox, purpose, delivery_id) VALUES (?, ?, ?, ?)').run(now(), mailbox, purpose, deliveryId);
+  }).immediate();
+}
 
 export const now = () => new Date().toISOString();
 export const raw = () => db;
@@ -410,8 +425,8 @@ export const nextQueuedSearch = () => db.prepare("SELECT * FROM searches WHERE s
 export type Message = { mailbox?: string; variant?: string; id: number; lead_id: number; channel: string; step: number; subject: string; body: string; status: string; due_at: string | null; sent_at: string | null; message_id: string; error: string; created_at: string };
 
 export function addMessage(m: Partial<Message> & { lead_id: number }) {
-  return Number(db.prepare('INSERT INTO messages (lead_id, channel, step, subject, body, status, due_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(m.lead_id, m.channel ?? 'email', m.step ?? 0, m.subject ?? '', m.body ?? '', m.status ?? 'draft', m.due_at ?? null, now()).lastInsertRowid);
+  return Number(db.prepare('INSERT INTO messages (lead_id, channel, step, subject, body, status, due_at, created_at, mailbox, variant, sent_at, message_id, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(m.lead_id, m.channel ?? 'email', m.step ?? 0, m.subject ?? '', m.body ?? '', m.status ?? 'draft', m.due_at ?? null, now(), m.mailbox ?? 'main', m.variant ?? '', m.sent_at ?? null, m.message_id ?? '', m.error ?? '').lastInsertRowid);
 }
 const MESSAGE_COLS = ['subject', 'body', 'status', 'due_at', 'sent_at', 'message_id', 'error', 'mailbox', 'variant', 'step'];
 export function updateMessage(id: number, patch: Partial<Message>) {

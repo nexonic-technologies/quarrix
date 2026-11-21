@@ -81,23 +81,29 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          APP="$(ls -d dist/mac-arm64/Quarrix.app)"
+          for APP in dist/mac-arm64/Quarrix.app dist/mac/Quarrix.app; do
+          [ -d "$APP" ] || exit 1
+          ARCH=$(lipo -archs "$APP/Contents/MacOS/Quarrix")
           if [ "${{ steps.sign.outputs.signed }}" = true ]; then
             codesign --verify --deep --strict --verbose=2 "$APP"
             spctl --assess --type execute --verbose=4 "$APP"
             xcrun stapler validate "$APP"
-            echo "macOS: signed with Developer ID and notarized" | tee -a signing.txt
+            echo "macOS $ARCH: signed with Developer ID and notarized" | tee -a signing.txt
           else
-            codesign -dv "$APP" 2>&1 | tee /dev/stderr | grep -q "Signature=adhoc" && echo "macOS: unsigned (ad-hoc signature only; no Developer ID certificate in secrets)" | tee -a signing.txt
+            codesign -dv "$APP" 2>&1 | tee /dev/stderr | grep -q "Signature=adhoc" && echo "macOS $ARCH: unsigned (ad-hoc signature only; no Developer ID certificate in secrets)" | tee -a signing.txt
           fi
+          done
       - name: Verify Windows signature
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist -Filter "*-x64-setup.exe" | Select-Object -First 1
-          $sig = Get-AuthenticodeSignature $exe.FullName
-          if ("${{ steps.sign.outputs.signed }}" -eq "true") { if ($sig.Status -ne "Valid") { throw "Signature status: $($sig.Status)" }; "Windows: signed by $($sig.SignerCertificate.Subject)" | Tee-Object -Append signing.txt }
-          else { "Windows: unsigned (status $($sig.Status); no code-signing certificate in secrets)" | Tee-Object -Append signing.txt }
+          foreach ($arch in @('x64', 'arm64')) {
+            $exe = Get-ChildItem dist -Filter "*-$arch-setup.exe" | Select-Object -First 1
+            if (-not $exe) { throw "Missing $arch installer" }
+            $sig = Get-AuthenticodeSignature $exe.FullName
+            if ("${{ steps.sign.outputs.signed }}" -eq "true") { if ($sig.Status -ne "Valid") { throw "Signature status: $($sig.Status)" }; "Windows ${arch}: signed by $($sig.SignerCertificate.Subject)" | Tee-Object -Append signing.txt }
+            else { "Windows ${arch}: unsigned (actual signature status $($sig.Status))" | Tee-Object -Append signing.txt }
+          }
       # Installed-app smoke test: install with the real installer, start the installed app, check it end to end (src/main/smoke.ts).
       - name: Smoke test the installed app (macOS)
         if: runner.os == 'macOS'
@@ -129,7 +135,7 @@ jobs:
           QUARRIX_SMOKE_OUT="$PWD/smoke-linux.json" xvfb-run -a "$BIN" --no-sandbox || (cat smoke-linux.json; exit 1)
           cat smoke-linux.json
       # Every shipped architecture is checked (0.25): the binary's CPU type, and a second installed-app run where the runner can.
-      - name: Verify architectures and the second package (macOS Intel)
+      - name: Verify architectures (macOS Intel and Apple Silicon)
         if: runner.os == 'macOS'
         timeout-minutes: 12
         shell: bash
@@ -137,12 +143,7 @@ jobs:
           A=$(lipo -archs dist/mac-arm64/Quarrix.app/Contents/MacOS/Quarrix); X=$(lipo -archs dist/mac/Quarrix.app/Contents/MacOS/Quarrix)
           [ "$A" = arm64 ] && [ "$X" = x86_64 ] || { echo "wrong CPU types: arm64 build=$A, Intel build=$X"; exit 1; }
           echo "macOS: Apple Silicon build is arm64, Intel build is x86_64" | tee -a signing.txt
-          # Under Rosetta the app can hang on the runner's virtual display, so this run is capped at 5 minutes and reported, not gated.
-          if arch -x86_64 /usr/bin/true 2>/dev/null; then
-            hdiutil attach -nobrowse -mountpoint /tmp/qx "$(ls dist/*-mac-x64.dmg)" && cp -R /tmp/qx/Quarrix.app /tmp/QuarrixX.app && hdiutil detach /tmp/qx
-            if QUARRIX_SMOKE_OUT="$PWD/smoke-mac-x64.json" perl -e 'alarm 300; exec @ARGV' arch -x86_64 /tmp/QuarrixX.app/Contents/MacOS/Quarrix && [ -f smoke-mac-x64.json ]; then echo "macOS Intel: installed-app run under Rosetta passed" | tee -a signing.txt
-            else rm -f smoke-mac-x64.json; echo "macOS Intel: installed-app run under Rosetta did not finish within 5 minutes; CPU type checked" | tee -a signing.txt; fi
-          else echo "macOS Intel: installed-app run skipped (no Rosetta on this runner); CPU type checked" | tee -a signing.txt; fi
+          # Native Intel installed-app validation is a separate required job, avoiding Rosetta display hangs.
       - name: Verify architectures (Windows ARM64)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -151,7 +152,7 @@ jobs:
           $x = Machine "dist\win-unpacked\Quarrix.exe"; $a = Machine "dist\win-arm64-unpacked\Quarrix.exe"
           if ($x -ne "8664" -or $a -ne "AA64") { throw "wrong CPU types: x64 build=$x, ARM64 build=$a" }
           if (-not (Get-ChildItem dist -Filter "*-arm64-setup.exe")) { throw "no ARM64 installer" }
-          "Windows: x64 build is AMD64, ARM64 build is ARM64 (installed-app run needs an ARM64 runner)" | Tee-Object -Append signing.txt
+          "Windows: x64 build is AMD64, ARM64 build is ARM64 (native installed-app validation below)" | Tee-Object -Append signing.txt
       - name: Smoke test the AppImage (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 10
@@ -160,6 +161,12 @@ jobs:
           IMG="$(ls dist/*.AppImage | head -1)"; chmod +x "$IMG"
           QUARRIX_SMOKE_OUT="$PWD/smoke-linux-appimage.json" APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a "$IMG" --no-sandbox || (cat smoke-linux-appimage.json; exit 1)
           echo "Linux: AppImage installed-app smoke test passed" | tee -a signing.txt
+      - name: Preserve platform-specific verification report
+        if: always()
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then echo "Linux: no installer code signature; SHA-256 checksums published separately" >> signing.txt; fi
+          if [ -f signing.txt ]; then mv signing.txt "signing-$RUNNER_OS.txt"; fi
       - name: Attach smoke reports and signing status
         if: always()
         uses: actions/upload-artifact@v4
@@ -167,8 +174,52 @@ jobs:
           name: verification-${{ runner.os }}
           path: |
             smoke-*.json
-            signing.txt
+            signing-*.txt
           if-no-files-found: ignore
+  # Validate the actual draft installers on native CPUs before publishing.
+  native-smoke:
+    needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            pattern: '*-mac-x64.dmg'
+          - os: windows-11-arm
+            pattern: '*-arm64-setup.exe'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Download draft installer
+        shell: bash
+        env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}', PATTERN: '${{ matrix.pattern }}' }
+        run: gh release download "$TAG" -R "$REPO" --pattern "$PATTERN" --dir installers
+      - name: Smoke test native Intel macOS installer
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          hdiutil attach -nobrowse -mountpoint /tmp/q-native "$(ls installers/*.dmg)"
+          cp -R /tmp/q-native/Quarrix.app /tmp/QuarrixNative.app
+          hdiutil detach /tmp/q-native
+          QUARRIX_SMOKE_OUT="$PWD/smoke-mac-x64.json" /tmp/QuarrixNative.app/Contents/MacOS/Quarrix
+          node -e 'const r=require("./smoke-mac-x64.json"); if (!r.ok || r.arch !== "x64") process.exit(1)'
+      - name: Smoke test native Windows ARM64 installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installers -Filter '*-arm64-setup.exe' | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed with $($p.ExitCode)" }
+          $env:QUARRIX_SMOKE_OUT = "$PWD\smoke-windows-arm64.json"
+          Start-Process "$env:LOCALAPPDATA\Programs\Quarrix\Quarrix.exe" -Wait
+          $r = Get-Content $env:QUARRIX_SMOKE_OUT -Raw | ConvertFrom-Json
+          if (-not $r.ok -or $r.arch -ne 'arm64') { throw 'ARM64 smoke test failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-native-${{ matrix.os }}
+          path: smoke-*.json
+          if-no-files-found: error
   # Live checks of the keyless providers with the app's own code (GitHub runners have internet access). A report, not a gate.
   live:
     needs: version
@@ -186,8 +237,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: verification-live, path: live-providers.json }
   checksums:
-    needs: [version, build, live]
-    if: always() && needs.build.result == 'success'
+    needs: [version, build, native-smoke, live]
+    if: always() && needs.build.result == 'success' && needs.native-smoke.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -211,9 +262,17 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
+            if [ "$TAG" = v0.26.1 ]; then
+              echo "## Hardening changes"
+              echo
+              echo "- Persistent email allowance reservations and correct proof-report mailbox attribution."
+              echo "- Conflict-safe CRM merge and undo, plus location-aware duplicate groups."
+              echo "- Partial provider-result warnings and architecture-specific installer verification."
+              echo
+            fi
             echo "## Verification"
             echo
-            cat verification/signing.txt 2>/dev/null | sed 's/^/- /'
+            for f in verification/signing-*.txt; do [ -f "$f" ] || continue; sed 's/^/- /' "$f"; done
             for f in verification/smoke-*.json; do node -e "const r=require('./'+process.argv[1]); console.log('- Installed-app smoke test, '+r.platform+' '+r.arch+(process.argv[1].includes('appimage')?' (AppImage)':process.argv[1].includes('linux')?' (deb)':'')+': '+r.checks.filter(c=>c.ok).length+'/'+r.checks.length+' checks passed')" "$f"; done
             if [ -f verification/live-providers.json ]; then
               node -e "const r=require('./verification/live-providers.json'); console.log('- Live provider checks (keyless sources, from CI): '+r.passed+'/'+r.total+' answered with real data; '+(r.outages||0)+' temporary provider outages; '+(r.failures||0)+' failures. Details: live-providers.json'); for (const x of r.results.filter(x=>!x.ok)) console.log('  - '+(x.kind==='outage'?'Outage (provider busy or unreachable), ':'Failure, ')+x.check+': '+x.detail)"

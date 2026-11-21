@@ -21,16 +21,19 @@ test('merge keeps every contact, moves all lead-linked rows and undo restores th
   const r = lead('Merge Dupe', { email: 'dupe@merge.co' });
   db.addContact({ lead_id: k, name: 'Ann', email: 'ann@merge.co' });
   db.addContact({ lead_id: r, name: 'Ann', email: 'ann@merge.co' }); // same contact on both: cannot move (UNIQUE), must not be lost
+  db.raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE lead_id = ? AND name = ?').run('2026-01-01T00:00:00Z', k, 'Ann');
+  db.raw().prepare('UPDATE contacts SET confirmed_at = ? WHERE lead_id = ? AND name = ?').run('2026-02-01T00:00:00Z', r, 'Ann');
   db.addContact({ lead_id: r, name: 'Bob', email: 'bob@merge.co' });
   const msg = db.addMessage({ lead_id: r, subject: 'Hello', status: 'sent' });
   db.raw().prepare('INSERT INTO automation_log (at, rule, lead_id, event) VALUES (?, ?, ?, ?)').run(db.now(), 'r1', r, 'x');
   db.logEvent(r, 'note', 'dupe history');
-  const before = rows('SELECT id, lead_id, name FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r);
+  const before = rows('SELECT id, lead_id, name, confirmed_at FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r);
 
   crm.mergeLeads(k, [r, r, k]);
   assert.equal(db.getLead(r), undefined);
   assert.equal(db.getLead(k)!.email, 'dupe@merge.co', 'empty field filled');
   assert.deepEqual(rows('SELECT name FROM contacts WHERE lead_id = ? ORDER BY name', k).map((c) => c.name), ['Ann', 'Bob'], 'no contact lost, no duplicate');
+  assert.equal(rows('SELECT confirmed_at FROM contacts WHERE lead_id = ? AND name = ?', k, 'Ann')[0].confirmed_at, '2026-02-01T00:00:00Z');
   assert.equal(rows('SELECT 1 FROM contacts WHERE lead_id = ?', r).length, 0, 'nothing left pointing at the removed lead');
   assert.equal(rows('SELECT lead_id FROM messages WHERE id = ?', msg)[0].lead_id, k);
   assert.equal(rows('SELECT 1 FROM automation_log WHERE lead_id = ?', r).length, 0, 'tables found from the schema are moved too');
@@ -38,7 +41,7 @@ test('merge keeps every contact, moves all lead-linked rows and undo restores th
   const m = (crm.listMerges() as any[]).find((x) => x.kept_id === k && !x.undone);
   crm.undoMerge(m.id);
   assert.ok(db.getLead(r));
-  assert.deepEqual(rows('SELECT id, lead_id, name FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r), before, 'every contact back with its own lead and id');
+  assert.deepEqual(rows('SELECT id, lead_id, name, confirmed_at FROM contacts WHERE lead_id IN (?, ?) ORDER BY id', k, r), before, 'every contact back with its own lead and id');
   assert.equal(rows('SELECT lead_id FROM messages WHERE id = ?', msg)[0].lead_id, r);
   assert.equal(db.getLead(k)!.email, '', 'kept lead back as it was');
   assert.throws(() => crm.undoMerge(m.id), /Nothing to undo/);
@@ -105,4 +108,52 @@ test('upgrade: an existing database keeps its sends in the daily count and warm-
   db.openDb(path); // a second start does not copy the history again
   assert.equal(db.sendsSince('main', today()), 2);
   db.openDb(join(dir, 'v026.db'));
+});
+
+test('sent report records retain their actual mailbox and delivery metadata', () => {
+  const l = lead('Proof Report');
+  const box = 'proof-box';
+  const at = db.now();
+  const deliveryId = '<proof@test.local>';
+  db.reserveEmail(box, 'outreach', deliveryId, 2);
+  const id = db.addMessage({ lead_id: l, step: 99, status: 'sent', mailbox: box, sent_at: at, message_id: deliveryId });
+  assert.equal(db.messagesFor(l)[0].mailbox, box);
+  assert.equal(db.messagesFor(l)[0].sent_at, at);
+  assert.equal(db.messagesFor(l)[0].message_id, deliveryId);
+  assert.equal(mb.sentToday(box), 1);
+  assert.throws(() => db.updateMessage(id, { message_id: '<changed@test.local>' }), /cannot be changed/);
+});
+
+test('duplicate review separates multiple locations sharing a telephone number', () => {
+  const ids = [lead('Location A', { phone: '+15559990111', city: 'Austin', address: '1 Main St' }), lead('Location B', { phone: '+15559990111', city: 'Dallas', address: '9 Elm St' })];
+  for (const [city, address] of [['Austin', '1 Main St'], ['Dallas', '9 Elm St']]) {
+    const stamp = db.now();
+    ids.push(Number(db.raw().prepare('INSERT INTO leads (name, phone, city, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)').run('Duplicate', '+15559990111', city, address, stamp, stamp).lastInsertRowid));
+  }
+  const groups = crm.duplicateGroups().map(g => g.leads.map(l => l.id));
+  assert.ok(groups.some(g => g.includes(ids[0]) && g.includes(ids[2]) && !g.includes(ids[1])));
+  assert.ok(groups.some(g => g.includes(ids[1]) && g.includes(ids[3]) && !g.includes(ids[0])));
+});
+
+test('merge preserves notes and undo protects later edits', () => {
+  const k = lead('Undo Keep', { notes: 'first' }), r = lead('Undo Removed', { notes: 'second' });
+  crm.mergeLeads(k, [r]);
+  assert.equal(db.getLead(k)!.notes, 'first\n\nsecond');
+  const m = (crm.listMerges() as any[]).find(x => x.kept_id === k);
+  db.updateLead(k, { notes: 'edited after merging' });
+  assert.throws(() => crm.undoMerge(m.id), /changed after/);
+  assert.equal(db.getLead(k)!.notes, 'edited after merging');
+  assert.equal(db.getLead(r), undefined);
+});
+
+test('merge preserves restrictive contact preferences and aborts conflicting contact metadata', () => {
+  const k = lead('Contact Keep'), r = lead('Contact Remove', { status: 'do_not_contact' });
+  db.addContact({ lead_id: k, name: 'Ann', email: 'ann@example.test', role: 'Owner' });
+  db.addContact({ lead_id: r, name: 'Ann', email: 'ann@example.test', role: 'Manager' });
+  assert.throws(() => crm.mergeLeads(k, [r]), /Conflicting contacts/);
+  assert.ok(db.getLead(k) && db.getLead(r));
+  assert.equal(rows('SELECT role FROM contacts WHERE lead_id = ?', r)[0].role, 'Manager');
+  const x = lead('Opt-out Record', { status: 'do_not_contact' });
+  crm.mergeLeads(k, [x]);
+  assert.equal(db.getLead(k)!.status, 'do_not_contact');
 });

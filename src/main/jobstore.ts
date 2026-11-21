@@ -40,8 +40,8 @@ export async function addEmployer(link: string) {
   const e = detectAts(link);
   if (!e || !e.slug) throw new Error('Could not recognise the hiring system. Paste a link to the company\'s jobs page on Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Personio, Pinpoint or Workday.');
   const jobs = await employerJobs(e); // proves the board exists before saving it
-  raw().prepare('INSERT INTO employers (ats, slug, name, host, site, added_at, last_run, last_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(ats, slug) DO UPDATE SET last_run = excluded.last_run, last_count = excluded.last_count, error = \'\'')
-    .run(e.ats, e.slug, e.name, e.host ?? '', e.site ?? '', now(), now(), jobs.length);
+  raw().prepare('INSERT INTO employers (ats, slug, name, host, site, added_at, last_run, last_count, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(ats, slug) DO UPDATE SET last_run = excluded.last_run, last_count = excluded.last_count, error = excluded.error')
+    .run(e.ats, e.slug, e.name, e.host ?? '', e.site ?? '', now(), now(), jobs.length, (jobs as Job[] & { partialReason?: string }).partialReason ?? '');
   return { ...e, jobs: jobs.length };
 }
 export const removeEmployer = (id: number) => raw().prepare('DELETE FROM employers WHERE id = ?').run(id);
@@ -52,7 +52,7 @@ export async function followedJobs(keywords: string): Promise<Job[]> {
   await Promise.all(listEmployers().map(async (e) => {
     try {
       const jobs = await employerJobs(e);
-      raw().prepare('UPDATE employers SET last_run = ?, last_count = ?, error = \'\' WHERE id = ?').run(now(), jobs.length, e.id);
+      raw().prepare('UPDATE employers SET last_run = ?, last_count = ?, error = ? WHERE id = ?').run(now(), jobs.length, (jobs as Job[] & { partialReason?: string }).partialReason ?? '', e.id);
       out.push(...jobs.filter((j) => !words.length || words.some((w) => `${j.title} ${j.tags.join(' ')}`.toLowerCase().includes(w))));
     } catch (err: any) { raw().prepare('UPDATE employers SET last_run = ?, error = ? WHERE id = ?').run(now(), String(err.message ?? err).slice(0, 200), e.id); }
   }));
