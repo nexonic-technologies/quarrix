@@ -1,11 +1,12 @@
-# Final audit, v0.26.0
+# Final audit, v0.26.1
 
-## v0.26.1 candidate (verification pending)
+## v0.26.1 (released)
 
 - Proof reports now insert sent metadata and the selected mailbox together. Provider delivery attempts reserve persistent, immutable allowance before delivery, and their subsequent sent message records do not count twice. Ambiguous provider failures conservatively retain the reservation. Historical reports whose original mailbox was not recorded cannot be reattributed reliably.
 - Duplicate review groups compatible locations independently. Merges collect notes, tags, emails, custom fields and field conflicts; incompatible contact records or source permissions abort transactionally. Undo refuses changed records and older merges without verifiable snapshots.
 - Release verification reports use platform-specific filenames and verify both macOS and Windows architectures. Native Intel macOS and Windows ARM64 draft-installer smoke jobs are required for publication; the Rosetta timeout is avoided by running natively.
-- Overpass stops on explicit rate limits/access refusals and rejects incomplete provider data; later-page job-board errors preserve results with a partial-result warning. Further provider diagnostics and native Windows ARM64/Intel macOS validation remain pending, along with CI and installer checks. The 17 existing external blockers remain unchanged.
+- Overpass stops on explicit rate limits/access refusals and rejects incomplete provider data; later-page job-board errors preserve results with a partial-result warning. Live checks: 19/20 providers returned real data, one temporary Overpass outage, zero provider failures. The 17 existing external blockers remain unchanged.
+- Verified: [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44927836513) passed typecheck, tests, build and dependency audit; 60/60 integration tests, zero reported vulnerabilities. [Release](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.26.1) published after six installed-app smoke runs passed 17/17 checks each (Windows x64 and ARM64, macOS Intel and Apple Silicon, Linux deb and AppImage). SHA-256 checksums published; installers are unsigned except Apple Silicon's ad-hoc signature. Developer ID and Windows signing certificates remain external blockers.
 
 ## v0.26.0 (data integrity milestone)
 
