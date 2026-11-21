@@ -10,6 +10,7 @@ import { AlertsPanel, CheckLink, EmployersPanel } from './JobsParts';
 import { Combo } from '../Combo';
 import { JOB_TITLES } from '../../../shared/jobtitles';
 import { CareerExplorer } from './CareerExplorer';
+import { JobTrust } from './JobTrust';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
 type Cv = { file: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -335,6 +336,7 @@ function JobDetail({ job, onClose, onApply, onLetter, onTailor, saved, onSave }:
           </div>
         </header>
         <div className="body">
+          <JobTrust key={job.id} job={job} />
           <dl className="kv">{facts.filter(([, v]) => v).flatMap(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
           <div className="row">
             <a className="btn small" href={`https://www.google.com/search?q=${q}`} target="_blank" rel="noreferrer">Company on Google</a>

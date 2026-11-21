@@ -1,5 +1,9 @@
 # Final audit, v0.27.0
 
+## v0.28.0 candidate
+
+Job trust checks report observable evidence, not a fraud verdict. On request, Quarrix checks the listing and a user-supplied employer careers page, matches the exact vacancy and company, and displays contextual warning excerpts and the evidence score. The [method and limitations](JOB_TRUST.md) are documented. Full CI and installed-app validation pending; the 17 external blockers remain unchanged.
+
 ## v0.27.0 Career Intelligence (released)
 
 The career explorer uses 1,016 official occupation records and rated skills for 910 occupations, plus software examples. It works without an account, network or CV; shows explicit matching evidence and skills to explore, not a hiring probability. Data attribution and regeneration are documented in [CAREER_DATA.md](CAREER_DATA.md). [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44931439366) passed; [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.27.0) confirms 108/108 checks across six native installed-app runs, including career exploration. Live results: 19/20 providers returned data, one temporary Overpass outage, zero provider failures. The 17 previously documented external blockers remain unchanged.

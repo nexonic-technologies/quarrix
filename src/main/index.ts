@@ -13,6 +13,7 @@ import * as crm from './crm';
 import * as validate from './validate';
 import * as career from './career';
 import * as jobstore from './jobstore';
+import { checkJobTrust } from './job-trust';
 import * as automation from './automation';
 import * as localapi from './localapi';
 import * as cli from './cli';
@@ -280,6 +281,7 @@ function registerIpc() {
   handle('employers:add', (link: string) => jobstore.addEmployer(String(link ?? '')));
   handle('employers:remove', (id: number) => jobstore.removeEmployer(Number(id)));
   handle('jobs:check', (url: string) => jobstore.checkPosting(String(url ?? '')));
+  handle('jobs:trust', (job, employerUrl) => checkJobTrust(job, employerUrl));
   handle('alerts:list', () => jobstore.listAlerts());
   handle('alerts:save', (a) => jobstore.saveAlert(a));
   handle('alerts:delete', (id: number) => jobstore.deleteAlert(Number(id)));

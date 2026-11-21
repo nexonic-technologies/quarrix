@@ -74,6 +74,24 @@ export async function runSmoke(win: BrowserWindow) {
     if (!found) throw new Error('No occupation recommendation was rendered');
     return 'real occupation returned without a CV or network request';
   });
+  await check('job trust panel reports unavailable evidence honestly', async () => {
+    const id = 'smoke-job-trust';
+    await ipc('jobs:save', { id, title: 'Smoke Test Role', company: 'Smoke Test Employer', url: '', location: '', source: 'Smoke test', workplace: '', type: '', level: '', salary: '', posted: '', tags: [], snippet: '', status: 'Saved' });
+    const found = await js<boolean>(`(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      const nav = t => [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith(t))?.click();
+      nav('Dashboard'); await wait(300); nav('Job search'); await wait(800);
+      [...document.querySelectorAll('[role=tab]')].find(b => b.textContent.trim().startsWith('My applications'))?.click(); await wait(400);
+      [...document.querySelectorAll('.joblist .job')].find(b => b.textContent.includes('Smoke Test Role'))?.click(); await wait(500);
+      const panel = document.querySelector('[data-job-trust]'); if (!panel) return false;
+      panel.querySelector('button[type=submit]')?.click(); await wait(500);
+      const ok = panel.textContent.includes('Review before applying') && panel.textContent.includes('Could not verify');
+      document.querySelector('.jobdetail button[aria-label=Close]')?.click(); return ok;
+    })()`);
+    await ipc('jobs:unsave', id);
+    if (!found) throw new Error('Trust evidence panel did not render');
+    return 'unavailable listing shown as unverified, no network request';
+  });
   await check('every button has an accessible name (QF-122)', async () => {
     const bad = await js<string[]>(`[...document.querySelectorAll('button, [role=button], a[href]')].filter((b) => !(b.getAttribute('aria-label') || b.getAttribute('title') || b.textContent.trim() || b.getAttribute('aria-labelledby'))).map((b) => b.outerHTML.slice(0, 80))`);
     if (bad.length) throw new Error(`${bad.length} unnamed: ${bad.slice(0, 3).join(' | ')}`);
