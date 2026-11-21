@@ -143,6 +143,23 @@ export async function runSmoke(win: BrowserWindow) {
     if (r.total !== 0) throw new Error(`another workspace showed ${r.total} leads`);
     return 'other workspace hidden';
   });
+  await check('market intelligence opens and respects client scope', async () => {
+    await ipc('clients:set', 'Market smoke', ['Market smoke']);
+    try {
+      await ipc('leads:add', { name: 'Market Smoke Bakery', category: 'Bakery', city: 'Lahore', country: 'PK' });
+      const shown = await js<boolean>(`(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const nav = t => [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith(t))?.click();
+        nav('Dashboard'); await wait(200); nav('Leads'); await wait(500);
+        [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Market intelligence')?.click(); await wait(500);
+        const panel = document.querySelector('[data-market-intelligence]');
+        return !!panel && panel.querySelector('.kpis h2')?.textContent === '1' && panel.textContent.includes('Bakery');
+      })()`);
+      const result = await ipc('market:report', 'category', '', '');
+      if (!shown || result.total.records !== 1) throw new Error('Market report did not isolate its workspace');
+      return 'only the selected client’s record was reported';
+    } finally { await ipc('clients:set', ''); }
+  });
   await check('sending stays off until approved', async () => { const r = await js<{ ok: boolean; error?: string }>('window.quarrix.call("messages:approveAll")'); return r.ok ? `approved ${(r as any).data} (no mailbox)` : r.error ?? ''; });
   await check('network guard refuses this computer', async () => {
     try { await fetchText('http://127.0.0.1:9/'); } catch (e: any) { if (/private/i.test(e.message)) return 'blocked'; throw e; }

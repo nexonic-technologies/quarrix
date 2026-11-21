@@ -1,8 +1,12 @@
 # Final audit, v0.28.0
 
-## v0.29.0 candidate
+## v0.30.0 candidate
 
-Application Studio adds text-based resume review, interview practice prompts, private notes and document drafts, and application deadlines, interview dates and follow-ups. Saved application metadata persists across status changes and is removed when the user confirms removal of the application. The planner is local and does not send messages or apply automatically. Full CI and installed-app verification pending; external blockers remain unchanged.
+Market Intelligence uses the existing local business database, with country and category filters and grouping by category, country, city, source or linked company. It distinguishes locations from linked companies, reports unlinked records and coverage, averages only recorded fit scores, and counts checks from the last 90 days. The group view and CSV show the largest 100 groups; totals cover all matching records. These are sample summaries, not market size, market share or forecast estimates. No network requests or individual contact details are included. Full release verification pending.
+
+## v0.29.0 (released)
+
+Application Studio adds text-based resume review, interview practice prompts, private notes and document drafts, and application deadlines, interview dates and follow-ups. Saved application metadata persists across status changes and is removed when the user confirms removal of the application. The planner is local and does not send messages or apply automatically. CI passed; [v0.29.0 release](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.29.0) verifies 120/120 installed-app checks, 19/20 live providers returned data with one temporary Overpass outage and no provider failures. External blockers remain unchanged.
 
 ## v0.28.0 (released)
 
