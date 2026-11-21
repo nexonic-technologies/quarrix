@@ -265,10 +265,10 @@ export function undoMerge(mergeId: number) {
   const before = JSON.parse(m.kept_before) as Record<string, unknown>;
   const { __rows: rows = {}, __dropped: _d, ...moved } = JSON.parse(m.moved) as Record<string, any>;
   const removedIds = removed.map((r) => Number(r.id));
-  if (!db.getLead(m.kept_id)) throw new Error('The lead these were merged into no longer exists, so the merge cannot be undone.');
   const later = (raw().prepare('SELECT id, kept_id, removed FROM merges WHERE id > ? AND undone = 0 AND kept_id > 0').all(mergeId) as { id: number; kept_id: number; removed: string }[])
     .find((x) => [m.kept_id, ...removedIds].includes(x.kept_id) || (JSON.parse(x.removed) as { id: number }[]).some((r) => [m.kept_id, ...removedIds].includes(Number(r.id))));
   if (later) throw new Error('These leads were merged again later. Undo the later merge first.');
+  if (!db.getLead(m.kept_id)) throw new Error('The lead these were merged into no longer exists, so the merge cannot be undone.');
   const taken = removedIds.filter((id) => db.getLead(id));
   if (taken.length) throw new Error('A lead with the same number exists again, so the merge cannot be undone safely.');
   raw().transaction(() => {
