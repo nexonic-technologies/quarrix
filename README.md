@@ -9,6 +9,7 @@ A local-first desktop workspace for job discovery, career exploration and busine
 ## What it does
 
 - **Explore careers.** Compare your skills and target role against 1,016 occupations, understand matching evidence, explore skills to develop and search for real vacancies, with no mandatory account or model.
+- **Review job trust.** Check listing evidence, employer careers-page corroboration and contextual recruitment warning signs before applying. An evidence score is not a guarantee of legitimacy.
 
 - **Find businesses anywhere.** Type a kind of business and a place, for example *dentists in Austin, Texas*. Quarrix searches Google Maps, OpenStreetMap and, with your own key, the Google Places API. Over 140 categories, or type your own.
 - **Fill in the details.** For each business it visits the business's own website for published email addresses, phone numbers and social profiles, reads its address details, and checks the site (HTTPS, mobile-ready, outdated footer, contact form, optional Google PageSpeed score).

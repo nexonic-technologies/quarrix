@@ -273,7 +273,14 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v0.27.0 ]; then
+            if [ "$TAG" = v0.28.0 ]; then
+              echo "## Job Trust and Employer Verification"
+              echo
+              echo "- Explainable job trust evidence and contextual recruitment warnings."
+              echo "- Check whether an independently known employer careers page lists the exact vacancy."
+              echo "- No scam verdicts from unavailable pages, no credentials or CV sent by the checker."
+              echo
+            elif [ "$TAG" = v0.27.0 ]; then
               echo "## Career Intelligence"
               echo
               echo "Quarrix — Discover Opportunities. Build Your Career. Grow Your Business."
