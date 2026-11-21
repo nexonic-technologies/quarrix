@@ -1,6 +1,6 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-**v0.27.0 Career Intelligence candidate:** offline occupation exploration using a real, versioned catalog; manual or CV-based profile inputs; explained title/skill matches, related skill suggestions and direct job search. Focused tests passed locally; full CI and installed-app verification pending.
+**v0.27.0 Career Intelligence released:** offline occupation exploration using a real, versioned catalog; manual or CV-based profile inputs; explained title/skill matches, related skill suggestions and direct job search. CI passed; all six installed-app runs passed 18/18 checks. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.27.0).
 
 **v0.26.1 released:** Send accounting, proof-report attribution, merge conflict protection, duplicate grouping and release-report integrity passed [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44927836513) and all six installed-app smoke runs. Live provider results: 19/20 returned data, one temporary Overpass outage, no provider failures. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.26.1). The 17 external blockers remain unchanged.
 
