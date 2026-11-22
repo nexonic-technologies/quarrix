@@ -20,6 +20,7 @@ import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportun
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
 import { officialWages, secLookup } from './global-data';
+import { salesByCurrency } from './market';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -324,6 +325,7 @@ function registerIpc() {
   handle('entity:registry', (name, country) => registryLookup(name, country));
   handle('global:wages', () => officialWages());
   handle('global:sec', (id:string) => secLookup(id));
+  handle('market:sales',()=>salesByCurrency(scope.current()));
   handle('opportunities:overview', () => {
     const {rows,total}=db.queryLeads(scope.scopedQuery({sort:'grade',limit:100}));
     const jobs=db.savedJobs();

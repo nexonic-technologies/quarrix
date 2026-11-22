@@ -51,7 +51,7 @@ export const CHECKS: Record<string, Check> = {
   'public:delete': ([id]) => [int(id,'opportunity')],
   'public:ted': ([page]) => {const n=int(page,'page');if(n>20)fail('Page limit reached.');return [n];},
   'market:report': ([group, country, category]) => {
-    if (!['category', 'country', 'city', 'source', 'company'].includes(String(group))) fail('Unknown market grouping.');
+    if (!['category', 'country', 'city', 'source', 'company','grade','status'].includes(String(group))) fail('Unknown market grouping.');
     return [String(group), str(country ?? '', 'Country', 80), str(category ?? '', 'Category', 120)];
   },
   'market:export': (a) => CHECKS['market:report'](a),
