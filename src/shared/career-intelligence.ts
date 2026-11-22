@@ -4,6 +4,11 @@ export type Occupation = { id: string; title: string; skills: string[]; tools: s
 export type CareerProfile = { titles: string[]; skills: string[] };
 export type CareerMatch = { id: string; title: string; score: number; titleMatches: string[]; skills: string[]; tools: string[]; explore: string[] };
 export const OCCUPATION_COUNT = catalog.length;
+export function occupationTerms(title:string):string[]{
+ const matches=exploreCareers({titles:[title],skills:[]},1);
+ if(!matches.length||matches[0].score<45)return [];
+ const o=catalog.find(x=>x.id===matches[0].id);return o?[...o.skills,...o.tools]:[];
+}
 const normal = (s: string) => s.toLowerCase().normalize('NFKC').trim().replace(/\s+/g, ' ');
 const stop = new Set(['and', 'or', 'the', 'of', 'for', 'senior', 'junior', 'lead', 'entry', 'level', 'a', 'an']);
 const token = (s: string) => normal(s).split(/[^\p{L}\p{N}+#]+/u).filter(x => x.length > 1 && !stop.has(x));
