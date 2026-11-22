@@ -926,6 +926,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dash-row.three.adaptive { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .bulk { max-width: 100%; flex-wrap: wrap; }
 .kpi > b { font-variant-numeric: tabular-nums; }
+.kpi-line { position: static; justify-self: end; margin-top: 2px; height: 24px; max-width: 100%; }
+.kpi-line svg { height: 24px; max-width: 100%; }
 .table-wrap { max-width: 100%; }
 .leads th { background: #f2f5fa; }
 .leads tr:hover td { background: #f7f8fc; }

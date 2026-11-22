@@ -146,7 +146,7 @@ export function Dashboard({ tick, go, workspace }: { tick: number; go: (s: Scree
           <div className="panel-title"><h2>Outreach funnel</h2><span className="pill">all time</span></div>
           <div className="funnel">
             {funnel.map(([label, n], i) => (
-              <div key={label} className="fstep" style={{ ['--w' as string]: `${Math.max(6, (n / fmax) * 100)}%`, animationDelay: `${i * 80}ms` }}>
+              <div key={label} className="fstep" style={{ ['--w' as string]: `${(n / fmax) * 100}%`, animationDelay: `${i * 80}ms` }}>
                 <span>{label}</span><div className="fbar"><i /></div><b><CountUp to={n} /></b>
                 {i > 0 && funnel[i - 1][1] > 0 && <em>{Math.round((n / funnel[i - 1][1]) * 100)}%</em>}
               </div>

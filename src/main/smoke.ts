@@ -68,13 +68,18 @@ export async function runSmoke(win: BrowserWindow) {
         document.querySelector('nav.nav button')?.click(); await new Promise(r => setTimeout(r, 300));
         const before = location.hash; document.querySelector('.skip').click();
         const main = document.querySelector('main');
-        return {hash:location.hash, focused:document.activeElement===main, fits:main.scrollWidth<=main.clientWidth+2 && document.querySelector('.side').clientHeight>0 && before===location.hash};
+        const cards = [...document.querySelectorAll('.kpi')];
+        const chartsFit = cards.length === 4 && cards.every(card => card.querySelector('.kpi-sub').getBoundingClientRect().bottom <= card.querySelector('.kpi-line').getBoundingClientRect().top + 1);
+        const funnel = [...document.querySelectorAll('.fstep')];
+        const zeroWidths = funnel.length > 0 && funnel.every(step => step.style.getPropertyValue('--w') === '0%');
+        return {hash:location.hash, focused:document.activeElement===main, fits:main.scrollWidth<=main.clientWidth+2 && document.querySelector('.side').clientHeight>0 && before===location.hash && chartsFit && zeroWidths};
       })()`);
       if (!result.focused || !result.fits || result.hash !== '#dashboard') throw new Error(JSON.stringify(result));
     } finally { win.setSize(size[0], size[1]); }
     const screenshot = process.env.QUARRIX_SMOKE_SCREENSHOT;
     if (screenshot) {
       await new Promise(r => setTimeout(r, 350));
+      await js('document.querySelector("main")?.blur()');
       writeFileSync(screenshot, (await win.webContents.capturePage()).toPNG());
     }
     return 'skip link preserves route and dashboard fits minimum window';
