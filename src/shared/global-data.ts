@@ -22,6 +22,16 @@ export const REGIONAL_SOURCES = [
 ] as const;
 export type RegistryRecord={id:string;name:string;country:'NO'|'FR';status:string;source:string};
 export type PublicVacancy={id:string;title:string;agency:string;posted:string};
+export type RecentRegistration={id:string;name:string;registered:string};
+export function parseRecentRegistrations(data:unknown,from:string,to:string):RecentRegistration[]{
+ const rows=(data as any)?._embedded?.enheter;
+ if(!Array.isArray(rows)){if((data as any)?.page?.totalElements===0)return [];throw new Error('Unexpected public registration response.');}
+ const result=new Map<string,RecentRegistration>();
+ for(const r of rows){const id=typeof r?.organisasjonsnummer==='string'?r.organisasjonsnummer:'',name=typeof r?.navn==='string'?r.navn.trim().slice(0,250):'',registered=r?.registreringsdatoEnhetsregisteret;
+ if(!/^\d{9}$/.test(id)||!name||r?.organisasjonsform?.kode!=='AS'||r.konkurs===true||r.underAvvikling===true||r.slettedato||typeof registered!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(registered)||registered<from||registered>to)continue;
+ result.set(id,{id,name,registered});}
+ return [...result.values()].sort((a,b)=>b.registered.localeCompare(a.registered)||a.id.localeCompare(b.id)).slice(0,50);
+}
 const field=(v:unknown,max=250)=>typeof v==='string'?v.trim().slice(0,max):'';
 export function parseNationalRegistry(country:'NO'|'FR',id:string,data:unknown):RegistryRecord {
  const d=data as any;

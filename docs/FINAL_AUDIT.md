@@ -1,4 +1,12 @@
-# Final audit, v2.7.0 candidate
+# Final audit, v3.0.0 candidate
+
+## v3.0.0 combined v2.8–v3.0
+
+- Opportunity intelligence: on-demand [Norway public registry](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/no/) registration-date sample, limited to 50 limited companies in 30 days; no personal records collected or automatic outreach. Registration is not proof of trading or purchasing intent. Local seven-day UTC business and deduplicated vacancy observations use stored records; not market-wide trends.
+- Career accelerator: bounded curated occupation-catalog learning topics, three-week suggested schedule, STAR worksheet that never replaces existing notes, and due-date prioritization from existing application dates.
+- Unified platform: daily local queue combines overdue and upcoming CRM tasks, saved application dates and public notices; scoped recent business signals; accessible trend meters and bounded row rendering. No paid dependency or automatic action.
+- Production audit: the remaining legacy job-detail guest endpoint was removed. Manual-only boards are never fetched for CV writing or trust checks, including redirects. Add an idempotent job observation index. Keep existing external blockers and signing labels. Release verification pending.
+- Local checks: 111 unit and 80 integration tests, typecheck, production build and production dependency audit passed. Installer smoke and live provider verification run in the release workflow.
 
 ## Combined v2.3–v2.7 milestone
 

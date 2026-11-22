@@ -31,3 +31,9 @@ export function resumeGap(text:string,posting:string,candidates:string[]) {
 export function upcomingItems(items:{id:string;title:string;studio?:StudioNotes}[],today:string,through:string){
  return items.flatMap(j=>(['deadline','interview','followUp'] as const).filter(k=>{const day=j.studio?.[k];return !!day&&validDay(day)&&day>today&&day<=through;}).map(k=>({id:j.id,title:j.title,kind:k,day:j.studio![k]}))).sort((a,b)=>a.day.localeCompare(b.day));
 }
+export type PriorityItem={id:string;title:string;day:string;kind:'deadline'|'interview'|'followUp'|'task'|'notice';lead?:number;job?:string};
+/** Due dates are evidence of urgency, not a prediction of success. Invalid dates are ignored. */
+export function priorityQueue(items:PriorityItem[],today:string,through:string){
+ const rank={deadline:0,interview:1,followUp:2,task:3,notice:0};
+ return items.filter(x=>x.day&&validDay(x.day)&&x.day<=through).sort((a,b)=>a.day.localeCompare(b.day)||rank[a.kind]-rank[b.kind]||a.id.localeCompare(b.id)).map(x=>({...x,due:x.day<today?'overdue':x.day===today?'today':'upcoming'} as const));
+}

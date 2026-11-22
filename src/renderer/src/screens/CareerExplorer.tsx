@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Compass, Search } from 'lucide-react';
-import { exploreCareers, OCCUPATION_COUNT, type CareerMatch } from '../../../shared/career-intelligence';
+import { exploreCareers, OCCUPATION_COUNT, learningPlan,type CareerMatch } from '../../../shared/career-intelligence';
 
 type Profile = { title: string; roles: string[]; skills: string[] };
 
@@ -28,6 +28,7 @@ export function CareerExplorer({ profile, onSearch, busy }: { profile?: Profile;
         <div className="row" style={{ alignItems: 'center', flexWrap: 'wrap' }}><div className="grow"><b translate="no">{m.title}</b><div className="muted small">Occupation {m.id} · {m.score}/100 exploration score</div></div><button className="btn small" disabled={busy} onClick={() => onSearch(m.title)}><Search size={14} /> Find jobs</button></div>
         <div className="small" style={{ marginTop: 6 }}><b>Matching evidence: </b><span translate="no">{[...m.titleMatches, ...m.skills, ...m.tools].join(', ') || 'No direct skill evidence'}</span></div>
         {!!m.explore.length && <div className="small muted"><b>Skills to explore: </b><span translate="no">{m.explore.join(', ')}</span></div>}
+        {!!m.explore.length&&<details className="registry-check"><summary>Three-week learning plan</summary><p className="muted small">Suggested study topics from the occupation catalog. Confirm prerequisites and local qualifications yourself.</p>{learningPlan(m).map(p=><div key={p.skill} className="row"><span>Week</span> {p.week} · <b translate="no">{p.skill}</b></div>)}<p className="muted small">Practise a real task, record an example and prepare to explain what you learned.</p></details>}
       </div>)}</div>
     </div>}
     <p className="muted small" style={{ marginBottom: 0 }}>Occupation data: <a href="https://www.onetcenter.org/database.html" target="_blank" rel="noreferrer">O*NET® 31.0 Database</a>, U.S. Department of Labor, Employment and Training Administration, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>, adapted by Nexonic Technologies. US occupational definitions; not a local licensing guide. USDOL/ETA has not endorsed these modifications.</p>

@@ -19,9 +19,9 @@ import { proposalText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
-import { officialWages, secLookup,nationalRegistry,nycVacancies } from './global-data';
+import { officialWages, secLookup,nationalRegistry,nycVacancies,recentRegistrations } from './global-data';
 import { salesByCurrency } from './market';
-import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest } from './opportunity-center';
+import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest,opportunityTrends } from './opportunity-center';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -330,8 +330,10 @@ function registerIpc() {
   handle('global:sec', (id:string) => secLookup(id));
   handle('global:nationalRegistry',(country:string,id:string)=>nationalRegistry(country,id));
   handle('global:nycJobs',()=>nycVacancies());
+  handle('global:recentRegistrations',()=>recentRegistrations());
   handle('market:sales',()=>salesByCurrency(scope.current()));
   handle('opportunities:center',()=>centerOverview());
+  handle('opportunities:trends',()=>opportunityTrends());
   handle('opportunities:digest',(enabled)=>setDigest(enabled));
   handle('opportunities:toggle',(kind,id,enabled)=>toggleSavedSearch(kind,id,enabled));
   handle('opportunities:overview', () => {

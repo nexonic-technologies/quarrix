@@ -3,7 +3,7 @@ import { ShieldCheck, Building2, Briefcase, ArrowRight } from 'lucide-react';
 import { call } from '../api';
 import type { RegistryMatch } from '../../../shared/verified';
 import type { Workspace } from '../../../shared/navigation';
-import { RegionalSources } from './GlobalData';
+import { RegionalSources,RecentRegistrations } from './GlobalData';
 import { OpportunityCenter } from './OpportunityCenter';
 import {spotlight,spotlightReset} from '../Art';
 
@@ -22,6 +22,7 @@ export function OpportunityHome({ onChoose,workspace,tick,onLead,onJob }: { onCh
       {workspace!=='business'&&<>{overview.jobs.map(j=><button key={j.id} className="btn small" onClick={()=>onJob(j.id)} translate="no">{j.title} · {j.company} · {j.match}%</button>)}<p className="muted small">{overview.localMatch?'Recommendations use current CV evidence, not confirmed eligibility or availability.':'Recommendations use recorded match scores, not confirmed eligibility or availability.'}</p></>}
     </details>}
     <OpportunityCenter workspace={workspace} tick={tick} onLead={onLead} onJob={onJob}/>
+    {workspace!=='career'&&<RecentRegistrations/>}
   </section>;
 }
 

@@ -9,6 +9,7 @@ import { pdfText } from './importexport';
 import { runtimeSettings as load } from './settings';
 import { fetchText, UA } from './util';
 import type { Job } from './jobsearch';
+import { manualJobBoard } from '../shared/job-trust';
 
 export type CvProfile = { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string };
 export type Cv = { file: string; text: string; profile: CvProfile; analysedWith: string; at: string };
@@ -97,12 +98,9 @@ export const NOT_A_JOB_PAGE = /enablejs|httpservice\/retry|unusual traffic|are n
 
 /** The full job post as plain text, or the listing's own summary when the page can't be read honestly. */
 export async function jobText(job: Job) {
-  // Google Jobs links are search pages, not job posts: they only ever return Google's own pages.
-  if (/^https?:\/\/(www\.)?google\.[a-z.]+\//i.test(job.url)) return job.snippet;
+  if(manualJobBoard(job.url))return job.snippet;
   try {
-    const li = job.url.match(/linkedin\.com\/jobs\/view\/[^/]*?-?(\d{6,})/);
-    const url = li ? `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${li[1]}` : job.url;
-    const r = await fetchText(url, { ua: UA, timeout: 20000 });
+    const r = await fetchText(job.url, { ua: UA, timeout: 20000,allowUrl:u=>!manualJobBoard(u) });
     if (!r.ok || NOT_A_JOB_PAGE.test(r.text.slice(0, 20000))) return job.snippet;
     const $ = cheerio.load(r.text);
     $('script, style, noscript, template, iframe, svg, nav, header, footer, meta, link').remove();

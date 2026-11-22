@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reviewResume, interviewTopics, dueItems, EMPTY_STUDIO, validDay } from '../src/shared/application-studio';
+import { reviewResume, interviewTopics, dueItems, EMPTY_STUDIO, validDay,priorityQueue } from '../src/shared/application-studio';
+test('priority queue sorts overdue and upcoming dates, excluding invalid and distant dates',()=>{
+ const q=priorityQueue([{id:'later',title:'B',day:'2026-11-25',kind:'interview'},{id:'due',title:'A',day:'2026-11-22',kind:'task'},{id:'late',title:'C',day:'2026-11-20',kind:'deadline'},{id:'bad',title:'D',day:'2026-02-30',kind:'task'},{id:'far',title:'E',day:'2026-12-01',kind:'notice'}],'2026-11-22','2026-11-29');
+ assert.deepEqual(q.map(x=>[x.id,x.due]),[['late','overdue'],['due','today'],['later','upcoming']]);
+});
 test('resume review finds actual headings and whole skill terms, without inventing experience', () => {
   const r = reviewResume('Summary\nExperience\nJava and Python\nname@example.com', ['Java', 'Python', 'SQL'], 'JavaScript and Python');
   assert.deepEqual(r.sections, ['Summary', 'Experience']); assert.deepEqual(r.matchedSkills, ['Python']); assert.equal(r.emailPresent, true);

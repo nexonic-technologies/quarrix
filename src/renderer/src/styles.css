@@ -962,6 +962,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .public-vacancies { max-height:320px;overflow:auto;display:grid;gap:8px; }
 .public-vacancies article {display:grid;gap:4px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel);}
 .public-vacancies article span {font-size:12px;color:var(--muted);}
+.priority-list {display:grid;gap:6px;max-height:340px;overflow:auto;}
+.priority-item {display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px;border:1px solid var(--line);border-radius:10px;background:#fff;}
+.priority-item>span[translate=no]{flex:1;min-width:140px;}
+.trend-grid {display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;}
+.trend-grid>div {display:grid;gap:5px;padding:7px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:11px;}
+.trend-row {display:flex;align-items:center;gap:4px;min-width:0;}
+.trend-row progress {width:100%;height:7px;accent-color:#5268c9;min-width:0;}
+.trend-row progress[aria-label="Vacancies observed"]{accent-color:#0d9488;}
 .quality-chip { border:1px solid var(--line); background:var(--panel-2); color:var(--ink-2); padding:6px 9px; border-radius:8px; cursor:pointer; font:inherit; font-size:12px; }
 .quality-chip b { font-variant-numeric:tabular-nums; color:var(--ink); }
 .quality-chip.review { background:#fff5e8; color:#92400e; border-color:#f6d4a4; }

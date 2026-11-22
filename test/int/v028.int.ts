@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkJobTrust } from '../../src/main/job-trust';
+import {jobText} from '../../src/main/resume';
+test('manual-only boards are never fetched for job text or trust checks, including redirects',async()=>{
+ const original=globalThis.fetch;let calls=0;
+ try{globalThis.fetch=(async()=>{calls++;return new Response('',{status:302,headers:{location:'https://www.linkedin.com/jobs/view/123456'}});}) as typeof fetch;
+ const restricted={...job,url:'https://www.linkedin.com/jobs/view/123456'};assert.equal(await jobText(restricted as any),restricted.snippet);assert.equal((await checkJobTrust(restricted)).listing,'unknown');assert.equal(calls,0);
+ assert.equal(await jobText(job as any),job.snippet);assert.equal(calls,1);assert.equal((await checkJobTrust(job)).listing,'unknown');assert.equal(calls,2);
+ }finally{globalThis.fetch=original;}
+});
 import { check } from '../../src/main/validate';
 
 const job = { url: 'https://example.com/jobs/42', title: 'Sales Manager', company: 'Example Company', snippet: 'A full-time sales role.' };

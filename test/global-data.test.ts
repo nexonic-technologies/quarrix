@@ -1,5 +1,10 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {BLS_SERIES,parseBls,secCompany,REGIONAL_SOURCES,parseNationalRegistry,parseNycJobs} from '../src/shared/global-data';
+import {BLS_SERIES,parseBls,secCompany,REGIONAL_SOURCES,parseNationalRegistry,parseNycJobs,parseRecentRegistrations} from '../src/shared/global-data';
+test('recent registration sample excludes out-of-range, closed and non-company records',()=>{
+ const row={organisasjonsnummer:'123456789',navn:'Example AS',organisasjonsform:{kode:'AS'},registreringsdatoEnhetsregisteret:'2026-11-10'};
+ assert.deepEqual(parseRecentRegistrations({_embedded:{enheter:[row,row,{...row,organisasjonsnummer:'123456780',konkurs:true},{...row,organisasjonsnummer:'123456781',registreringsdatoEnhetsregisteret:'2026-09-01'},{...row,organisasjonsnummer:'123456782',organisasjonsform:{kode:'ENK'}}]}},'2026-11-01','2026-11-22'),[{id:'123456789',name:'Example AS',registered:'2026-11-10'}]);
+ assert.deepEqual(parseRecentRegistrations({page:{totalElements:0}},'2026-11-01','2026-11-22'),[]);assert.throws(()=>parseRecentRegistrations({},'2026-11-01','2026-11-22'));
+});
 test('national register parses exact IDs and rejects mismatches',()=>{
  assert.equal(parseNationalRegistry('NO','123456789',{organisasjonsnummer:'123456789',navn:'Example AS',konkurs:true}).status,'Bankruptcy reported');
  assert.throws(()=>parseNationalRegistry('NO','123456789',{organisasjonsnummer:'987654321',navn:'Other'}));
