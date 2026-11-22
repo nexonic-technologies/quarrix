@@ -71,8 +71,13 @@ export async function runSmoke(win: BrowserWindow) {
         return {hash:location.hash, focused:document.activeElement===main, fits:main.scrollWidth<=main.clientWidth+2 && document.querySelector('.side').clientHeight>0 && before===location.hash};
       })()`);
       if (!result.focused || !result.fits || result.hash !== '#dashboard') throw new Error(JSON.stringify(result));
-      return 'skip link preserves route and dashboard fits minimum window';
     } finally { win.setSize(size[0], size[1]); }
+    const screenshot = process.env.QUARRIX_SMOKE_SCREENSHOT;
+    if (screenshot) {
+      await new Promise(r => setTimeout(r, 350));
+      writeFileSync(screenshot, (await win.webContents.capturePage()).toPNG());
+    }
+    return 'skip link preserves route and dashboard fits minimum window';
   });
   await check('offline career exploration works without an uploaded CV', async () => {
     const found = await js<boolean>(`(async () => {
