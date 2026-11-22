@@ -1,6 +1,6 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-**v1.1.0 candidate:** simplified discovery entry points, evidence and freshness warnings, on-demand public GLEIF legal-entity candidate lookup, scoped local recommendations and advertised-salary comparisons. Release verification pending; existing external blockers unchanged.
+**v1.1.0 released:** simplified discovery entry points, evidence and freshness warnings, on-demand public GLEIF legal-entity candidate lookup, scoped local recommendations and advertised-salary comparisons. CI passed; [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v1.1.0) confirms 156/156 installed-app checks, 21/22 live sources including GLEIF, one temporary outage and zero failures. Existing external blockers unchanged.
 
 **v0.31.0 and v0.32.0 released together in v1.0.0:** proposal and client reporting studio; official public-opportunity directory, recent EU contract notices and local watchlist. Main CI and release checks passed; all six installed-app runs passed 23/23 checks (138/138 total). Live providers: 20/21 returned real data, one temporary Overpass outage, zero failures. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v1.0.0). Existing external blockers remain unchanged.
 
