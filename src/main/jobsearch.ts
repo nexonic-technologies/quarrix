@@ -1,10 +1,9 @@
 // Job search for job seekers: many public job boards at once, with LinkedIn-style filters.
 // Every source is optional; one failing never stops the others.
 import * as cheerio from 'cheerio';
-import { BOT_UA, fetchText, sleep, UA } from './util';
+import { BOT_UA, fetchText, UA } from './util';
 import { complete, parseJson, tier } from './ai';
-import { load, type Settings } from './settings';
-import { pageHtml } from './sources/gmaps';
+import { runtimeSettings as load, type Settings } from './settings';
 
 export type Job = {
   id: string; source: string; title: string; company: string; location: string; workplace: 'remote' | 'hybrid' | 'onsite' | '';
@@ -36,30 +35,6 @@ async function getJson(url: string) {
 }
 
 const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
-  async linkedin(q) {
-    const loc = [q.city, q.countryName].filter(Boolean).join(', ') || 'Worldwide';
-    const tpr = q.posted ? `&f_TPR=r${Number(q.posted) * 86400}` : '';
-    const wt = (q.workplace ?? []).map((w) => ({ onsite: '1', remote: '2', hybrid: '3' } as Record<string, string>)[w]).filter(Boolean).join(',');
-    const out: JobList = [];
-    for (let start = 0; start < 200; start += 25) {
-      const r = await fetchText(`https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(q.keywords)}&location=${encodeURIComponent(loc)}${tpr}${wt ? `&f_WT=${wt}` : ''}&start=${start}`, { ua: UA, timeout: 20000 });
-      if (!r.ok) { if (start === 0) throw new Error(`HTTP ${r.status}`); out.partialReason = `Partial results: HTTP ${r.status} on a later page`; break; }
-      const $ = cheerio.load(r.text);
-      const cards = $('li');
-      if (!cards.length) break;
-      cards.each((_, li) => {
-        const c = $(li);
-        const title = c.find('.base-search-card__title').text().trim();
-        if (!title) return;
-        const url = (c.find('a.base-card__full-link').attr('href') ?? '').split('?')[0];
-        out.push({ id: `linkedin:${url}`, source: 'LinkedIn', title, company: c.find('.base-search-card__subtitle').text().trim(), location: c.find('.job-search-card__location').text().trim(),
-          workplace: wt === '2' ? 'remote' : wt === '3' ? 'hybrid' : wt === '1' ? 'onsite' : '', type: '', level: levelOf(title), salary: c.find('.job-search-card__salary-info').text().trim().replace(/\s+/g, ' '),
-          url, posted: c.find('time').attr('datetime') ?? '', tags: [], snippet: '' });
-      });
-      await sleep(900);
-    }
-    return out;
-  },
   async remotive(q) {
     const j = await getJson(`https://remotive.com/api/remote-jobs?search=${encodeURIComponent(q.keywords)}&limit=150`);
     return (j.jobs ?? []).map((x: any): Job => ({ id: `remotive:${x.id}`, source: 'Remotive', title: x.title, company: x.company_name, location: x.candidate_required_location || 'Worldwide', workplace: 'remote',
@@ -123,76 +98,7 @@ const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
   },
 };
 
-// Sites that need a real browser (scripts, bot checks) are read through the hidden window, one at a time.
-const INDEED: Record<string, string> = { US: 'www', GB: 'uk', CA: 'ca', AU: 'au', IN: 'in', PK: 'pk', AE: 'ae', SA: 'sa', DE: 'de', FR: 'fr', NL: 'nl', IE: 'ie', SG: 'sg', MY: 'malaysia', PH: 'ph', ZA: 'za', NZ: 'nz', NG: 'ng', ES: 'es', IT: 'it', BR: 'br', MX: 'mx', JP: 'jp', QA: 'qa', KW: 'kw', BH: 'bh', OM: 'om', EG: 'eg' };
-let browserBusy = Promise.resolve();
-const inBrowser = <T>(fn: () => Promise<T>) => { const run = browserBusy.then(fn, fn); browserBusy = run.then(() => undefined, () => undefined); return run; };
-
 Object.assign(SOURCES, {
-  google: (q: JobQuery) => inBrowser(async () => {
-    const what = `${q.keywords} jobs ${[q.city, q.countryName].filter(Boolean).join(' ')}`.trim();
-    const html = await pageHtml(`https://www.google.com/search?q=${encodeURIComponent(what)}&udm=8&hl=en`, '.tNxQIb', 2000);
-    const $ = cheerio.load(html);
-    const out: Job[] = [];
-    $('[data-preview-id], [jscontroller="qodLAe"]').each((_, el) => {
-      const c = $(el);
-      const title = c.find('.tNxQIb').first().text().trim();
-      if (!title) return;
-      const company = c.find('.a3jPc').first().text().trim();
-      const [location, via] = c.find('.FqK3wc').first().text().trim().split(/\s*•\s*/);
-      const text = c.text();
-      out.push({ id: `google:${title}|${company}`, source: `Google Jobs${via ? ` (${via.replace(/^via\s+/i, '')})` : ''}`, title, company, location: location ?? '',
-        workplace: /remote|work from home/i.test(text) ? 'remote' : /hybrid/i.test(text) ? 'hybrid' : '', type: typeOf(text), level: levelOf(title),
-        salary: (text.match(/[$£€₹]\s?\d[\d,.]*K?(?:\s?[-–]\s?[$£€₹]?\d[\d,.]*K?)?(?:\s?(?:a|per)\s(?:year|hour|month))?/i) ?? [''])[0],
-        url: `https://www.google.com/search?q=${encodeURIComponent(`${title} ${company}`)}&udm=8&hl=en`, posted: '', tags: [], snippet: '' });
-    });
-    if (!out.length) throw new Error('no results were readable');
-    return out;
-  }),
-  indeed: (q: JobQuery) => inBrowser(async () => {
-    const sub = INDEED[q.country ?? ''] ?? 'www';
-    const host = sub === 'www' ? 'www.indeed.com' : `${sub}.indeed.com`;
-    const out: Job[] = [];
-    for (let start = 0; start < 50; start += 10) {
-      const remote = q.workplace?.length === 1 && q.workplace[0] === 'remote' ? '&sc=0kf%3Aattr(DSQF7)%3B' : '';
-      const $ = cheerio.load(await pageHtml(`https://${host}/jobs?q=${encodeURIComponent(q.keywords)}&l=${encodeURIComponent(q.city ?? '')}${q.posted ? `&fromage=${q.posted}` : ''}${remote}&start=${start}`, 'body', 2000));
-      const cards = $('.job_seen_beacon, [data-jk]');
-      if (!cards.length) { if (!start) throw new Error('no results were readable (Indeed may have asked for a check)'); break; }
-      cards.each((_, el) => {
-        const c = $(el);
-        const jk = c.find('[data-jk]').attr('data-jk') ?? c.attr('data-jk') ?? '';
-        const title = c.find('h2.jobTitle span[title], h2 span').first().text().trim();
-        if (!title || !jk) return;
-        out.push({ id: `indeed:${jk}`, source: 'Indeed', title, company: c.find('[data-testid="company-name"]').text().trim(), location: c.find('[data-testid="text-location"]').text().trim(),
-          workplace: /remote/i.test(c.text()) ? 'remote' : /hybrid/i.test(c.text()) ? 'hybrid' : '', type: typeOf(c.find('[data-testid="attribute_snippet_testid"]').text()), level: levelOf(title),
-          salary: c.find('[data-testid="attribute_snippet_testid"]').filter((_, x) => /\d/.test($(x).text())).first().text().trim(), url: `https://${host}/viewjob?jk=${jk}`, posted: '', tags: [], snippet: c.find('.job-snippet, [data-testid="jobsnippet_footer"]').text().trim().slice(0, 400) });
-      });
-    }
-    return out;
-  }),
-  rozee: (q: JobQuery) => inBrowser(async () => {
-    const out: Job[] = [];
-    for (let page = 0; page < 3; page++) {
-      const $ = cheerio.load(await pageHtml(`https://www.rozee.pk/job/jsearch/q/${encodeURIComponent(q.keywords)}${q.city ? `/fc/${encodeURIComponent(q.city)}` : ''}${page ? `/fpn/${page * 20}` : ''}`, '.job h3 a', 1500));
-      let n = 0;
-      $('.job').each((_, el) => {
-        const c = $(el);
-        const a = c.find('h3 a').first();
-        const title = a.text().trim();
-        if (!title) return;
-        n++;
-        const parts = c.find('.cname a').map((_, x) => $(x).text().replace(/^,\s*|,\s*$/g, '').trim()).get().filter(Boolean);
-        const href = a.attr('href') ?? '';
-        const posted = c.find('.rz-calendar').parent().text().trim();
-        out.push({ id: `rozee:${href.split('?')[0]}`, source: 'Rozee.pk', title, company: parts[0] ?? '', location: parts.slice(1).join(', ') || 'Pakistan',
-          workplace: /remote|work from home/i.test(c.text()) ? 'remote' : '', type: typeOf(c.text()), level: levelOf(title), salary: '',
-          url: (href.startsWith('//') ? 'https:' : '') + href.split('?')[0], posted: iso(posted), tags: [c.find('.func-area-drn').text().trim()].filter(Boolean), snippet: c.find('.jbody').text().trim().slice(0, 400) });
-      });
-      if (n < 15) break;
-    }
-    if (!out.length) throw new Error('no results were readable');
-    return out;
-  }),
   async weworkremotely(q: JobQuery) {
     const r = await fetchText('https://weworkremotely.com/remote-jobs.rss', { ua: BOT_UA, timeout: 20000 });
     const $ = cheerio.load(r.text, { xmlMode: true });
@@ -228,6 +134,7 @@ Object.assign(SOURCES, {
     const key = (load().sources as any).joobleKey;
     if (!key) throw new Error('add your free Jooble key in Settings → Sources');
     const r = await fetchText(`https://jooble.org/api/${key}`, { method: 'POST', timeout: 25000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keywords: q.keywords, location: [q.city, q.countryName].filter(Boolean).join(', '), page: 1 }) });
+    if(!r.ok)throw new Error(`Jooble HTTP ${r.status}`);
     const j = JSON.parse(r.text || '{}');
     return (j.jobs ?? []).map((x: any): Job => ({ id: `jooble:${x.id}`, source: `Jooble${x.source ? ` (${x.source})` : ''}`, title: strip(x.title), company: x.company ?? '', location: x.location ?? '', workplace: /remote/i.test(x.title + x.snippet) ? 'remote' : '',
       type: typeOf(x.type ?? ''), level: levelOf(x.title), salary: x.salary ?? '', url: x.link, posted: iso(x.updated), tags: [], snippet: strip(x.snippet).slice(0, 400) }));
@@ -239,7 +146,8 @@ SOURCES.hn = async (q) => (await import('./ats')).hnHiring(q.keywords);
 export const JOB_SOURCES = Object.keys(SOURCES);
 const DEFAULT_SOURCES = JOB_SOURCES.filter((x) => !['adzuna', 'jooble', 'hn'].includes(x));
 
-const SLOW = new Set(['google', 'indeed', 'rozee', 'employers', 'linkedin']);
+const SLOW = new Set(['employers']);
+const MANUAL_BOARDS = new Set(['google','indeed','rozee','linkedin']);
 const withTimeout = <T>(p: Promise<T>, ms: number, name: string) => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`no answer after ${Math.round(ms / 1000)} s`)), ms))]);
 
 /**
@@ -252,7 +160,7 @@ export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Jo
   const errors: string[] = [];
   const all = (await Promise.all(pick.map(async (s) => {
     const t = Date.now();
-    if (!SOURCES[s]) return [] as Job[];
+    if (!SOURCES[s]) { const msg=MANUAL_BOARDS.has(s)?'Manual access only; use the official job board directly.':'Unknown job board.';errors.push(`${s}: ${msg}`);onBatch(s,[],msg,Date.now()-t);return [] as Job[]; }
     try {
       const result = await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000, s) as JobList;
       const list = filterJobs(result, q);

@@ -6,7 +6,7 @@ import * as cheerio from 'cheerio';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from 'docx';
 import { complete, parseJson, tier } from './ai';
 import { pdfText } from './importexport';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { fetchText, UA } from './util';
 import type { Job } from './jobsearch';
 

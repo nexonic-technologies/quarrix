@@ -12,7 +12,20 @@ import * as jobstore from '../../src/main/jobstore';
 import {migrateDigest,centerOverview,setDigest,claimDigest,toggleSavedSearch} from '../../src/main/opportunity-center';
 import {salesByCurrency,marketReport} from '../../src/main/market';
 import {checkSources,sourceHealthSnapshot,verdict} from '../../src/main/health';
-import {load} from '../../src/main/settings';
+import {load,defaults,effectiveSettings,runtimeSettings} from '../../src/main/settings';
+import {JOB_SOURCES,searchJobs} from '../../src/main/jobsearch';
+test('restricted boards are manual only and saved queries report unavailable sources',async()=>{
+ const sources=['linkedin','indeed','google','rozee'];assert.ok(sources.every(s=>!JOB_SOURCES.includes(s)));
+ const batches:string[]=[];const result=await searchJobs({keywords:'engineer',sources},(source,_jobs,error)=>{assert.match(error,/Manual access only/);batches.push(source);});
+ assert.equal(result.jobs.length,0);assert.equal(result.errors.length,4);assert.deepEqual(batches.sort(),sources.sort());
+});
+import {spend,remaining} from '../../src/main/budget';
+test('free-first pauses stored credentials without deleting them, and keeps local models available',()=>{
+ const s=structuredClone(defaults);s.sources.placesKey='stored';s.verify.hunterKey='stored';s.verify.provider='hunter';s.ai={provider:'openai',apiKey:'stored',model:'',baseUrl:''};s.aiKeys={groq:'stored'};s.sdkKeys={foo:'stored'};
+ const paused=effectiveSettings(s);assert.equal(paused.sources.placesKey,'');assert.equal(paused.verify.provider,'none');assert.equal(paused.ai.provider,'none');assert.deepEqual(paused.aiKeys,{});assert.deepEqual(paused.sdkKeys,{});assert.equal(s.sources.placesKey,'stored');assert.equal(effectiveSettings({...s,allowKeyedServices:true}).ai.apiKey,'stored');
+ s.ai={provider:'ollama',apiKey:'',baseUrl:'http://localhost:11434',model:'local'};assert.equal(effectiveSettings(s).ai.provider,'ollama');s.ai.baseUrl='https://remote.example';assert.equal(effectiveSettings(s).ai.provider,'none');
+ save({allowKeyedServices:false});assert.equal(runtimeSettings().allowKeyedServices,false);assert.throws(()=>spend('writing'),/paused/);assert.equal(remaining('writing'),0);save({allowKeyedServices:true,budgets:{writing:0}});assert.throws(()=>spend('writing'),/paused/);save({allowKeyedServices:false,budgets:{writing:50}});
+});
 before(()=>{db.openDb(join(process.env.QUARRIX_TEST_DIR!,'v100.db'));db.migrateData();crm.migrate();migrateProposals();migratePublicOpportunities();});
 test('provider health respects exhausted budget and preserves a dated local snapshot',async()=>{
  const original=load().budgets;save({budgets:{...original,npi:1}});db.addUsage('npi',1);const [r]=await checkSources('npi');assert.equal(r.status,'warn');assert.equal(r.ms,0);assert.ok(r.checkedAt);assert.equal((await checkSources('npi'))[0].checkedAt,r.checkedAt);assert.equal(sourceHealthSnapshot().find(x=>x.id==='npi')?.checkedAt,r.checkedAt);assert.equal(verdict(200,'captcha')[0],'warn');assert.equal(verdict(403,'')[0],'fail');assert.match(verdict(200,'{}')[1],/not verified/);save({budgets:original});

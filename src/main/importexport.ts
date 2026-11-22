@@ -10,7 +10,7 @@ import { extname } from 'node:path';
 import * as db from './db';
 import { complete, parseJson } from './ai';
 import { extractEmails } from './enrich';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { csvSafe, domainOf, normalizePhone } from './util';
 
 const FIELD_ALIASES: Record<string, string[]> = {

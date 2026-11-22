@@ -1,4 +1,13 @@
-# Final audit, v2.1.0 candidate
+# Final audit, v2.2.0 candidate
+
+## v2.2.0 Free-First Intelligence
+
+- LinkedIn, Indeed, Google Jobs and Rozee are available as manual official-site links only. Automated discovery uses the remaining supported feeds and employer APIs. Legacy saved searches report manual-only sources instead of silently treating them as empty results.
+
+- Core discovery, local CRM, evidence checks and offline templates need no paid credentials. Existing discovery, verifier and writing credentials are retained but paused until opted in; configured email, external connections and exports remain independently controlled. Local loopback writing models remain available without a service key.
+- Named keyed discovery/verification and remote writing request ceilings are enforced; zero pauses rather than removing the limit. Provider pricing, tokens and external billing are not controlled by these ceilings. Backup writing providers require separate consent. The user must confirm provider-side billing caps and terms.
+- PageSpeed remains available without a key when enabled; the provider may throttle it. Existing public-source fallback and stored results remain available without pretending a provider outage has recovered.
+- Free signing programs require external eligibility/approval; no claim of certificates or new provider access. The 17 external blockers remain unchanged. Release gate pending.
 
 ## v2.1.0 (candidate)
 

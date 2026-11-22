@@ -53,7 +53,7 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
                 <b>{c.name}</b>
                 <span className="muted small">{h ? `${h.message}${h.ms ? ` · ${h.ms} ms` : ''}` : c.cost}</span>
               </button>
-              <label className="src-limit" title="Most requests a day; 0 means no limit">
+              <label className="src-limit" title={c.auth.includes('key')?'Most requests a day; 0 pauses this optional service':'Most requests a day; 0 means no limit'}>
                 <span className="muted small">{usage[c.id] ?? 0} today, limit</span>
                 <input className="input" type="number" min={0} value={limit} aria-label={`${c.name} daily request limit`}
                   onChange={(e) => set('budgets', { ...(s.budgets ?? {}), [c.id]: Math.max(0, Number(e.target.value) || 0) })} />
