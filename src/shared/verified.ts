@@ -1,6 +1,6 @@
 import { warningSignals, type TrustReport } from './job-trust';
 
-type LeadEvidence = { provenance?: string; website?: string; email_status?: string; email_checked_at?: string | null; email?: string; details?: string; status?: string; relevance?: number | null; evidence?: number | null; grade?: string };
+type LeadEvidence = { provenance?: string; website?: string; phone?:string;city?:string; email_status?: string; email_checked_at?: string | null; email?: string; details?: string; status?: string; relevance?: number | null; evidence?: number | null; grade?: string };
 const object = (s?: string): Record<string, any> => { try { const v = JSON.parse(s || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; } };
 export const recent = (iso: unknown, days: number, now = Date.now()) => typeof iso === 'string' && Number.isFinite(Date.parse(iso)) && Date.parse(iso) <= now && now - Date.parse(iso) <= days * 864e5;
 export function leadQuality(l: LeadEvidence, now = Date.now()) {
@@ -20,6 +20,16 @@ export function leadReviewReason(l:LeadEvidence,now=Date.now()):'closed'|'restri
  if(!l.website||p.checked?.website!==l.website||!p.checked?.at)return 'unchecked';
  if(!recent(p.checked.at,90,now))return 'stale';
  return leadQuality(l,now)==='mailbox'?'mailbox':'recent';
+}
+/** Evidence coverage, not probability that a business exists or is a good customer. */
+export function leadConfidence(l:LeadEvidence,now=Date.now()){
+ const p=object(l.provenance),reason=leadReviewReason(l,now);
+ const listing=typeof p.listing?.source==='string'&&!!p.listing?.ref&&recent(p.listing?.at,90,now);
+ const website=!!l.website&&p.checked?.website===l.website&&recent(p.checked?.at,90,now);
+ const independent=listing&&website&&!['website','web','manual','import'].includes(p.listing.source)&&Array.isArray(p.agreements)&&p.agreements.some((a:any)=>a?.website===l.website&&recent(a.at,90,now)&&((a.field==='phone'&&a.value===l.phone)||(a.field==='city'&&a.value===l.city)));
+ const mailbox=reason==='mailbox';
+ const score=(listing?25:0)+(website?35:0)+(independent?20:0)+(mailbox?20:0);
+ return {score:['closed','restricted','mail','conflict'].includes(reason)?Math.min(score,25):score,listing,website,independent,mailbox,reason};
 }
 export function jobQuality(j: { snippet?: string; ageDays?: number | null; repost?: boolean }, report?: TrustReport, now = Date.now()) {
   if (report && recent(report.checkedAt, 7, now) && report.state === 'closed') return 'closed';
@@ -46,7 +56,7 @@ export function salarySamples(rows: { salaryYearly?: { min: number; max: number;
   return [...groups].map(([currency,g])=>({currency,count:g.length,min:median(g.map(x=>x.min)),max:median(g.map(x=>x.max))}));
 }
 export function recommendLeads<T extends LeadEvidence>(rows: T[], now=Date.now()) {
-  return rows.filter(l => l.status === 'new' && (l.grade === 'A' || l.grade === 'B') && ['recent','mailbox'].includes(leadQuality(l,now)) && typeof l.relevance==='number' && typeof l.evidence==='number').sort((a,b)=>(b.relevance!+b.evidence!)-(a.relevance!+a.evidence!)).slice(0,3);
+  return rows.filter(l => l.status === 'new' && (l.grade === 'A' || l.grade === 'B') && ['recent','mailbox'].includes(leadQuality(l,now)) && Number.isFinite(l.relevance) && Number.isFinite(l.evidence)).sort((a,b)=>(b.relevance!+b.evidence!+leadConfidence(b,now).score)-(a.relevance!+a.evidence!+leadConfidence(a,now).score)).slice(0,3);
 }
 export function recommendJobs<T extends { status?:string; match?:number; snippet?:string; ageDays?:number|null; repost?:boolean }>(rows:T[]) {
   return rows.filter(j=>['Saved','Opened'].includes(j.status??'Saved')&&typeof j.match==='number'&&j.match>=70&&jobQuality(j)==='unchecked').sort((a,b)=>b.match!-a.match!).slice(0,3);

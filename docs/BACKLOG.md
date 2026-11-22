@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v2.3–v2.7 combined candidate:** official Norway and France registration lookups, NYC external postings, evidence coverage and recorded field agreement, refreshed offline CV matching, bounded public-source cache and accessible quality visualization. Existing external access and signing blockers unchanged. Live verification and installer gates pending.
+
 Automated access to LinkedIn, Indeed, Google Jobs and Rozee is withdrawn in v2.2.0; manual links remain. No claim of new partner access.
 
 **v2.2.0 candidate — Free-First Intelligence:** optional keyed discovery, verification and remote writing are paused by default (also on upgrade), without deleting saved credentials. Explicit enablement and positive daily ceilings protect against unintended metered requests. Backup writing providers require a separate opt-in. Existing mail and configured connections retain their independent authorization; provider charges are not guaranteed by Quarrix. Release verification pending; 17 external blockers unchanged.

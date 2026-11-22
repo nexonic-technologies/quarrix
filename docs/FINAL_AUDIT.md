@@ -1,4 +1,13 @@
-# Final audit, v2.2.0 candidate
+# Final audit, v2.7.0 candidate
+
+## Combined v2.3–v2.7 milestone
+
+- v2.3 Global Data Expansion: [Norway](https://data.brreg.no/enhetsregisteret/api/dokumentasjon/en/index.html) and [France](https://recherche-entreprises.api.gouv.fr/docs/) public registration lookup by exact number; [NYC external vacancies](https://data.cityofnewyork.us/City-Government/Jobs-NYC-Postings/kpav-sd4t) bounded to 100 recent records. No licence or employment eligibility claims.
+- v2.4 Verified Data Intelligence: field agreement on company website versus listing, time- and value-bound evidence coverage scores with conflict caps; not a statistical probability. Missing evidence remains unknown.
+- v2.5 Career & Business Assistant: normalized offline CV term coverage and recommendation refresh from current local CV; ranking includes current evidence coverage.
+- v2.6 Performance & Reliability: precompiled matching patterns; public-source requests coalesced and snapshots bounded to 50 entries; five-minute reuse and up to seven-day explicitly stale fallback only for transient outages. No refusal or throttle fallback.
+- v2.7 User Experience: accessible coverage meters, dashboard quality cards, public-source panels, local vacancy filter and dated cache labels. Existing navigation remains intact.
+- Local verification: typecheck, 108 unit tests, 78 integration tests, production build and production dependency audit passed. Release checks include separate live tests for all three new endpoints and installed-app smoke assertions. No new credential or signing access.
 
 ## v2.2.0 Free-First Intelligence
 

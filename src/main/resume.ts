@@ -75,15 +75,17 @@ export const hasTerm = (hay: string, w: string) => new RegExp(`(^|[^a-z0-9+#.])$
 /** Without a model: how many of the CV skills and target words appear in the job. */
 export function keywordMatch(cv: Cv, jobs: Job[]) {
   const roleWords = (cv.profile.roles ?? []).flatMap((r) => r.toLowerCase().split(/[\s/,]+/)).filter((w) => w.length > 1 && !ROLE_FILLER.has(w));
-  const words = [...new Set([...(cv.profile.skills ?? []).map((w) => w.toLowerCase().trim()), ...roleWords])].filter((w) => w.length > 1);
+  const words = [...new Set([...(cv.profile.skills ?? []).map((w) => w.toLowerCase().trim()), ...roleWords])].filter((w) => w.length > 1 && w.length<=120).slice(0,100);
+  const patterns=words.map(w=>({w,re:new RegExp(`(^|[^a-z0-9+#.])${esc(w)}($|[^a-z0-9+#.])`,'i')}));
   const out: Record<string, { match: number; why: string }> = {};
   for (const j of jobs) {
     const title = String(j.title ?? '');
     const hay = `${title} ${(Array.isArray(j.tags) ? j.tags : []).join(' ')} ${j.snippet ?? ''}`.toLowerCase();
-    const hits = words.filter((w) => hasTerm(hay, w));
+    const hits = patterns.filter(({re}) => re.test(hay)).map(({w})=>w);
     const titleHit = (cv.profile.roles ?? []).some((r) => { const ws = r.toLowerCase().split(/\s+/).filter((w) => w.length > 2); return ws.length > 0 && ws.every((w) => hasTerm(title.toLowerCase(), w)); });
     const levelOk = !cv.profile.level || !j.level || j.level === cv.profile.level;
-    const match = Math.min(98, Math.round(hits.length * 9 + (titleHit ? 35 : 0) + (levelOk ? 8 : -10)));
+    const evidence = Math.min(55, Math.round(55 * hits.length / Math.max(1,words.length)));
+    const match = Math.min(98, Math.round(evidence + (titleHit ? 35 : 0) + (levelOk ? 8 : -10)));
     out[j.id] = { match: hits.length || titleHit ? Math.max(0, match) : 0, why: hits.length ? `Matches ${hits.slice(0, 4).join(', ')}` : 'Few of your skills mentioned' };
   }
   return out;

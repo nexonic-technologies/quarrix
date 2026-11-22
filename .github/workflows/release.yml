@@ -273,7 +273,12 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v2.2.0 ]; then
+            if [ "$TAG" = v2.7.0 ]; then
+              echo "## Quarrix 2.7 — Global data, evidence and offline intelligence"
+              echo
+              echo "- Combined v2.3–v2.7 improvements: public register lookups, NYC external vacancies, evidence coverage, local CV recommendations, bounded dated cache and accessible quality views."
+              echo
+            elif [ "$TAG" = v2.2.0 ]; then
               echo "## Quarrix 2.2 — Free-First Intelligence"
               echo
               echo "- Keyless discovery and local tools remain available; optional keyed discovery, verification and remote writing require explicit opt-in. Existing keys are preserved."

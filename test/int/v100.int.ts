@@ -14,6 +14,16 @@ import {salesByCurrency,marketReport} from '../../src/main/market';
 import {checkSources,sourceHealthSnapshot,verdict} from '../../src/main/health';
 import {load,defaults,effectiveSettings,runtimeSettings} from '../../src/main/settings';
 import {JOB_SOURCES,searchJobs} from '../../src/main/jobsearch';
+import {cachedPublic} from '../../src/main/public-cache';
+test('public cache coalesces concurrent checks, preserves dated offline results and respects refusals',async()=>{
+ const now=Date.parse('2026-11-22T00:00:00Z'),key='cache-regression';let calls=0;
+ const fetcher=async()=>{calls++;return [{id:'example'}];};
+ const [a,b]=await Promise.all([cachedPublic(key,fetcher,now),cachedPublic(key,fetcher,now)]);assert.equal(calls,1);assert.deepEqual(a,b);
+ assert.equal((await cachedPublic(key,fetcher,now+1000)).cached,true);
+ const stale=await cachedPublic(key,async()=>{throw Error('HTTP 503');},now+600000);assert.equal(stale.stale,true);assert.equal(stale.checkedAt,a.checkedAt);
+ await assert.rejects(cachedPublic(key,async()=>{throw Error('HTTP 403');},now+600000),/403/);
+ await assert.rejects(cachedPublic(key,async()=>{throw Error('HTTP 503');},now+8*864e5),/503/);
+});
 test('restricted boards are manual only and saved queries report unavailable sources',async()=>{
  const sources=['linkedin','indeed','google','rozee'];assert.ok(sources.every(s=>!JOB_SOURCES.includes(s)));
  const batches:string[]=[];const result=await searchJobs({keywords:'engineer',sources},(source,_jobs,error)=>{assert.match(error,/Manual access only/);batches.push(source);});

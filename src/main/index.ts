@@ -19,7 +19,7 @@ import { proposalText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
-import { officialWages, secLookup } from './global-data';
+import { officialWages, secLookup,nationalRegistry,nycVacancies } from './global-data';
 import { salesByCurrency } from './market';
 import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest } from './opportunity-center';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
@@ -328,6 +328,8 @@ function registerIpc() {
   handle('entity:registry', (name, country) => registryLookup(name, country));
   handle('global:wages', () => officialWages());
   handle('global:sec', (id:string) => secLookup(id));
+  handle('global:nationalRegistry',(country:string,id:string)=>nationalRegistry(country,id));
+  handle('global:nycJobs',()=>nycVacancies());
   handle('market:sales',()=>salesByCurrency(scope.current()));
   handle('opportunities:center',()=>centerOverview());
   handle('opportunities:digest',(enabled)=>setDigest(enabled));
@@ -335,7 +337,10 @@ function registerIpc() {
   handle('opportunities:overview', () => {
     const {rows,total}=db.queryLeads(scope.scopedQuery({sort:'grade',limit:100}));
     const jobs=db.savedJobs();
-    return {sample:rows.length,total,review:rows.filter(l=>leadQuality(l)==='review').length,stale:rows.filter(l=>leadQuality(l)==='check').length,leads:recommendLeads(rows).map(l=>({id:l.id,name:l.name,city:l.city,grade:l.grade})),jobs:recommendJobs(jobs as {id:string;title:string;company:string;match?:number;status?:string}[]).map(j=>({id:j.id,title:j.title,company:j.company,match:j.match}))};
+    const candidates=jobs as {id:string;title:string;company:string;match?:number;status?:string;snippet?:string;ageDays?:number|null;repost?:boolean}[];
+    const profile=cv.getCv();const scores=profile?cv.keywordMatch(profile,candidates as any):null;
+    const ranked=scores?candidates.map(j=>({...j,match:scores[j.id]?.match??0})):candidates;
+    return {sample:rows.length,total,review:rows.filter(l=>leadQuality(l)==='review').length,stale:rows.filter(l=>leadQuality(l)==='check').length,leads:recommendLeads(rows).map(l=>({id:l.id,name:l.name,city:l.city,grade:l.grade})),jobs:recommendJobs(ranked).map(j=>({id:j.id,title:j.title,company:j.company,match:j.match})),localMatch:!!scores};
   });
   handle('alerts:list', () => jobstore.listAlerts());
   handle('alerts:save', (a) => jobstore.saveAlert(a));

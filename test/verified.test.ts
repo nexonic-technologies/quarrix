@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leadQuality, leadReviewReason,jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples } from '../src/shared/verified';
+import { leadQuality, leadReviewReason,leadConfidence,jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples } from '../src/shared/verified';
+test('evidence coverage needs documented agreement and loses credit after edits or conflict',()=>{
+ const l={...lead,city:'Lahore',provenance:JSON.stringify({listing:{source:'osm',ref:'one',at:checkedAt},checked:{website:lead.website,at:checkedAt},agreements:[{field:'city',value:'Lahore',website:lead.website,at:checkedAt}]})};
+ assert.equal(leadConfidence(l,now).score,80);assert.equal(leadConfidence({...l,city:'Karachi'},now).score,60);assert.equal(leadConfidence({...l,status:'do_not_contact'},now).score,25);assert.equal(leadConfidence(l,now+91*864e5).score,0);
+});
 
 const checkedAt='2026-11-21T00:00:00Z', now=Date.parse('2026-11-22T00:00:00Z');
 const lead={website:'https://example.com',provenance:JSON.stringify({checked:{website:'https://example.com',at:checkedAt}}),status:'new',grade:'A',relevance:80,evidence:70};

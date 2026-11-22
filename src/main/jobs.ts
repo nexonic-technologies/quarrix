@@ -415,6 +415,12 @@ export async function enrichOne(lead: db.Lead) {
   if (differs(lead.phone, r.phones[0] ?? '')) conflicts.phone = [{ value: lead.phone, source: lead.source }, { value: r.phones[0], source: 'website' }];
   if (lead.city && r.schema.city && lead.city.toLowerCase() !== r.schema.city.toLowerCase()) conflicts.city = [{ value: lead.city, source: lead.source }, { value: r.schema.city, source: 'website' }];
   prov.conflicts = conflicts;
+  // Record only literal agreement with the listed field, tied to the website and date.
+  const agreements:{field:string;value:string;website:string;at:string}[]=[];
+  const phoneDigits=(v:string)=>v.replace(/\D/g,'');
+  if(lead.phone&&phoneDigits(lead.phone).length>=7&&r.phones.some(p=>phoneDigits(p)===phoneDigits(lead.phone)))agreements.push({field:'phone',value:lead.phone,website:r.website,at:db.now()});
+  if(lead.city&&r.schema.city&&lead.city.trim().toLowerCase()===r.schema.city.trim().toLowerCase())agreements.push({field:'city',value:lead.city,website:r.website,at:db.now()});
+  prov.agreements=agreements;
   if (contact.contact_name) db.addContact({ lead_id: lead.id, name: contact.contact_name, role: contact.contact_role, email: email && email.split('@')[0].includes(contact.contact_name.split(' ')[0].toLowerCase()) ? email : '', source: 'website', source_url: r.website });
   for (const p of r.people.slice(0, 10)) db.addContact({ lead_id: lead.id, name: p.name, role: p.role, source: 'website', source_url: r.website });
   for (const e of r.emails.slice(0, 5)) db.addContact({ lead_id: lead.id, email: e, source: 'website', source_url: r.emailSources[e] ?? r.website });
