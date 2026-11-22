@@ -7,7 +7,7 @@ export const PROPOSAL_TEMPLATES = {
   support: { title:'Ongoing support proposal', scope:'Describe supported services and the support period.', deliverables:'List support activities, reporting and response expectations.', terms:'Confirm renewal terms, limits, payment and responsibilities.' },
 } as const;
 export const proposalSubtotal = (p: Proposal) => p.items.reduce((n, i) => n + i.quantity * i.unitMinor, 0);
-export const proposalTotal = (p: Proposal) => {const subtotal=proposalSubtotal(p);return subtotal-Math.round(subtotal/10000*(p.discountBps??0));};
+export const proposalTotal = (p: Proposal) => {const subtotal=proposalSubtotal(p),bps=p.discountBps??0;const discount=Math.floor(subtotal/10000)*bps+Math.round((subtotal%10000)*bps/10000);return subtotal-discount;};
 export function validateProposal(value: unknown): Proposal {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid proposal.');
   const v = value as Record<string, unknown>;

@@ -265,7 +265,7 @@ export function Jobs() {
             <div key={j.id} className="panel job" onClick={() => setOpen(j.id)}>
               <Avatar name={j.company || j.title} size={40} />
               <div className="grow">
-                <div className="job-title">{j.title}{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
+                <div className="job-title"><button type="button" className="result-name" onClick={e=>{e.stopPropagation();setOpen(j.id);}}>{j.title}</button>{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
                 <div className="muted small">{j.company} · {j.location || 'Location not given'}</div>
                 <div className="row job-tags">
                   <span className={`tag ${['closed','review','check'].includes(jobQuality(j,trust[j.id]))?'warn':''}`}>{({closed:'Listing appears closed',review:'Review before applying',check:'Needs a fresh check',corroborated:'Corroborated listing',unchecked:'Not checked'})[jobQuality(j,trust[j.id])]}</span>

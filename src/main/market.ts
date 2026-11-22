@@ -40,7 +40,7 @@ export function marketReport(group: MarketGroup, country: string, category: stri
 }
 
 export function marketCsv(report: MarketReport, grouping: MarketGroup, country: string, category: string): string {
-  const row = (label: string, m: MarketMetrics, kind: string) => ({ Kind: kind, Grouping: grouping, Group: csvSafe(label), CountryFilter: csvSafe(country), CategoryFilter: csvSafe(category), Records: m.records, LinkedCompanies: m.companies, UnlinkedRecords: m.unlinked, Websites: m.website, Rated: m.rated, RecentChecks: m.recentlyChecked, Scored: m.scored, MeanFit: m.averageFit ?? '', Won: m.won, GeneratedAt: report.generatedAt, TotalGroups: report.groupCount });
+  const row = (label: string, m: MarketMetrics, kind: string) => ({ Kind: kind, Grouping: grouping, Group: csvSafe(label), CountryFilter: csvSafe(country), CategoryFilter: csvSafe(category), Records: m.records, LinkedCompanies: m.companies, UnlinkedRecords: m.unlinked, Websites: m.website, Rated: m.rated, MeanRating:m.averageRating??'',RecentChecks: m.recentlyChecked, Scored: m.scored, MeanFit: m.averageFit ?? '', Won: m.won, GeneratedAt: report.generatedAt, TotalGroups: report.groupCount });
   return '\uFEFF' + Papa.unparse([row('Total', report.total, 'total'), ...report.groups.map(g => row(g.label, g, 'group'))]);
 }
 export function salesByCurrency(client:string){

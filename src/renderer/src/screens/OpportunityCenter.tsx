@@ -6,7 +6,8 @@ import type {centerOverview} from '../../../main/opportunity-center';
 type Overview=ReturnType<typeof centerOverview>;
 export function OpportunityCenter({workspace,tick,onJob,onLead}:{workspace:Workspace;tick:number;onJob:(id:string)=>void;onLead:(id:number)=>void}){
  const [data,setData]=useState<Overview|null>(null),[revision,setRevision]=useState(0),[busy,setBusy]=useState(false);
- useEffect(()=>{let alive=true;call<Overview>('opportunities:center').then(r=>{if(alive)setData(r);}).catch(()=>{if(alive)setData(null);});return()=>{alive=false;};},[tick,revision,workspace]);
+ useEffect(()=>{setData(null);},[workspace]);
+ useEffect(()=>{let alive=true;call<Overview>('opportunities:center').then(r=>{if(alive)setData(r);}).catch(()=>{if(alive)setData(null);});return()=>{alive=false;};},[tick,workspace,revision]);
  useEffect(()=>{const id=setInterval(()=>setRevision(x=>x+1),60000);return()=>clearInterval(id);},[]);
  const change=async(ch:string,...args:unknown[])=>{setBusy(true);try{await call(ch,...args);setRevision(x=>x+1);}catch(e){toast.push(String(e),true);}finally{setBusy(false);}};
  if(!data)return null;

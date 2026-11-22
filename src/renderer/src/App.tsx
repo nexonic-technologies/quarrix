@@ -1,22 +1,22 @@
-import { Component, useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Component, lazy, Suspense,useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Compass, Rows3, Send, ArrowDownUp, Settings as Cog, Rocket, Briefcase, LayoutDashboard, Radar, KanbanSquare, BellRing, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Logo, Ring, Avatar, RiseText } from './Art';
 import { call, onEvent, platform } from './api';
 import { Find } from './screens/Find';
-import { Leads } from './screens/Leads';
 import { Outreach } from './screens/Outreach';
 import { ImportExport } from './screens/ImportExport';
 import { SettingsScreen } from './screens/Settings';
 import { Autopilot } from './screens/Autopilot';
-import { Jobs } from './screens/Jobs';
 import { Dashboard } from './screens/Dashboard';
-import { Signals } from './screens/Signals';
 import { CareerSignals } from './screens/CareerSignals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
 import { OpportunityHome } from './screens/Verified';
 import { setLang, t } from './i18n';
 import { CAREER, resolveScreen, type Screen } from '../../shared/navigation';
+const Leads=lazy(()=>import('./screens/Leads').then(m=>({default:m.Leads})));
+const Jobs=lazy(()=>import('./screens/Jobs').then(m=>({default:m.Jobs})));
+const Signals=lazy(()=>import('./screens/Signals').then(m=>({default:m.Signals})));
 
 export type { Screen } from '../../shared/navigation';
 type Toast = { id: number; text: string; err?: boolean };
@@ -122,7 +122,7 @@ export function App() {
           </div>
         </header>
         <div className="screen" key={screen}>
-          <ScreenGuard>
+          <ScreenGuard><Suspense fallback={<div className="page" role="status">Loading…</div>}>
           {screen === 'dashboard' && <><div className="page opportunity-entry"><OpportunityHome onChoose={choose} workspace={ws} tick={tick} onLead={id=>{sessionStorage.setItem('quarrix.openLead',String(id));go('leads');}} onJob={id=>{sessionStorage.setItem('quarrix.openJob',id);go('jobs');}}/></div><Dashboard key={ws} workspace={ws} tick={tick} go={go} /></>}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} />}
@@ -134,7 +134,7 @@ export function App() {
           {screen === 'jobradar' && <CareerSignals tick={tick} go={go} onSeen={refreshCounts} />}
           {screen === 'files' && <ImportExport go={go} />}
           {screen === 'settings' && <SettingsScreen onTheme={() => undefined} />}
-          </ScreenGuard>
+          </Suspense></ScreenGuard>
         </div>
       </main>
       <div className="toasts" role="status">{toasts.map((t) => <div key={t.id} className={`toast ${t.err ? 'err' : ''}`}>{t.err ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}<span>{t.text}</span></div>)}</div>

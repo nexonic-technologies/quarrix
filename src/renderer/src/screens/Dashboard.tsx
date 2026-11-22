@@ -101,8 +101,9 @@ export function Dashboard({ tick, go, workspace }: { tick: number; go: (s: Scree
     let pending = false;
     const load = async () => { if (pending) return; pending = true; try { const x = await call<Dash>('dash:get', range); if (alive) { setD(x); setFailed(false); setPulse((n) => n + 1); } } catch { if (alive) setFailed(true); } finally { pending = false; } };
     void load();
-    const t = setInterval(load, 4000);
-    return () => { alive = false; clearInterval(t); };
+    const refresh=()=>{if(!document.hidden)void load();};
+    const t = setInterval(refresh, 4000);document.addEventListener('visibilitychange',refresh);
+    return () => { alive = false; clearInterval(t);document.removeEventListener('visibilitychange',refresh); };
   }, [range, tick]);
   const t = d?.totals ?? {};
   const funnel = useMemo(() => d ? [

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo,useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
 import { EMPTY_STUDIO, reviewResume, interviewTopics, dueItems, upcomingItems,resumeGap,type StudioNotes } from '../../../shared/application-studio';
@@ -22,7 +22,8 @@ export function ApplicationStudio({ job, cv, posting, saved, onSave, onUpdated }
   const set = (key: keyof StudioNotes, value: string) => setForm(f => ({ ...f, [key]: value }));
   const review = cv?.text ? reviewResume(cv.text, cv.profile.skills, posting) : null;
   const topics = interviewTopics(cv?.profile.skills ?? [], posting);
-  const gap=cv?.text?resumeGap(cv.text,posting,[...(cv?.profile.skills??[]),...occupationTerms(job.title)]):null;
+  const occupation=useMemo(()=>occupationTerms(job.title),[job.title]);
+  const gap=useMemo(()=>cv?.text?resumeGap(cv.text,posting,[...(cv?.profile.skills??[]),...occupation]):null,[cv,posting,occupation]);
   const save = async () => { setBusy(true); try { await call('studio:save', job.id, form); await onUpdated(); toast.push('Application studio saved'); } catch (e: any) { toast.push(e.message, true); } finally { setBusy(false); } };
   return <section className="panel panel-pad" data-application-studio style={{ marginBottom: 12 }}>
     <h3>Application Studio</h3>

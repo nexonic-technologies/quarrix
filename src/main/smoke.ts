@@ -88,6 +88,14 @@ export async function runSmoke(win: BrowserWindow) {
     const result=await js<boolean>(`(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));const dashboard=()=>document.querySelector('nav.nav button')?.click();dashboard();await wait(400);const b=document.querySelectorAll('[data-opportunity-home] button.opportunity-option');if(b.length!==2)return false;b[1].click();await wait(600);if(location.hash!=='#jobs')return false;dashboard();await wait(400);document.querySelector('[data-opportunity-home] button.opportunity-option')?.click();await wait(600);if(location.hash!=='#find')return false;document.querySelector('.ws-switch button:last-child')?.click();await wait(400);return true;})()`);
     if(!result)throw new Error('Opportunity mode navigation failed');return 'business and career entry points open correct screens';
   });
+  await check('opportunity center has accessible controls and persists opt-in preference',async()=>{
+    await js(`document.querySelector('nav.nav button')?.click()`);await new Promise(r=>setTimeout(r,700));
+    const result=await js<boolean>(`(async()=>{const d=document.querySelector('[data-opportunity-center]');if(!d)return false;d.open=true;const box=d.querySelector('input[type=checkbox]');if(!box||!box.labels.length)return false;box.focus();if(document.activeElement!==box)return false;box.click();await new Promise(r=>setTimeout(r,600));return d.querySelector('input[type=checkbox]')?.checked===true;})()`);
+    if(!result||!(await ipc('opportunities:center')).digest)throw new Error('Daily reminder preference was not saved or control was not accessible');await ipc('opportunities:digest',false);return 'named keyboard-focusable reminder control and local preference';
+  });
+  if(process.env.QUARRIX_AXE_SOURCE)await check('automated accessibility audit of discovery controls',async()=>{
+    const source=(await import('node:fs')).readFileSync(process.env.QUARRIX_AXE_SOURCE!,'utf8');await js(source);const result=await js<{violations:{id:string;impact:string}[]}>(`axe.run(document.querySelector('[data-opportunity-home]'),{runOnly:{type:'rule',values:['button-name','link-name','label','aria-valid-attr','aria-valid-attr-value','aria-required-attr','aria-allowed-attr','nested-interactive']}})`);if(result.violations.length)throw new Error(result.violations.map(x=>x.id).join(', '));return '8 automated accessibility rules passed';
+  });
   await check('offline career exploration works without an uploaded CV', async () => {
     const found = await js<boolean>(`(async () => {
       [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith('Job search'))?.click();
