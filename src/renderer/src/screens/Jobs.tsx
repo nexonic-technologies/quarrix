@@ -87,7 +87,7 @@ export function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (!busy) call<any[]>('jobs:recent').then((x) => setRecent(x ?? [])); }, [busy]);
+  useEffect(() => { let alive = true; if (!busy) call<any[]>('jobs:recent').then((x) => { if (alive) setRecent(x ?? []); }).catch(e => toast.push(String(e), true)); return () => { alive = false; }; }, [busy]);
   const [tab, setTab] = useState<'results' | 'saved'>('results');
   const [saved, setSaved] = useState<Job[]>([]);
   const [open, setOpen] = useState<string | null>(null);
@@ -100,9 +100,9 @@ export function Jobs() {
   const [doc, setDoc] = useState<{ job: Job; kind: 'letter' | 'cv'; text: string; busy: boolean } | null>(null);
 
   useEffect(() => {
-    call<Job[]>('jobs:saved').then(setSaved);
-    call<Cv | null>('cv:get').then(setCv);
-    call('settings:get').then((s) => setAi(s.ai?.provider === 'none' ? 'none' : s.ai?.model || s.ai?.provider));
+    call<Job[]>('jobs:saved').then(setSaved).catch(e => toast.push(String(e), true));
+    call<Cv | null>('cv:get').then(setCv).catch(e => toast.push(String(e), true));
+    call('settings:get').then((s) => setAi(s.ai?.provider === 'none' ? 'none' : s.ai?.model || s.ai?.provider)).catch(e => toast.push(String(e), true));
   }, []);
   useEffect(() => { setCity(''); }, [country]);
 
@@ -279,7 +279,7 @@ export function Jobs() {
                 <button className="round" title={isSaved(j.id) ? 'Remove from saved' : 'Save'} onClick={() => toggleSave(j)}>{isSaved(j.id) ? <BookmarkCheck size={16} color="var(--violet)" /> : <Bookmark size={16} />}</button>
                 {tab === 'saved' && (
                   <select className="select status-select" value={j.status ?? 'Saved'} onChange={(e) => setStatus(j, e.target.value)}>
-                    {['Saved', 'Opened', 'Applied', 'Interview', 'Offer', 'Rejected'].map((x) => <option key={x}>{x}</option>)}
+                    {['Saved', 'Opened', 'Applied', 'Interview', 'Offer', 'Rejected'].map((x) => <option key={x} value={x}>{x}</option>)}
                   </select>
                 )}
                 <button className="btn small" title="Write a cover letter for this job" onClick={() => makeDoc(j, 'letter')}><PenLine size={13} /> Letter</button>
@@ -314,7 +314,7 @@ export function Jobs() {
 function JobDetail({ job, cv, onStudioUpdated, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job & { studio?: StudioNotes }; cv: Cv | null; onStudioUpdated: () => Promise<void>; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
   const [d, setD] = useState<{ text: string; seniority: string; employment: string; func: string; industries: string } | null>(null);
   const [err, setErr] = useState(false);
-  useEffect(() => { setD(null); setErr(false); call('jobs:detail', job).then(setD).catch(() => setErr(true)); }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { let alive = true; setD(null); setErr(false); call('jobs:detail', job).then(x => { if (alive) setD(x); }).catch(() => { if (alive) setErr(true); }); return () => { alive = false; }; }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [onClose]);
   const parts = job.location.split(',').map((x) => x.trim()).filter((x) => x && !/^(remote|hybrid|on-?site)$/i.test(x));
   const facts: [string, string][] = [

@@ -121,7 +121,7 @@ export function DataSettings({ s, set }: { s: any; set: (p: string, v: unknown) 
       <div className="row" style={{ gap: 6 }}>
         <select className="input" value={nf.entity} onChange={(e) => setNf({ ...nf, entity: e.target.value })} aria-label="Field on"><option value="lead">Leads</option><option value="deal">Deals</option></select>
         <input className="input" placeholder="Field name" value={nf.label} onChange={(e) => setNf({ ...nf, label: e.target.value })} />
-        <select className="input" value={nf.type} onChange={(e) => setNf({ ...nf, type: e.target.value })} aria-label="Type">{['text', 'number', 'date', 'select', 'url', 'formula'].map((t) => <option key={t}>{t}</option>)}</select>
+        <select className="input" value={nf.type} onChange={(e) => setNf({ ...nf, type: e.target.value })} aria-label="Type">{['text', 'number', 'date', 'select', 'url', 'formula'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
         {nf.type === 'select' && <input className="input" placeholder="Choices, comma separated" value={nf.options} onChange={(e) => setNf({ ...nf, options: e.target.value })} />}
         {nf.type === 'formula' && <input className="input" placeholder='e.g. if(rating < 4, "Needs reviews", "OK")' value={nf.options} onChange={(e) => setNf({ ...nf, options: e.target.value })} />}
         <button className="btn small" disabled={!nf.label} onClick={async () => { try { await call('fields:save', { ...nf, options: nf.type === 'formula' ? [nf.options] : nf.options.split(',') }); setNf({ ...nf, label: '', options: '' }); void load(); } catch (e: any) { toast.push(e.message, true); } }}><Plus size={13} /> Add</button>
@@ -170,18 +170,22 @@ export function Companies({ onOpen }: { onOpen: (id: number) => void }) {
 }
 
 /** Client workspaces (QF-056): new leads go to the chosen client; Leads, exports and the API show that client's leads. */
-export function ClientPicker({ onChange }: { onChange: () => void }) {
+export function ClientPicker({ onStart, onChange }: { onStart: () => void; onChange: () => void }) {
   const [s, setS] = useState<any>(null);
-  useEffect(() => { call('settings:get').then(setS); }, []);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { call('settings:get').then(setS).catch(e => toast.push(String(e), true)); }, []);
   if (!s) return null;
   const list: string[] = s.clients ?? [];
   const pick = async (v: string) => {
-    if (v === '__new') { const name = prompt('Client name'); if (!name?.trim()) return; await call('clients:set', name.trim(), [...list, name.trim()]); }
-    else await call('clients:set', v);
-    setS(await call('settings:get')); onChange();
+    const name = v === '__new' ? prompt('Client name')?.trim() : undefined;
+    if (v === '__new' && !name) return;
+    setBusy(true); onStart();
+    try { if (name) await call('clients:set', name, [...list, name]); else await call('clients:set', v); setS(await call('settings:get')); }
+    catch (e) { toast.push(String(e), true); }
+    finally { setBusy(false); onChange(); }
   };
   return (
-    <select className="select" value={s.currentClient ?? ''} onChange={(e) => pick(e.target.value)} aria-label="Client workspace" title="New leads from searches are filed under this client">
+    <select className="select" disabled={busy} value={s.currentClient ?? ''} onChange={(e) => pick(e.target.value)} aria-label="Client workspace" title="New leads from searches are filed under this client">
       <option value="">All clients</option>{list.map((c) => <option key={c} value={c}>Client: {c}</option>)}<option value="__new">+ New client…</option>
     </select>
   );

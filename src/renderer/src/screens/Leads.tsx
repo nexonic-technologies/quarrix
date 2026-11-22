@@ -5,7 +5,7 @@ import { ExportWizard } from './ExportWizard';
 import { MarketIntelligence } from './MarketIntelligence';
 import { ProposalStudio } from './ProposalStudio';
 import { PublicOpportunities } from './PublicOpportunities';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
 import { call, json, type Lead, type Message } from '../api';
@@ -30,6 +30,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [market, setMarket] = useState(false);
   const [publicOpen,setPublicOpen]=useState(false);
   const [marketTick, setMarketTick] = useState(0);
+  const request = useRef(0);
+  const [switching, setSwitching] = useState(false);
   const [grade, setGrade] = useState('');
   const [dupes, setDupes] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -39,13 +41,18 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
 
   const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist', stale: has === 'stale' ? 90 : undefined, emailStatus: has.startsWith('es:') ? has.slice(3) : undefined, grade: grade || undefined, role: role || undefined };
   const load = useCallback(async () => {
-    const r = await call<{ total: number; rows: Lead[] }>('leads:query', { ...filter, limit: PAGE, offset: page * PAGE });
-    setRows(r.rows);
-    setTotal(r.total);
+    const sequence = ++request.current;
+    try {
+      const r = await call<{ total: number; rows: Lead[] }>('leads:query', { ...filter, limit: PAGE, offset: page * PAGE });
+      if (sequence !== request.current) return;
+      setRows(r.rows);
+      setTotal(r.total);
+      if (page > 0 && page * PAGE >= r.total) setPage(Math.max(0, Math.ceil(r.total / PAGE) - 1));
+    } catch (e) { if (sequence === request.current) toast.push(String(e), true); }
   }, [q, status, country, category, has, sort, page, searchId, grade, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { void load(); }, [load, tick]);
-  useEffect(() => { call('facets').then(setFacets); }, [tick]);
+  useEffect(() => { if (!switching) void load(); return () => { request.current++; }; }, [load, tick, marketTick, switching]);
+  useEffect(() => { let alive = true; if (!switching) call('facets').then(r => { if (alive) setFacets(r); }).catch(e => toast.push(String(e), true)); return () => { alive = false; }; }, [tick, marketTick, switching]);
   useEffect(() => { sessionStorage.removeItem('quarrix.search'); }, []);
 
   const ids = [...sel];
@@ -97,10 +104,10 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
           {Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <select className="select" value={category} onChange={(e) => { setCategory(e.target.value); setPage(0); }} aria-label="Category">
-          <option value="">Any category</option>{facets.categories.map((c) => <option key={c}>{c}</option>)}
+          <option value="">Any category</option>{facets.categories.map((c) => <option key={c} value={c} translate="no">{c}</option>)}
         </select>
         <select className="select" value={country} onChange={(e) => { setCountry(e.target.value); setPage(0); }} aria-label="Country">
-          <option value="">Any country</option>{facets.countries.map((c) => <option key={c}>{c}</option>)}
+          <option value="">Any country</option>{facets.countries.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select className="select" value={has} onChange={(e) => { setHas(e.target.value); setPage(0); }} aria-label="Contact details">
           <option value="">Any contact details</option><option value="shortlist">Shortlisted (good fit)</option><option value="email">Has email</option><option value="phone">Has phone</option><option value="stale">Not checked in 90 days</option><option value="es:verified">Email confirmed</option><option value="es:mx-ok">Email domain takes mail</option><option value="es:invalid">Email rejected</option><option value="website">Has website</option>
@@ -110,8 +117,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
         </select>
         <input className="select" style={{ width: 130 }} placeholder="Contact role" value={role} onChange={(e) => { setRole(e.target.value); setPage(0); }} aria-label="Contact role, for example owner" />
         <div className="seg" role="group" aria-label="View"><button className={`btn small ${view === 'list' ? 'primary' : 'ghost'}`} aria-pressed={view === 'list'} onClick={() => setView('list')}>List</button><button className={`btn small ${view === 'map' ? 'primary' : 'ghost'}`} aria-pressed={view === 'map'} onClick={() => setView('map')}>Map</button><button className={`btn small ${view === 'companies' ? 'primary' : 'ghost'}`} aria-pressed={view === 'companies'} onClick={() => setView('companies')}>Companies</button></div>
-        <ClientPicker onChange={() => { setPage(0); setMarketTick(n => n + 1); void load(); call('facets').then(setFacets); }} />
-        <select className="select" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
+        <ClientPicker onStart={() => { request.current++; setSwitching(true); setSel(new Set()); setRows([]); setTotal(0); setOpen(null); setDupes(false); setExporting(false); setPublicOpen(false); setSearchId(undefined); setPage(0); }} onChange={() => { setMarketTick(n => n + 1); setSwitching(false); }} />
+        <select className="select" value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} aria-label="Sort">
           <option value="fit">Best fit first</option><option value="newest">Newest first</option><option value="name">Name</option><option value="score">Website needs most help</option><option value="rating">Best rated</option>
         </select>
       </div>

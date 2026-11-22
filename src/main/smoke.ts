@@ -60,6 +60,20 @@ export async function runSmoke(win: BrowserWindow) {
     if (!(n[1] < n[0])) throw new Error(`nav ${n[0]} → ${n[1]}`);
     return `${n[0]} → ${n[1]} menu items`;
   });
+  await check('navigation and desktop layout remain usable at minimum window size', async () => {
+    const size = win.getSize();
+    try {
+      win.setSize(1040, 680);
+      const result = await js<{ hash: string; focused: boolean; fits: boolean }>(`(async () => {
+        document.querySelector('nav.nav button')?.click(); await new Promise(r => setTimeout(r, 300));
+        const before = location.hash; document.querySelector('.skip').click();
+        const main = document.querySelector('main');
+        return {hash:location.hash, focused:document.activeElement===main, fits:main.scrollWidth<=main.clientWidth+2 && document.querySelector('.side').clientHeight>0 && before===location.hash};
+      })()`);
+      if (!result.focused || !result.fits || result.hash !== '#dashboard') throw new Error(JSON.stringify(result));
+      return 'skip link preserves route and dashboard fits minimum window';
+    } finally { win.setSize(size[0], size[1]); }
+  });
   await check('offline career exploration works without an uploaded CV', async () => {
     const found = await js<boolean>(`(async () => {
       [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith('Job search'))?.click();
@@ -146,6 +160,24 @@ export async function runSmoke(win: BrowserWindow) {
     if (r.total !== 0) throw new Error(`another workspace showed ${r.total} leads`);
     return 'other workspace hidden';
   });
+  await check('switching client clears selected leads and stale records', async () => {
+    await ipc('clients:set', 'Scope smoke', ['Scope smoke']);
+    try {
+      await ipc('leads:add', { name: 'Scope Smoke Lead', category: 'Services', city: 'Lahore', country: 'PK' });
+      const result = await js<boolean>(`(async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const nav = t => [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith(t))?.click();
+        nav('Dashboard'); await wait(200); nav('Leads'); await wait(700);
+        const box = document.querySelector('tbody input[type=checkbox]'); if (!box) return false;
+        box.click(); await wait(100); if (!document.querySelector('.bulk')) return false;
+        const picker = document.querySelector('select[aria-label="Client workspace"]'); if (!picker) return false;
+        picker.value = ''; picker.dispatchEvent(new Event('change',{bubbles:true})); await wait(700);
+        return !document.querySelector('.bulk') && !document.querySelector('tbody input:checked');
+      })()`);
+      if (!result) throw new Error('selection remained after client change');
+      return 'selection cleared on scope change';
+    } finally { await ipc('clients:set', ''); }
+  });
   await check('market intelligence opens and respects client scope', async () => {
     await ipc('clients:set', 'Market smoke', ['Market smoke']);
     try {
@@ -188,18 +220,23 @@ export async function runSmoke(win: BrowserWindow) {
     win.webContents.reload();
     await loaded;
     await new Promise((r) => setTimeout(r, 2500));
-    const r = await js<{ dir: string; nav: string[]; english: number; left: string[] }>(`(async () => {
+    const r = await js<{ dir: string; nav: string[]; english: number; left: string[]; stableValues: boolean }>(`(async () => {
       const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       const nav = [...document.querySelectorAll('nav.nav button')].map((b) => b.textContent.trim());
       const left = new Set();
       for (const b of document.querySelectorAll('nav.nav button')) { b.click(); await wait(800);
         for (const e of document.querySelectorAll('main *')) for (const n of e.childNodes) if (n.nodeType === 3 && /[a-z]{3,} [a-z]{3,}/.test(n.nodeValue) && !e.closest('textarea,code,pre,[translate="no"]')) left.add(n.nodeValue.trim().slice(0, 60)); }
-      return { dir: document.documentElement.dir, nav, english: left.size, left: [...left].slice(0, 40) };
+      [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim() === 'البحث عن وظيفة')?.click(); await wait(500);
+      [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'الفرص العامة')?.click(); await wait(500);
+      const option = document.querySelector('[data-public-opportunities] option[value="Watching"]');
+      const stableValues = !!option && option.textContent !== 'Watching' && option.parentElement.value === 'Watching';
+      return { dir: document.documentElement.dir, nav, english: left.size, left: [...left].slice(0, 40), stableValues };
     })()`);
     if (process.env.QUARRIX_SMOKE_VERBOSE) console.log(JSON.stringify(r.left, null, 1));
     await ipc('settings:save', { language: 'en' });
     if (r.dir !== 'rtl') throw new Error(`dir=${r.dir}`);
     if (!r.nav.includes('الإعدادات')) throw new Error(`menu not translated: ${r.nav.join(', ')}`);
+    if (!r.stableValues) throw new Error('Translated status changed its stored value');
     if (r.english > 25) throw new Error(`${r.english} English phrases left: ${r.left.slice(0, 5).join(' | ')}`);
     return `rtl, menu in Arabic, ${r.english} English phrases left across all screens (dynamic sentences)`;
   });
