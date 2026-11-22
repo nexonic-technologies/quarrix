@@ -82,10 +82,10 @@ export function App() {
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
-      <a className="skip" href="#main" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
-      {onboard && <Onboarding onDone={(v) => { setOnboard(false); if (v) { setWs(v); if (v === 'career') go('jobs'); else go('find'); } }} />}
+      <a className="skip" href="#main" tabIndex={onboard?-1:0} onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      {onboard && <Onboarding onDone={(v) => { setOnboard(false); if (v) { setWs(v);setScreen(v==='career'?'jobs':'find'); } requestAnimationFrame(()=>document.getElementById('main')?.focus()); }} />}
       <div className="backdrop" aria-hidden><i /><i /><i /></div>
-      <aside className="side">
+      <aside className="side" inert={onboard}>
         <div className="brand"><Logo size={30} /> <span>Quarrix</span></div>
         <div className="ws-switch" role="group" aria-label="Workspace">
           {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{t(v)}</button>)}
@@ -114,7 +114,7 @@ export function App() {
           <span><b>{me.name || 'Your name'}</b><small>{me.company || 'Add your company'}</small></span>
         </button>
       </aside>
-      <main className="main" id="main" tabIndex={-1}>
+      <main className="main" id="main" tabIndex={-1} inert={onboard}>
         <header className="topbar">
           <div className="grow">
             <RiseText as="h1" text={t(TITLES[screen][0])} />

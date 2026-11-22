@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leadQuality, jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples } from '../src/shared/verified';
+import { leadQuality, leadReviewReason,jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples } from '../src/shared/verified';
 
 const checkedAt='2026-11-21T00:00:00Z', now=Date.parse('2026-11-22T00:00:00Z');
 const lead={website:'https://example.com',provenance:JSON.stringify({checked:{website:'https://example.com',at:checkedAt}}),status:'new',grade:'A',relevance:80,evidence:70};
+test('review reason distinguishes missing checks from reported conflicts and closure',()=>{assert.equal(leadReviewReason(lead,now),'recent');assert.equal(leadReviewReason({...lead,website:'https://other.example'},now),'unchecked');assert.equal(leadReviewReason(lead,now+91*864e5),'stale');assert.equal(leadReviewReason({...lead,details:'{"status":"closed_permanently"}'},now),'closed');assert.equal(leadReviewReason({...lead,provenance:'{"conflicts":{"city":[1,2]}}'},now),'conflict');});
 test('freshness never treats missing, future, edited or conflicting evidence as confirmed',()=>{
  assert.equal(leadQuality(lead,now),'recent');assert.equal(leadQuality({...lead,website:'https://other.example'},now),'check');assert.equal(leadQuality(lead,now+91*864e5),'check');
  assert.equal(leadQuality({...lead,provenance:JSON.stringify({conflicts:{phone:[1,2]}})},now),'review');assert.equal(leadQuality({...lead,email_status:'invalid'},now),'review');

@@ -11,6 +11,16 @@ export function leadQuality(l: LeadEvidence, now = Date.now()) {
   if (l.email && l.email_status === 'verified' && recent(l.email_checked_at, 30, now)) return 'mailbox';
   return 'recent';
 }
+export function leadReviewReason(l:LeadEvidence,now=Date.now()):'closed'|'restricted'|'mail'|'conflict'|'unchecked'|'stale'|'recent'|'mailbox'{
+ const p=object(l.provenance),d=object(l.details);
+ if(d.status==='closed_permanently'||d.status==='closed_temporarily')return 'closed';
+ if(l.status==='do_not_contact')return 'restricted';
+ if(['invalid','bounced','bad-syntax','no-mx'].includes(l.email_status??''))return 'mail';
+ if(Object.values(p.conflicts??{}).some(v=>Array.isArray(v)&&v.length>1))return 'conflict';
+ if(!l.website||p.checked?.website!==l.website||!p.checked?.at)return 'unchecked';
+ if(!recent(p.checked.at,90,now))return 'stale';
+ return leadQuality(l,now)==='mailbox'?'mailbox':'recent';
+}
 export function jobQuality(j: { snippet?: string; ageDays?: number | null; repost?: boolean }, report?: TrustReport, now = Date.now()) {
   if (report && recent(report.checkedAt, 7, now) && report.state === 'closed') return 'closed';
   if (warningSignals(j.snippet ?? '').length || (report && recent(report.checkedAt, 7, now) && report.state === 'caution')) return 'review';

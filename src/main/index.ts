@@ -2,7 +2,7 @@ import { Notification } from 'electron';
 import { isSafeExternalUrl } from './safety';
 import { devOrigin, lockAll, lockContents } from './guard';
 import * as budget from './budget';
-import { checkSources } from './health';
+import { checkSources,sourceHealthSnapshot } from './health';
 import { SOURCES, sourceInfo } from './sources/catalog';
 import { EMAIL_STATUS, listingUrl, PRESETS, reviewTrend } from './intel';
 import { hunterDomain, verifyLeads } from './verify';
@@ -206,6 +206,7 @@ function registerIpc() {
   handle('views:save', (v) => crm.saveView(v));
   handle('views:delete', (id: number) => crm.deleteView(Number(id)));
   handle('dupes:list', () => crm.duplicateGroups());
+  handle('dupes:summary',()=>({count:crm.duplicateGroups(20).length,limit:20}));
   handle('dupes:merge', (keepId: number, ids: number[]) => { const r = crm.mergeLeads(Number(keepId), (ids ?? []).map(Number)); send('leads'); return r; });
   handle('dupes:apart', (ids: number[]) => crm.keepApart((ids ?? []).map(Number)));
   handle('dupes:merges', () => crm.listMerges());
@@ -265,7 +266,8 @@ function registerIpc() {
     return found.length;
   });
   handle('geo:find', async (q: string) => { const p = await geocode(String(q).slice(0, 200)); return p ? { lat: p.lat, lon: p.lon } : null; });
-  handle('sources:health', () => checkSources());
+  handle('sources:health', (id?:string) => checkSources(id));
+  handle('sources:healthSnapshot', () => sourceHealthSnapshot());
   handle('sources:usage', () => db.usageToday());
   handle('search:list', () => db.listSearches());
 

@@ -11,7 +11,15 @@ import { EMPTY_OPPORTUNITY } from '../../src/shared/public-opportunities';
 import * as jobstore from '../../src/main/jobstore';
 import {migrateDigest,centerOverview,setDigest,claimDigest,toggleSavedSearch} from '../../src/main/opportunity-center';
 import {salesByCurrency,marketReport} from '../../src/main/market';
+import {checkSources,sourceHealthSnapshot,verdict} from '../../src/main/health';
+import {load} from '../../src/main/settings';
 before(()=>{db.openDb(join(process.env.QUARRIX_TEST_DIR!,'v100.db'));db.migrateData();crm.migrate();migrateProposals();migratePublicOpportunities();});
+test('provider health respects exhausted budget and preserves a dated local snapshot',async()=>{
+ const original=load().budgets;save({budgets:{...original,npi:1}});db.addUsage('npi',1);const [r]=await checkSources('npi');assert.equal(r.status,'warn');assert.equal(r.ms,0);assert.ok(r.checkedAt);assert.equal((await checkSources('npi'))[0].checkedAt,r.checkedAt);assert.equal(sourceHealthSnapshot().find(x=>x.id==='npi')?.checkedAt,r.checkedAt);assert.equal(verdict(200,'captcha')[0],'warn');assert.equal(verdict(403,'')[0],'fail');assert.match(verdict(200,'{}')[1],/not verified/);save({budgets:original});
+});
+test('duplicate suggestions are scoped before taking the group limit',()=>{
+ const make=(client:string,n:string)=>db.upsertLead({name:n,source:'manual',source_ref:n,client})[0];const a=make('Duplicate A','A one'),b=make('Duplicate A','A two'),c=make('Duplicate B','B one'),d=make('Duplicate B','B two');for(const id of [a,b,c,d])db.updateLead(id,{email:'same@example.com'});save({currentClient:'Duplicate B'});const groups=crm.duplicateGroups(1);assert.equal(groups.length,1);assert.deepEqual(groups[0].leads.map(x=>x.id),[c,d]);save({currentClient:''});db.deleteLeads([a,b,c,d]);
+});
 test('daily digest is opt-in, scoped and claimed once per day',()=>{
  jobstore.migrate();migrateDigest();save({currentClient:'Digest A'});const p=savePublicOpportunity({...EMPTY_OPPORTUNITY,title:'Due notice',deadline:'2026-11-20',url:'https://njp.gov.pk/jobs/345'});const w=db.saveWatch({category:'Dentists',place:'Lahore',client:'Digest A'});const date=new Date(2026,10,22,12);
  assert.equal(claimDigest('both',date),0);setDigest(true);assert.equal(centerOverview(date).notices.length,1);assert.equal(claimDigest('both',date),1);assert.equal(claimDigest('both',date),0);
