@@ -1,4 +1,10 @@
 export const PORTALS = [
+  {id:'pk-scholarships',country:'PK',kind:'scholarship',title:'HEC Scholarships',url:'https://www.hec.gov.pk/english/scholarshipsgrants/Pages/default.aspx',hosts:['www.hec.gov.pk','hec.gov.pk']},
+  {id:'eu-scholarships',country:'EU',kind:'scholarship',title:'Erasmus Mundus Joint Masters',url:'https://erasmus-plus.ec.europa.eu/opportunities/individuals/students/erasmus-mundus-joint-masters',hosts:['erasmus-plus.ec.europa.eu']},
+  {id:'eu-internships',country:'EU',kind:'internship',title:'European Commission Blue Book Traineeships',url:'https://traineeships.ec.europa.eu/',hosts:['traineeships.ec.europa.eu']},
+  {id:'us-apprenticeships',country:'US',kind:'apprenticeship',title:'Apprenticeship.gov',url:'https://www.apprenticeship.gov/apprenticeship-job-finder',hosts:['www.apprenticeship.gov','apprenticeship.gov']},
+  {id:'uk-apprenticeships',country:'GB',kind:'apprenticeship',title:'Find an apprenticeship',url:'https://www.gov.uk/apply-apprenticeship',hosts:['www.gov.uk','www.findapprenticeship.service.gov.uk']},
+  {id:'us-grants',country:'US',kind:'grant',title:'Grants.gov',url:'https://www.grants.gov/',hosts:['www.grants.gov','grants.gov']},
   { id:'pk-jobs', country:'PK', kind:'job', title:'Pakistan National Jobs Portal', url:'https://njp.gov.pk/jobs/', hosts:['njp.gov.pk','www.njp.gov.pk'] },
   { id:'pk-tenders', country:'PK', kind:'tender', title:'Pakistan Public Procurement Regulatory Authority', url:'https://ppra.gov.pk/', hosts:['ppra.gov.pk','www.ppra.gov.pk','epms.ppra.gov.pk'] },
   { id:'us-jobs', country:'US', kind:'job', title:'USAJOBS', url:'https://www.usajobs.gov/', hosts:['usajobs.gov','www.usajobs.gov'] },
@@ -27,6 +33,16 @@ export function validateOpportunity(value: unknown): Opportunity {
   return { id, portal:p.id, title, url:u.href, deadline, eligibility:str(v.eligibility,10000), checklist:str(v.checklist,10000), status:v.status as Opportunity['status'] };
 }
 export type TedNotice = { id: string; title: string; buyer: string; publication: string; deadlines: string[]; url: string };
+export type GrantNotice={id:string;title:string;number:string;agency:string;deadline:string;url:string};
+export function parseGrants(value:unknown):{notices:GrantNotice[];total:number;partial:boolean}{
+ const v=value as any;const d=v?.data;if(v?.errorcode!==0||!Array.isArray(d?.oppHits)||!Number.isSafeInteger(d.hitCount)||d.hitCount<0)throw new Error('Unexpected grants response.');
+ const text=(x:unknown,max:number)=>typeof x==='string'?x.trim().slice(0,max):'';
+ const notices=d.oppHits.flatMap((r:any)=>{const id=String(r?.id??''),title=text(r?.title,500);if(!/^\d{1,15}$/.test(id)||!title||r.oppStatus!=='posted')return [];
+ const m=String(r.closeDate??'').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);let deadline=m?`${m[3]}-${m[1]}-${m[2]}`:'';
+ if(deadline&&(!Number.isFinite(Date.parse(deadline+'T00:00:00Z'))||new Date(deadline+'T00:00:00Z').toISOString().slice(0,10)!==deadline))deadline='';
+ return [{id,title,number:text(r.number,120),agency:text(r.agencyName,200),deadline,url:`https://www.grants.gov/search-results-detail/${id}`}];});
+ return {notices:notices.slice(0,25),total:d.hitCount,partial:notices.length!==d.oppHits.length||d.hitCount>notices.length};
+}
 function localized(v: unknown): string {
   if (typeof v === 'string') return v;
   if (Array.isArray(v)) return v.filter(x=>typeof x==='string').join('; ');

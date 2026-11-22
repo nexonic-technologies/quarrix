@@ -17,13 +17,14 @@ import { marketReport, marketCsv } from './market';
 import { migrateProposals, getProposal, saveProposal, documentPdf } from './proposals';
 import {migratePortfolio,getPortfolio,savePortfolio} from './portfolio';
 import {desktopSearch} from './desktop';
+import {publicCacheSummary,purgeExpiredPublicCache} from './public-cache';
 import {validatePortfolio,portfolioText} from '../shared/portfolio';
 import { proposalText,quotationText } from '../shared/proposals';
-import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
+import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed,searchGrants } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
 import { officialWages, secLookup,nationalRegistry,nycVacancies,recentRegistrations,fdicLookup } from './global-data';
-import { salesByCurrency } from './market';
+import { salesByCurrency,marketInsights } from './market';
 import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest,opportunityTrends } from './opportunity-center';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
@@ -294,7 +295,8 @@ function registerIpc() {
   });
   handle('market:document', async (group,country,category,format) => {
     const report=marketReport(group,country,category,scope.current());
-    const text=['Client market report',load().profile.company||load().profile.name||'Quarrix',`Generated: ${report.generatedAt}`,`Grouping: ${group}; country: ${country||'All'}; category: ${category||'All'}`,'',`Business records: ${report.total.records}`,`Linked companies: ${report.total.companies}`,`Recent checks: ${report.total.recentlyChecked}`,`Scored records: ${report.total.scored}`,`Mean fit: ${report.total.averageFit??'Unknown'}`,'','GROUP SUMMARY',...report.groups.map(g=>`${g.label}: ${g.records} records; ${g.companies} linked companies; ${g.recentlyChecked} recent checks; mean fit ${g.averageFit??'Unknown'}`),'','Stored sample only, not market size, market share or revenue potential. Company counts can overlap.'].join('\n');
+    const insights=marketInsights(scope.current(),country,category);
+    const text=['Client market report',load().profile.company||load().profile.name||'Quarrix',`Generated: ${report.generatedAt}`,`Grouping: ${group}; country: ${country||'All'}; category: ${category||'All'}`,'',`Business records: ${report.total.records}`,`Linked companies: ${report.total.companies}`,`Recent checks: ${report.total.recentlyChecked}`,`Scored records: ${report.total.scored}`,`Mean fit: ${report.total.averageFit??'Unknown'}`,'','90-DAY COHORT COMPARISON',`Stored new records: ${insights.observations.recent} recent / ${insights.observations.prior} prior`,`Repeat recorded wins: ${insights.repeatCustomers}/${insights.priorCustomers} prior customers (${insights.repeatRate??'Unknown'}%)`,'Repeat wins are not subscription retention or churn.','','GROUP SUMMARY',...report.groups.map(g=>`${g.label}: ${g.records} records; ${g.companies} linked companies; ${g.recentlyChecked} recent checks; mean fit ${g.averageFit??'Unknown'}`),'','Stored sample only, not market size, market share or revenue potential. Company counts can overlap.'].join('\n');
     const r=await dialog.showSaveDialog(win!,{defaultPath:`market-report.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
     if(r.canceled||!r.filePath)return null;
     if(format==='pdf') (await import('node:fs')).writeFileSync(r.filePath,await documentPdf(text)); else await cv.saveDocx(r.filePath,text);
@@ -304,6 +306,7 @@ function registerIpc() {
   handle('public:save', (p) => savePublicOpportunity(p));
   handle('public:delete', (id) => deletePublicOpportunity(id));
   handle('public:ted', (page) => searchTed(page));
+  handle('public:grants',(keyword)=>searchGrants(keyword));
   handle('market:export', async (group, country, category) => {
     const client = scope.current();
     const r = await dialog.showSaveDialog(win!, { defaultPath: 'quarrix-market-report.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
@@ -340,7 +343,10 @@ function registerIpc() {
   handle('global:nycJobs',()=>nycVacancies());
   handle('global:recentRegistrations',()=>recentRegistrations());
   handle('global:fdic',(cert:string)=>fdicLookup(cert));
+  handle('global:cacheSummary',()=>publicCacheSummary());
+  handle('global:cachePurgeExpired',()=>purgeExpiredPublicCache());
   handle('market:sales',()=>salesByCurrency(scope.current()));
+  handle('market:insights',(country='',category='')=>marketInsights(scope.current(),country,category));
   handle('opportunities:center',()=>centerOverview());
   handle('opportunities:trends',()=>opportunityTrends());
   handle('opportunities:digest',(enabled)=>setDigest(enabled));

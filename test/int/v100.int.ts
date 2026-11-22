@@ -19,11 +19,23 @@ test('local opportunity trends scope businesses and count a vacancy once across 
  save({currentClient:'Trend A'});const r=opportunityTrends(now);assert.equal(r.length,7);assert.equal(r[6].businesses,1);assert.equal(r[5].vacancies,1);assert.equal(r[6].vacancies,0);
  save({currentClient:''});db.deleteLeads([a,b]);jobstore.deleteAlert(x);jobstore.deleteAlert(y);
 });
-import {salesByCurrency,marketReport} from '../../src/main/market';
+import {salesByCurrency,marketReport,marketInsights} from '../../src/main/market';
+test('repeat customer analytics uses adjacent recorded win cohorts and client scope',()=>{
+ const now=new Date('2026-11-22T00:00:00Z');const [a]=db.upsertLead({name:'Cohort A',source:'manual',source_ref:'cohort-a',client:'Cohort A'}),[b]=db.upsertLead({name:'Cohort B',source:'manual',source_ref:'cohort-b',client:'Cohort B'});
+ const prior=crm.saveDeal({title:'Prior',lead_id:a,stage:'won',currency:'USD',value:100}),recent=crm.saveDeal({title:'Recent',lead_id:a,stage:'won',currency:'EUR',value:100}),other=crm.saveDeal({title:'Other',lead_id:b,stage:'won',currency:'USD',value:100});
+ db.raw().prepare('UPDATE deals SET closed_at=? WHERE id=?').run('2026-07-01T00:00:00Z',prior);db.raw().prepare('UPDATE deals SET closed_at=? WHERE id IN (?,?)').run('2026-10-01T00:00:00Z',recent,other);
+ const r=marketInsights('Cohort A','','',now);assert.equal(r.priorCustomers,1);assert.equal(r.recentCustomers,1);assert.equal(r.repeatCustomers,1);assert.equal(r.repeatRate,100);assert.equal(marketInsights('Cohort B','','',now).repeatRate,null);db.deleteLeads([a,b]);
+});
 import {checkSources,sourceHealthSnapshot,verdict} from '../../src/main/health';
 import {load,defaults,effectiveSettings,runtimeSettings} from '../../src/main/settings';
 import {JOB_SOURCES,searchJobs} from '../../src/main/jobsearch';
-import {cachedPublic} from '../../src/main/public-cache';
+import {cachedPublic,publicCacheSummary,purgeExpiredPublicCache,cacheAge} from '../../src/main/public-cache';
+test('public snapshot overview distinguishes fresh dated and expired records and purges only expired',async()=>{
+ const now=Date.parse('2026-11-22T00:00:00Z');
+ await cachedPublic('purgetest:fresh',async()=>({a:1}),now);await cachedPublic('purgetest:old',async()=>({a:2}),now-8*864e5);
+ const r=publicCacheSummary(now).find(x=>x.source==='purgetest');assert.equal(r?.fresh,1);assert.equal(r?.expired,1);assert.equal(cacheAge(new Date(now-600000).toISOString(),now),'dated');
+ assert.ok(purgeExpiredPublicCache(now)>=1);assert.equal(publicCacheSummary(now).find(x=>x.source==='purgetest')?.fresh,1);assert.equal(publicCacheSummary(now).find(x=>x.source==='purgetest')?.expired,0);
+});
 test('public cache coalesces concurrent checks, preserves dated offline results and respects refusals',async()=>{
  const now=Date.parse('2026-11-22T00:00:00Z'),key='cache-regression';let calls=0;
  const fetcher=async()=>{calls++;return [{id:'example'}];};

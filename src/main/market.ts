@@ -46,3 +46,13 @@ export function marketCsv(report: MarketReport, grouping: MarketGroup, country: 
 export function salesByCurrency(client:string){
  return db.raw().prepare(`SELECT currency,COUNT(*) deals,COUNT(CASE WHEN d.stage='won' THEN 1 END) won,COUNT(CASE WHEN d.stage='lost' THEN 1 END) lost,COALESCE(SUM(CASE WHEN d.stage='won' THEN d.value END),0) wonValue,COALESCE(SUM(CASE WHEN d.stage NOT IN ('won','lost') THEN d.value END),0) openValue FROM deals d LEFT JOIN leads l ON l.id=d.lead_id WHERE (?='' OR l.client=?) GROUP BY currency ORDER BY currency`).all(client,client) as {currency:string;deals:number;won:number;lost:number;wonValue:number;openValue:number}[];
 }
+/** Repeat wins in adjacent 90-day cohorts, not subscription retention or proof of churn. */
+export function marketInsights(client:string,country='',category='',now=new Date()){
+ const end=now.toISOString(),middle=new Date(now.getTime()-90*864e5).toISOString(),start=new Date(now.getTime()-180*864e5).toISOString();
+ const args=[client,client,country,country,category,category];
+ const where="(?='' OR l.client=?) AND (?='' OR l.country=?) AND (?='' OR l.category=?)";
+ const counts=db.raw().prepare(`SELECT COUNT(CASE WHEN created_at>=? AND created_at<=? THEN 1 END) recent,COUNT(CASE WHEN created_at>=? AND created_at<? THEN 1 END) prior FROM leads l WHERE ${where}`).get(middle,end,start,middle,...args) as {recent:number;prior:number};
+ const wins=db.raw().prepare(`SELECT CASE WHEN l.company_id IS NULL THEN 'lead:'||l.id ELSE 'company:'||l.company_id END customer,MAX(CASE WHEN d.closed_at>=? AND d.closed_at<=? THEN 1 ELSE 0 END) recent,MAX(CASE WHEN d.closed_at>=? AND d.closed_at<? THEN 1 ELSE 0 END) prior FROM deals d JOIN leads l ON l.id=d.lead_id WHERE d.stage='won' AND d.closed_at>=? AND d.closed_at<=? AND ${where} GROUP BY customer`).all(middle,end,start,middle,start,end,...args) as {customer:string;recent:number;prior:number}[];
+ const prior=wins.filter(x=>x.prior).length,repeated=wins.filter(x=>x.prior&&x.recent).length,recent=wins.filter(x=>x.recent).length;
+ return {start,middle,end,observations:counts,priorCustomers:prior,recentCustomers:recent,repeatCustomers:repeated,repeatRate:prior?Math.round(repeated/prior*100):null};
+}

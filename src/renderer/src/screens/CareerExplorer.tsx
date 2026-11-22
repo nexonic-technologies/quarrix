@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo,useState } from 'react';
 import { Compass, Search } from 'lucide-react';
-import { exploreCareers, OCCUPATION_COUNT, learningPlan,type CareerMatch } from '../../../shared/career-intelligence';
+import { exploreCareers, OCCUPATION_COUNT, learningPlan,relatedOccupations,type CareerMatch } from '../../../shared/career-intelligence';
 
 type Profile = { title: string; roles: string[]; skills: string[] };
 
@@ -9,7 +9,9 @@ export function CareerExplorer({ profile, onSearch, busy }: { profile?: Profile;
   const [skills, setSkills] = useState('');
   const [matches, setMatches] = useState<CareerMatch[] | null>(null);
   const [usedCv, setUsedCv] = useState(false);
-  const reset = () => { setMatches(null); setUsedCv(false); };
+  const [selected,setSelected]=useState('');
+  const transitions=useMemo(()=>selected?relatedOccupations(selected,skills.split(/[,;\n]/)):[],[selected,skills]);
+  const reset = () => { setMatches(null); setUsedCv(false);setSelected(''); };
   return <details data-career-explorer className="panel panel-pad" style={{ marginBottom: 12 }}>
     <summary style={{ cursor: 'pointer' }}><b><Compass size={16} style={{ verticalAlign: 'middle' }} /> Explore your career paths</b></summary>
     <p className="muted small">Explore {OCCUPATION_COUNT.toLocaleString()} occupations using your real skills and interests, even without a CV. Analysis stays on this computer.</p>
@@ -29,6 +31,8 @@ export function CareerExplorer({ profile, onSearch, busy }: { profile?: Profile;
         <div className="small" style={{ marginTop: 6 }}><b>Matching evidence: </b><span translate="no">{[...m.titleMatches, ...m.skills, ...m.tools].join(', ') || 'No direct skill evidence'}</span></div>
         {!!m.explore.length && <div className="small muted"><b>Skills to explore: </b><span translate="no">{m.explore.join(', ')}</span></div>}
         {!!m.explore.length&&<details className="registry-check"><summary>Three-week learning plan</summary><p className="muted small">Suggested study topics from the occupation catalog. Confirm prerequisites and local qualifications yourself.</p>{learningPlan(m).map(p=><div key={p.skill} className="row"><span>Week</span> {p.week} · <b translate="no">{p.skill}</b></div>)}<p className="muted small">Practise a real task, record an example and prepare to explain what you learned.</p></details>}
+        <button className="btn small" aria-expanded={selected===m.id} onClick={()=>setSelected(selected===m.id?'':m.id)}>Explore related roles</button>
+        {selected===m.id&&<div className="career-map"><p className="muted small">Related roles share catalog tools. These are exploration options, not guaranteed promotions.</p>{transitions.length===0?<p>No supported career matches.</p>:transitions.map(r=><article className="panel panel-pad" key={r.id}><b translate="no">{r.title}</b><p className="small"><span>Shared tools:</span> <span translate="no">{r.shared.join(', ')}</span></p>{r.roadmap.map(p=><p key={p.skill} className="small"><span>Week</span> {p.week} · <span translate="no">{p.skill}</span></p>)}<button className="btn small" disabled={busy} onClick={()=>onSearch(r.title)}>Find jobs</button></article>)}</div>}
       </div>)}</div>
     </div>}
     <p className="muted small" style={{ marginBottom: 0 }}>Occupation data: <a href="https://www.onetcenter.org/database.html" target="_blank" rel="noreferrer">O*NET® 31.0 Database</a>, U.S. Department of Labor, Employment and Training Administration, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>, adapted by Nexonic Technologies. US occupational definitions; not a local licensing guide. USDOL/ETA has not endorsed these modifications.</p>

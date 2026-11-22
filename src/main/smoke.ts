@@ -244,6 +244,10 @@ export async function runSmoke(win: BrowserWindow) {
     if(pdf.subarray(0,5).toString()!=='%PDF-'||pdf.length<500)throw new Error('PDF not generated');
     return 'saved proposal and rendered local PDF';
   });
+  await check('global opportunities filters and grant search are available without network calls',async()=>{
+    const ok=await js<boolean>(`(async()=>{const nav=[...document.querySelectorAll('nav.nav button')].find(b=>b.textContent.trim().startsWith('Job search'));nav?.click();await new Promise(r=>setTimeout(r,900));const button=[...document.querySelectorAll('main button')].find(b=>b.textContent.trim()==='Public opportunities');if(!document.querySelector('[data-public-opportunities]'))button?.click();await new Promise(r=>setTimeout(r,500));const p=document.querySelector('[data-public-opportunities]');return !!p&&!!p.querySelector('option[value="scholarship"]')&&!!p.querySelector('option[value="apprenticeship"]')&&[...p.querySelectorAll('button')].some(b=>b.textContent.trim()==='Search grants');})()`);
+    if(!ok)throw new Error('Global opportunity category or grant search missing');return 'official directory filters and on-demand funding search';
+  });
   await check('public opportunity watchlist saves official links locally',async()=>{
     const p=await ipc('public:save',{...EMPTY_OPPORTUNITY,title:'Public opportunity smoke fixture',url:'https://njp.gov.pk/jobs/123'});
     const found=(await ipc('public:list')).some((x:any)=>x.id===p.id&&x.url===p.url);
