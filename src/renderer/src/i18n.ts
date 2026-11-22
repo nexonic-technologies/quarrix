@@ -22,7 +22,8 @@ export const setLang = (l: string) => {
   document.documentElement.dir = LANGS[lang].rtl ? 'rtl' : 'ltr';
   dict = { ...(T[lang] ?? {}) };
   const load = CATALOGUES[lang];
-  if (load) void load().then((m) => { if (currentLang() === lang) { dict = { ...m.default, ...(T[lang] ?? {}) }; translateTree(document.body); } }).catch(() => undefined);
+  const requested = lang;
+  if (load) void load().then((m) => { if (currentLang() === requested) { dict = { ...m.default, ...(T[requested] ?? {}) }; translateTree(document.body); } }).catch(() => undefined);
   if (document.body) translateTree(document.body);
 };
 export const t = (s: string) => dict[s] ?? T[lang]?.[s] ?? s;

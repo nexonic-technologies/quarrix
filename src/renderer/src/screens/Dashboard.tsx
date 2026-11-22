@@ -3,6 +3,7 @@ import { Building2, Send, MessageCircleReply, Briefcase, Radio, Rocket, Clock, F
 import { call } from '../api';
 import { type Screen } from '../App';
 import { CountUp, Sparkline } from '../Art';
+import type { Workspace } from '../../../shared/navigation';
 
 type Dash = {
   days: string[]; series: { leads: number[]; sent: number[]; replies: number[]; applied: number[] };
@@ -23,6 +24,7 @@ const ago = (iso: string) => { const s = (Date.now() - +new Date(iso)) / 1000; r
 
 function Delta({ now, prev }: { now: number; prev: number }) {
   if (!now && !prev) return <span className="delta flat">no change</span>;
+  if (!prev) return <span className="delta up"><ArrowUpRight size={12} />+{now}</span>;
   const up = now >= prev;
   const pct = prev ? Math.round(((now - prev) / prev) * 100) : 100;
   return <span className={`delta ${up ? 'up' : 'down'}`}>{up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{Math.abs(pct)}% vs last week</span>;
@@ -87,14 +89,17 @@ function Donut({ parts }: { parts: { label: string; n: number; color: string }[]
   );
 }
 
-export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void }) {
+export function Dashboard({ tick, go, workspace }: { tick: number; go: (s: Screen) => void; workspace: Workspace }) {
   const [d, setD] = useState<Dash | null>(null);
+  const [failed, setFailed] = useState(false);
   const [range, setRange] = useState(14);
-  const [on, setOn] = useState(new Set<string>(['leads', 'sent', 'replies', 'applied']));
+  const visibleSeries = SERIES.filter(s => workspace === 'both' || (workspace === 'career' ? s.key === 'applied' : s.key !== 'applied'));
+  const [on, setOn] = useState(new Set<string>(visibleSeries.map(s => s.key)));
   const [pulse, setPulse] = useState(0);
   useEffect(() => {
     let alive = true;
-    const load = () => call<Dash>('dash:get', range).then((x) => { if (alive) { setD(x); setPulse((n) => n + 1); } }).catch(() => undefined);
+    let pending = false;
+    const load = async () => { if (pending) return; pending = true; try { const x = await call<Dash>('dash:get', range); if (alive) { setD(x); setFailed(false); setPulse((n) => n + 1); } } catch { if (alive) setFailed(true); } finally { pending = false; } };
     void load();
     const t = setInterval(load, 4000);
     return () => { alive = false; clearInterval(t); };
@@ -103,7 +108,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
   const funnel = useMemo(() => d ? [
     ['Found', t.leads], ['With email', t.withEmail], ['Good fit', t.shortlisted], ['Contacted', t.contactedLeads], ['Replied', t.interested], ['Won', t.won],
   ] as [string, number][] : [], [d]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!d) return <div className="page"><div className="dash-loading"><span className="spinner" />Loading your numbers…</div></div>;
+  if (!d) return <div className="page"><div className="dash-loading" role="status">{failed ? <button className="btn" onClick={() => location.reload()}>Try again</button> : <><span className="spinner" />Loading your numbers…</>}</div></div>;
   const kpis = [
     { label: 'Leads found', icon: Building2, color: '#7c3aed', n: t.leads, sub: `${t.leadsToday} today`, now: t.leadsWeek, prev: t.leadsPrevWeek, line: d.series.leads, to: 'leads' as Screen },
     { label: 'Emails sent', icon: Send, color: '#06b6d4', n: t.sent, sub: `${t.sentToday} today · ${t.scheduled} queued`, now: t.sentWeek, prev: t.sentPrevWeek, line: d.series.sent, to: 'outreach' as Screen },
@@ -115,7 +120,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
   return (
     <div className="page dash">
       <div className="kpis">
-        {kpis.map((k, i) => (
+        {kpis.filter(k => workspace === 'both' || (workspace === 'career' ? k.to === 'jobs' : k.to !== 'jobs')).map((k, i) => (
           <button key={k.label} className="panel kpi" style={{ ['--c' as string]: k.color, animationDelay: `${i * 70}ms` }} onClick={() => go(k.to)}>
             <div className="kpi-top"><span className="stat-icon"><k.icon size={16} /></span><span className="muted small">{k.label}</span></div>
             <b><CountUp to={k.n} /></b>
@@ -126,22 +131,22 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
         ))}
       </div>
 
-      <div className="dash-row">
+      <div className={`dash-row ${workspace === 'career' ? 'single' : ''}`}>
         <div className="panel panel-pad perf-card">
           <div className="panel-title">
             <h2><Activity size={16} /> Performance</h2>
             <div className="tabs seg" role="tablist" aria-label="Range" style={{ margin: 0 }}>{[7, 14, 30].map((r) => <button key={r} role="tab" aria-selected={range === r} onClick={() => setRange(r)}>{r} days</button>)}</div>
           </div>
           <div className="series-toggles">
-            {SERIES.map((s) => <button key={s.key} className={on.has(s.key) ? 'on' : ''} style={{ ['--c' as string]: s.color }} onClick={() => setOn((o) => { const n = new Set(o); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n.size ? n : o; })}><i />{s.label}<b>{d.series[s.key].reduce((a, b) => a + b, 0)}</b></button>)}
+            {visibleSeries.map((s) => <button key={s.key} className={on.has(s.key) ? 'on' : ''} aria-pressed={on.has(s.key)} style={{ ['--c' as string]: s.color }} onClick={() => setOn((o) => { const n = new Set(o); n.has(s.key) ? n.delete(s.key) : n.add(s.key); return n.size ? n : o; })}><i />{s.label}<b>{d.series[s.key].reduce((a, b) => a + b, 0)}</b></button>)}
           </div>
           <PerfChart days={d.days} series={d.series} on={on} />
         </div>
-        <div className="panel panel-pad funnel-card">
+        {workspace !== 'career' && <div className="panel panel-pad funnel-card">
           <div className="panel-title"><h2>Outreach funnel</h2><span className="pill">all time</span></div>
           <div className="funnel">
             {funnel.map(([label, n], i) => (
-              <div key={label} className="fstep" style={{ ['--w' as string]: `${Math.max(6, (n / fmax) * 100)}%`, animationDelay: `${i * 80}ms` }}>
+              <div key={label} className="fstep" style={{ ['--w' as string]: `${(n / fmax) * 100}%`, animationDelay: `${i * 80}ms` }}>
                 <span>{label}</span><div className="fbar"><i /></div><b><CountUp to={n} /></b>
                 {i > 0 && funnel[i - 1][1] > 0 && <em>{Math.round((n / funnel[i - 1][1]) * 100)}%</em>}
               </div>
@@ -152,18 +157,18 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
             <span title="Confirmed by a verifier; the second number also counts addresses whose domain accepts mail"><MailCheck size={13} /> {t.verified} confirmed emails · {t.mailDomainOk ?? 0} deliverable domains</span>
             <span><Sparkles size={13} /> {t.drafts} drafts to approve</span>
           </div>
-        </div>
+        </div>}
       </div>
 
-      <div className="dash-row three">
-        <div className="panel panel-pad">
+      <div className="dash-row three adaptive">
+        {workspace !== 'business' && <div className="panel panel-pad">
           <div className="panel-title"><h2>Job hunt</h2><button className="btn small ghost" onClick={() => go('jobs')}>Open <ArrowUpRight size={13} /></button></div>
           <Donut parts={[
             { label: 'Saved', n: d.jobStatus.Saved, color: '#c4b5fd' }, { label: 'Applied', n: d.jobStatus.Applied, color: '#7c3aed' },
             { label: 'Interview', n: d.jobStatus.Interview, color: '#06b6d4' }, { label: 'Offer', n: d.jobStatus.Offer, color: '#16a34a' }, { label: 'Rejected', n: d.jobStatus.Rejected, color: '#f43f5e' },
           ]} />
-        </div>
-        <div className="panel panel-pad live">
+        </div>}
+        {workspace !== 'career' && <div className="panel panel-pad live">
           <div className="panel-title"><h2><span className={`live-dot ${d.running.length ? 'on' : ''}`}><Radio size={13} /></span> Live now</h2></div>
           {d.running.length === 0 && <p className="muted small">No searches running. Start one on Find.</p>}
           {d.running.map((r) => (
@@ -178,12 +183,12 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
             <span><Rocket size={13} /> {t.campaigns} autopilot campaign{t.campaigns === 1 ? '' : 's'} on</span>
             <span><Clock size={13} /> {d.nextSend ? `Next email to ${d.nextSend.name} ${new Date(d.nextSend.due_at) > new Date() ? new Date(d.nextSend.due_at).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : 'soon'}` : 'No emails queued'}</span>
           </div>
-        </div>
+        </div>}
         <div className="panel panel-pad">
           <div className="panel-title"><h2>Activity</h2><span className="pill live-pill"><i key={pulse} />live</span></div>
           <div className="feed" tabIndex={0} role="log" aria-label="Recent activity">
-            {d.activity.length === 0 && <p className="muted small">Your activity shows up here as it happens.</p>}
-            {d.activity.map((a) => (
+            {!d.activity.some(a => workspace === 'both' || (workspace === 'career' ? a.type === 'job_status' : a.type !== 'job_status')) && <p className="muted small">Your activity shows up here as it happens.</p>}
+            {d.activity.filter(a => workspace === 'both' || (workspace === 'career' ? a.type === 'job_status' : a.type !== 'job_status')).map((a) => (
               <div key={a.id} className={`feed-item ${a.type}`}>
                 <i />
                 <div className="grow"><span>{a.name ? <b>{a.name}</b> : null}{a.name ? ' · ' : ''}{a.detail || a.type}</span><em>{ago(a.at)}</em></div>
@@ -193,7 +198,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
         </div>
       </div>
 
-      <div className="dash-row three">
+      {workspace !== 'career' && <div className="dash-row three">
         <div className="panel panel-pad">
           <div className="panel-title"><h2>Where leads come from</h2></div>
           <div className="hbars">{d.sources.map((s, i) => <div key={s.source} style={{ ['--w' as string]: `${(s.n / smax) * 100}%`, animationDelay: `${i * 60}ms` }}><span>{SRC[s.source] ?? s.source}</span><div><i /></div><b>{s.n}</b></div>)}</div>
@@ -206,7 +211,7 @@ export function Dashboard({ tick, go }: { tick: number; go: (s: Screen) => void 
           <div className="panel-title"><h2>Top countries</h2></div>
           <div className="chips-list">{d.countries.map((c) => <span key={c.country}>{c.country}<b>{c.n}</b></span>)}</div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

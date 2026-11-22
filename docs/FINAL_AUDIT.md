@@ -1,5 +1,14 @@
 # Final audit, v1.0.0
 
+## Post-1.0 desktop quality pass
+
+- Navigation validates stored routes and preserves the route when using the keyboard skip link. Career and business modes now show the relevant dashboard cards and navigation groups.
+- Lead queries ignore superseded responses; switching client clears selection, open details and pending exports before the new scope loads. Pagination recovers when results shrink.
+- Localized select labels retain canonical status and filter values, and superseded language catalogue responses cannot overwrite the active language.
+- Watchlist URL edits reject duplicates in the record's own client, even from the all-client overview. Dashboard and job-detail loading handle failures and stale responses.
+- Desktop styling uses clearer typography, quieter brand accents, grouped navigation, scrollable sidebar, responsive cards and wrapped action bars. Dashboard sparklines no longer overlap KPI labels; zero-count funnel steps display zero width. Existing screens, documents and local data are retained.
+- Verification: regression unit and SQLite integration tests plus desktop smoke checks for minimum window layout, client changes and localized status values. The CI workflow now runs the built app before merge. The [initial quality-pass CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44968122140) passed 93 unit tests, 70 integration tests, 25 desktop checks, typecheck, dependency audit and build; the screenshot informed the final chart refinements. Installer verification remains pending for a subsequent release. The 17 external blockers remain unchanged.
+
 ## v1.0.0 production release (includes v0.31.0 and v0.32.0)
 
 - Proposal studio: editable templates, itemized quotations using integer minor-unit arithmetic, manually recorded proposal status, per-business persistence, and offline PDF/Word export. Market Intelligence also exports PDF/Word summaries with the configured business name and sample limitations.

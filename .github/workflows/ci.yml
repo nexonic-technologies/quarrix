@@ -14,8 +14,19 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       # Integration tests run inside Electron's own Node; it needs these shared libraries even without a window.
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 >/dev/null
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libnss3 libgbm1 libgtk-3-0 libxss1 xvfb >/dev/null
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run build
+      - name: Exercise built desktop interface before merge
+        timeout-minutes: 5
+        run: QUARRIX_SMOKE_OUT="$PWD/ci-smoke.json" QUARRIX_SMOKE_SCREENSHOT="$PWD/ci-dashboard.png" xvfb-run -a npm start -- --no-sandbox
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-smoke
+          path: |
+            ci-smoke.json
+            ci-dashboard.png
+          if-no-files-found: ignore

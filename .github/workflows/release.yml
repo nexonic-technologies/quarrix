@@ -273,7 +273,15 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v1.0.0 ]; then
+            if [ "$TAG" = v1.0.1 ]; then
+              echo "## Quarrix 1.0.1 — Desktop polish and reliability"
+              echo
+              echo "- Refined typography, navigation, responsive layouts and workspace-specific dashboards."
+              echo "- Safe navigation and client switching, stale-result protection, canonical localized form values and duplicate watchlist protection."
+              echo "- Accurate dashboard charts, improved loading states and desktop regression checks in CI."
+              echo "- Previously documented external requirements remain unchanged."
+              echo
+            elif [ "$TAG" = v1.0.0 ]; then
               echo "## Quarrix 1.0 — Proposal and Public Opportunity Studios"
               echo
               echo "- Editable local proposals, itemized quotations, templates, status tracking and PDF/Word exports."

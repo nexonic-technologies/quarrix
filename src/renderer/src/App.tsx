@@ -15,15 +15,16 @@ import { CareerSignals } from './screens/CareerSignals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
 import { setLang, t } from './i18n';
+import { CAREER, resolveScreen, type Screen } from '../../shared/navigation';
 
-export type Screen = 'dashboard' | 'pipeline' | 'signals' | 'find' | 'leads' | 'outreach' | 'autopilot' | 'jobs' | 'jobradar' | 'files' | 'settings';
+export type { Screen } from '../../shared/navigation';
 type Toast = { id: number; text: string; err?: boolean };
 
 let toastId = 0;
 export const toast = { push: (_t: string, _err?: boolean) => undefined as void };
 
 export function App() {
-  const [screen, setScreen] = useState<Screen>((location.hash.slice(1) as Screen) || 'dashboard');
+  const [screen, setScreen] = useState<Screen>(() => resolveScreen(location.hash));
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [counts, setCounts] = useState({ drafts: 0, sentToday: 0, cap: 0, signals: 0, jobs: 0 });
   const [tick, setTick] = useState(0);
@@ -44,11 +45,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    void refreshCounts();
+    void refreshCounts().catch(() => undefined);
     call('settings:get').then((s) => { setLang(s.language ?? 'en'); setLangTick((n) => n + 1); setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' }); setWs(s.workspace ?? 'both'); if (s.onboarded === false && !s.profile?.name) setOnboard(true); }).catch(() => undefined);
     return onEvent((e, d) => {
       if (e === 'toast') toast.push(String(d));
-      if (e === 'drafts' || e === 'leads' || e === 'signals' || e === 'alerts') void refreshCounts();
+      if (e === 'drafts' || e === 'leads' || e === 'signals' || e === 'alerts') void refreshCounts().catch(() => undefined);
       setTick((n) => n + 1);
     });
   }, [refreshCounts]);
@@ -67,19 +68,19 @@ export function App() {
     settings: ['Settings', 'Your details, mailbox, writing model and sources.'],
   };
   useEffect(() => { call('settings:get').then((s) => setMe({ name: s.profile?.name ?? '', company: s.profile?.company ?? '' })).catch(() => undefined); }, [screen]);
-  const go = (s: Screen) => { setScreen(s); history.replaceState(null, '', '#' + s); };
+  const go = (s: Screen) => { const next = resolveScreen(s, ws); setScreen(next); history.replaceState(null, '', '#' + next); };
+  useEffect(() => { const next = resolveScreen(screen, ws); if (next !== screen) setScreen(next); history.replaceState(null, '', '#' + next); }, [screen, ws]);
   const nav: [Screen, string, typeof Compass, number?][] = [
     ['dashboard', 'Dashboard', LayoutDashboard], ['find', 'Find', Compass], ['leads', 'Leads', Rows3], ['pipeline', 'Pipeline', KanbanSquare], ['signals', 'Signals', Radar, counts.signals], ['jobs', 'Job search', Briefcase], ['jobradar', 'Job signals', BellRing, counts.jobs], ['outreach', 'Outreach', Send, counts.drafts], ['autopilot', 'Autopilot', Rocket],
     ['files', 'Import and export', ArrowDownUp], ['settings', 'Settings', Cog],
   ];
   // Workspaces (QF-116): sales and job-hunting screens can be shown apart.
-  const CAREER: Screen[] = ['jobs', 'jobradar'];
   const shown = nav.filter(([id]) => ws === 'both' || ['dashboard', 'settings'].includes(id) || (ws === 'career' ? CAREER.includes(id) : !CAREER.includes(id)));
-  const switchWs = async (v: typeof ws) => { setWs(v); await call('settings:save', { workspace: v }); if (v === 'career' && !['dashboard', 'jobs', 'jobradar', 'settings'].includes(screen)) go('jobs'); if (v === 'business' && CAREER.includes(screen)) go('dashboard'); };
+  const switchWs = async (v: typeof ws) => { try { await call('settings:save', { workspace: v }); setWs(v); } catch (e) { toast.push(String(e), true); } };
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
-      <a className="skip" href="#main">Skip to content</a>
+      <a className="skip" href="#main" onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
       {onboard && <Onboarding onDone={(v) => { setOnboard(false); if (v) { setWs(v); if (v === 'career') go('jobs'); else go('find'); } }} />}
       <div className="backdrop" aria-hidden><i /><i /><i /></div>
       <aside className="side">
@@ -88,21 +89,24 @@ export function App() {
           {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{t(v)}</button>)}
         </div>
         <nav className="nav" aria-label="Main">
-          {shown.map(([id, label, Icon, n]) => (
+          {(['dashboard', 'business', 'career', 'settings'] as const).map(group => {
+            const items = shown.filter(([id]) => group === 'dashboard' ? id === 'dashboard' : group === 'settings' ? ['files', 'settings'].includes(id) : group === 'career' ? CAREER.includes(id) : !['dashboard', 'files', 'settings'].includes(id) && !CAREER.includes(id));
+            return items.length ? <div className="nav-group" key={group}>{(group === 'business' || group === 'career') && <div className="side-label">{t(group === 'business' ? 'Business' : 'Career')}</div>}{items.map(([id, label, Icon, n]) => (
             <button key={id} aria-current={screen === id ? 'page' : undefined} onClick={() => go(id)}>
               <Icon size={16} strokeWidth={1.8} /> {t(label)}
               {n ? <span className="count">{n}</span> : null}
             </button>
-          ))}
+          ))}</div> : null;
+          })}
         </nav>
-        <div className="side-card">
+        {ws !== 'career' && <div className="side-card">
           <Ring value={counts.sentToday} max={counts.cap} size={48} label={`${counts.sentToday} of ${counts.cap} emails sent today`} />
           <div>
             <b>{counts.sentToday} of {counts.cap}</b>
             <span>emails today</span>
             <small>The limit grows a little each day to protect your mailbox.</small>
           </div>
-        </div>
+        </div>}
         <button className="me" onClick={() => go('settings')}>
           <Avatar name={me.name || me.company || 'You'} size={34} />
           <span><b>{me.name || 'Your name'}</b><small>{me.company || 'Add your company'}</small></span>
@@ -117,7 +121,7 @@ export function App() {
         </header>
         <div className="screen" key={screen}>
           <ScreenGuard>
-          {screen === 'dashboard' && <Dashboard tick={tick} go={go} />}
+          {screen === 'dashboard' && <Dashboard key={ws} workspace={ws} tick={tick} go={go} />}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} />}
           {screen === 'find' && <Find tick={tick} go={go} />}

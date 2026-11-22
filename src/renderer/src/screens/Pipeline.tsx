@@ -110,7 +110,7 @@ export function CustomInput({ field: f, value, onChange }: { field: any; value: 
   const opts: string[] = json(f.options, []);
   return (
     <label className="field"><span>{f.label}</span>
-      {f.type === 'select' ? <select className="input" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}><option value="">—</option>{opts.map((o) => <option key={o}>{o}</option>)}</select>
+      {f.type === 'select' ? <select className="input" value={String(value ?? '')} onChange={(e) => onChange(e.target.value)}><option value="">—</option>{opts.map((o) => <option key={o} value={o} translate="no">{o}</option>)}</select>
         : <input className="input" type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : f.type === 'url' ? 'url' : 'text'} value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} />}
     </label>
   );

@@ -20,3 +20,8 @@ test('public opportunities remain private to the selected workspace and persist 
  save({currentClient:'B'});assert.equal(listPublicOpportunities().length,0);assert.equal(deletePublicOpportunity(p.id!),0);assert.throws(()=>savePublicOpportunity({...p,title:'Changed'}),/workspace/);
  save({currentClient:'A'});assert.equal(deletePublicOpportunity(p.id!),1);save({currentClient:''});
 });
+test('editing a watchlist URL cannot duplicate a listing, including in all-clients view',()=>{
+ save({currentClient:'A'}); const a=savePublicOpportunity({...EMPTY_OPPORTUNITY,title:'First',url:'https://njp.gov.pk/jobs/111'}); const b=savePublicOpportunity({...EMPTY_OPPORTUNITY,title:'Second',url:'https://njp.gov.pk/jobs/222'});
+ save({currentClient:''}); assert.throws(()=>savePublicOpportunity({...b,url:a.url}),/already saved/); assert.equal(listPublicOpportunities().find(x=>x.id===b.id)?.url,b.url);
+ deletePublicOpportunity(a.id!);deletePublicOpportunity(b.id!);
+});

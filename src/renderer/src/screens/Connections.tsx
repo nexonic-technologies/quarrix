@@ -100,7 +100,7 @@ export function Automations({ s, set }: { s: any; set: (p: string, v: unknown) =
           <b className="small">If all of these are true</b>
           {r.conditions.map((c: any, ci: number) => (
             <div key={ci} className="row" style={{ gap: 6 }}>
-              <select className="input" value={c.field} onChange={(e) => put(i, { ...r, conditions: r.conditions.map((x: any, k: number) => (k === ci ? { ...x, field: e.target.value } : x)) })}>{meta.fields.map((f: string) => <option key={f}>{f}</option>)}</select>
+              <select className="input" value={c.field} onChange={(e) => put(i, { ...r, conditions: r.conditions.map((x: any, k: number) => (k === ci ? { ...x, field: e.target.value } : x)) })}>{meta.fields.map((f: string) => <option key={f} value={f}>{f}</option>)}</select>
               <select className="input" value={c.op} onChange={(e) => put(i, { ...r, conditions: r.conditions.map((x: any, k: number) => (k === ci ? { ...x, op: e.target.value } : x)) })}>{OPS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
               {!['empty', 'notempty'].includes(c.op) && <input className="input" value={c.value ?? ''} onChange={(e) => put(i, { ...r, conditions: r.conditions.map((x: any, k: number) => (k === ci ? { ...x, value: e.target.value } : x)) })} />}
               <button className="btn small ghost" aria-label="Remove condition" onClick={() => put(i, { ...r, conditions: r.conditions.filter((_: any, k: number) => k !== ci) })}><Trash2 size={12} /></button>

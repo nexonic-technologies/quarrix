@@ -6,7 +6,12 @@ export function migratePublicOpportunities() { db.raw().exec("CREATE TABLE IF NO
 export function listPublicOpportunities(): Opportunity[] { const c=scope.current(); return (db.raw().prepare("SELECT id,data FROM public_opportunities WHERE (?='' OR client=?) ORDER BY updated_at DESC,id DESC").all(c,c) as {id:number;data:string}[]).map(r=>({...JSON.parse(r.data),id:r.id})); }
 export function savePublicOpportunity(value: unknown): Opportunity {
   const p=validateOpportunity(value), c=scope.current(); const {id,...data}=p;
-  if(id!==undefined){const r=db.raw().prepare("UPDATE public_opportunities SET data=?,updated_at=? WHERE id=? AND (?='' OR client=?)").run(JSON.stringify(data),db.now(),id,c,c);if(!r.changes) throw new Error('Opportunity not found in this workspace.');return p;}
+  if(id!==undefined){
+    const row=db.raw().prepare("SELECT client FROM public_opportunities WHERE id=? AND (?='' OR client=?)").get(id,c,c) as {client:string}|undefined;
+    if(!row) throw new Error('Opportunity not found in this workspace.');
+    if(db.raw().prepare("SELECT 1 FROM public_opportunities WHERE client=? AND id<>? AND json_extract(data,'$.url')=?").get(row.client,id,data.url)) throw new Error('This opportunity is already saved.');
+    db.raw().prepare('UPDATE public_opportunities SET data=?,updated_at=? WHERE id=?').run(JSON.stringify(data),db.now(),id);return p;
+  }
   if(db.raw().prepare("SELECT 1 FROM public_opportunities WHERE client=? AND json_extract(data,'$.url')=?").get(c,data.url)) throw new Error('This opportunity is already saved.');
   const r=db.raw().prepare('INSERT INTO public_opportunities (client,data,updated_at) VALUES (?,?,?)').run(c,JSON.stringify(data),db.now());return {...p,id:Number(r.lastInsertRowid)};
 }
