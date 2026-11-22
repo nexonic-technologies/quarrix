@@ -1,13 +1,17 @@
-# Final audit, v1.1.0
+# Final audit, v2.0.0
 
-## v2.0.0 local development candidate (not published)
+## v2.0.0 (released)
 
 - Global data (v1.2): public regional source directory for Pakistan, US, UK, Canada, EU and UAE; Canada Job Bank, UK Find a job and EURES may be saved manually. Directory links open the official public service, not automated extraction. SEC operating-company lookup by public CIK uses the documented [EDGAR API](https://www.sec.gov/about/developer-resources); it does not verify licensing or individual contacts. Official US private-sector average hourly earnings use BLS series CES0500000003 via the [BLS API](https://www.bls.gov/developers/); no claim of occupation-specific or predicted salary. Other national wage sources are links. Live service checks are included for the eventual release workflow, not assumed to have passed locally.
 - Career (v1.3): posting-grounded skill wording versus CV text, with occupation-catalog terms, optional official training search and upcoming seven-day application planner. Not an ATS verdict or an eligibility prediction.
 - Business (v1.4): customer grouping by grade/status, rating and website coverage comparisons of stored samples, currency-separated sales figures, proposal validity and exact minor-unit percentage discounts. No market-share inference or fabricated competitor data.
 - Unified center (v1.5): due applications, scoped CRM tasks and public watchlist deadlines; controls to pause/resume saved searches; optional local daily desktop count reminder, claimed at most once per client/date. No automatic message or application sending.
 - Production (v2.0): lazy discovery screens, hidden-window dashboard refresh suppression, locale strings, focused and integration regressions, named keyboard controls and automated accessibility rule gate in CI. Signing remains conditional on real credentials and notarization account; unsigned packages are not represented as signed.
-- Release readiness: local typecheck/build, 101 unit tests, 73 SQLite/IPC integration tests and production dependency audit (zero reported vulnerabilities) passed. The initial renderer entry chunk is approximately 668 kB uncompressed versus approximately 1,756 kB before splitting; career and lead screens load on demand. Desktop GUI smoke could not start in the local execution environment (Electron SIGABRT); macOS packaging could not rebuild native dependencies because the environment denied access to its node-gyp cache. CI desktop, installed-app, live-provider and platform-signing verification must run after approval to push. The 17 external blockers remain unchanged; no tag or release has been created.
+- Release verification: 101 unit tests, 73 integration tests, accessibility checks and dependency audit passed. [Published v2.0.0](https://github.com/nexonic-technologies/quarrix/releases/tag/v2.0.0) confirms 162/162 installed-app checks, 23/24 live providers including SEC and BLS, one temporary Overpass outage and zero provider failures. Windows and Intel Mac installers are unsigned; Apple Silicon is ad-hoc signed. The 17 external blockers remain unchanged.
+
+## Post-v2.0.0 Overpass resilience candidate
+
+Bounded failover on transient network/service errors, no retry on refusals, rate limits, budget or cancellation, and smaller central-Austin live probe. Unreadable and incomplete responses are not counted as successful data. Live verification remains pending; the public provider's availability is not under Quarrix control. Signing requires genuine owner-provided credentials and is not replaced with self-signed certificates.
 
 ## v1.1.0 Verified Intelligence (released)
 

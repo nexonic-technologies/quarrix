@@ -39,7 +39,7 @@ const noop = () => undefined;
   await run('BLS hourly earnings','Global data',async()=>need((await officialWages()).length,'monthly observations'));
   await run('SEC operating entity','Global data',async()=>{const r=await secLookup('320193');return `${r.name} ${r.cik}`;});
   await run('OpenStreetMap geocoding (Nominatim)', 'QF-015', async () => { const p = await geocode('Austin, Texas'); if (!p) throw new Error('not found'); return `${p.label} ${p.lat.toFixed(2)},${p.lon.toFixed(2)}`; });
-  await run('OpenStreetMap businesses (Overpass)', 'QF-002', async () => need((await searchOsm('dentist', 'Austin, Texas', 10)).length, 'dentists'));
+  await run('OpenStreetMap businesses (Overpass)', 'QF-002', async () => need((await searchOsm('dentist', 'Austin, Texas', 10,{label:'Central Austin',city:'Austin',region:'Texas',country:'US',lat:30.275,lon:-97.745,bbox:[30.25,30.30,-97.76,-97.72]})).length, 'dentists in central Austin'));
   await run('Wikidata business source', 'QF-009', async () => need((await searchWikidata('hospital', 'London', 10, noop)).length, 'hospitals'));
   await run('Company size and growth (Wikidata)', 'QF-028', async () => { const f: any = await companyFacts('stripe.com'); if (!f) throw new Error('no facts'); return JSON.stringify(f).slice(0, 150); });
   await run('NPI registry (US healthcare)', 'QF-002', async () => need((await searchNpi('dentist', 'Austin', 'TX', 10, noop)).length, 'providers'));

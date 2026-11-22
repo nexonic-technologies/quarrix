@@ -1,6 +1,6 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-**v2.0.0 local candidate:** consolidated v1.2–v1.5 functionality plus lazy-loaded discovery, localization and accessibility regressions. Regional directories are source links, not new scraping connectors; SEC/BLS live checks and cross-platform installed-app gates are pending CI. Existing external blockers unchanged. Candidate is not pushed or released.
+**v2.0.0 released:** consolidated v1.2–v1.5 functionality plus lazy-loaded discovery, localization and accessibility regressions. Regional directories are source links, not new scraping connectors. [Release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v2.0.0) confirms 162/162 installed-app checks and 23/24 live sources, including SEC/BLS; one temporary Overpass outage and zero provider failures. Existing external blockers unchanged.
 
 **v1.1.0 released:** simplified discovery entry points, evidence and freshness warnings, on-demand public GLEIF legal-entity candidate lookup, scoped local recommendations and advertised-salary comparisons. CI passed; [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v1.1.0) confirms 156/156 installed-app checks, 21/22 live sources including GLEIF, one temporary outage and zero failures. Existing external blockers unchanged.
 

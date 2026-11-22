@@ -273,7 +273,13 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v2.0.0 ]; then
+            if [ "$TAG" = v2.0.1 ]; then
+              echo "## Quarrix 2.0.1 — Overpass resilience"
+              echo
+              echo "- Bounded retries for transient provider errors; access refusals, throttling, budgets and cancellation remain respected."
+              echo "- Smaller live probe and clearer incomplete-response handling. Signing remains conditional on valid credentials."
+              echo
+            elif [ "$TAG" = v2.0.0 ]; then
               echo "## Quarrix 2.0 — Unified opportunity intelligence"
               echo
               echo "- Public regional directories, SEC operating-company lookup and real BLS wage observations. Directory links are not automated data connectors."
