@@ -14,6 +14,7 @@ export function privacySummary() {
     row('Career exploration', false, 'No data leaves your device', 'None: bundled occupation data', 'Profile inputs are processed locally and not saved by the explorer'),
     row('Job trust checks', false, 'Only requested public job and employer-page URLs', 'The selected public websites', 'Evidence is displayed locally; no CV, credentials or identity documents are sent'),
     row('Company registry lookup', false, 'Legal company name and country code only, on request', 'GLEIF public LEI register', 'Displayed in the current session; no contact details or CV sent'),
+    row('Official regional data', false, 'Fixed BLS wage series request or public company CIK, only on request', 'US Bureau of Labor Statistics or SEC EDGAR', 'Results displayed locally; directory links open in your browser'),
     row('Application studio', false, 'No data leaves your device', 'None', 'Application dates, notes, interview practice and drafts stay in the local saved job; application exports include dates and notes but not drafts or practice'),
     row('Market intelligence', false, 'No data leaves your device', 'None', 'Aggregated business records in the selected workspace; CSV export omits individual contact fields'),
     row('Proposal studio', false, 'No data leaves your device', 'None', 'Draft quotations and status saved locally; PDF and Word exports require user action'),

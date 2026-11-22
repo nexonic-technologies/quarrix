@@ -13,6 +13,7 @@ import { CareerExplorer } from './CareerExplorer';
 import { JobTrust } from './JobTrust';
 import { ApplicationOverview, ApplicationStudio } from './ApplicationStudio';
 import { PublicOpportunities } from './PublicOpportunities';
+import { RegionalSources } from './GlobalData';
 import type { StudioNotes } from '../../../shared/application-studio';
 import type { TrustReport } from '../../../shared/job-trust';
 import { jobQuality, salarySamples } from '../../../shared/verified';
@@ -209,6 +210,7 @@ export function Jobs() {
 
       {panel === 'employers' && <EmployersPanel />}
       {publicOpen && <PublicOpportunities />}
+      {tab==='results'&&<div className="panel panel-pad"><RegionalSources kind="job"/><RegionalSources kind="salary"/></div>}
       {panel === 'alerts' && <AlertsPanel current={{ ...query(kw.trim()), name: kw.trim() }} onOpen={(list) => { setJobs(list as Job[]); setTab('results'); }} />}
       {tab === 'saved' && saved.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 8 }}><span className="muted small">Export my applications:</span>{(['csv', 'json', 'md'] as const).map((f) => <button key={f} className="btn small ghost" onClick={async () => { const n = await call('jobs:export', f); if (n) toast.push(`Exported ${n} jobs`); }}>{f === 'md' ? 'Markdown' : f.toUpperCase()}</button>)}</div>}
       {tab === 'saved' && <ApplicationOverview jobs={saved as (Job & { studio?: StudioNotes })[]} onOpen={setOpen} />}

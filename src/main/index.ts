@@ -19,6 +19,7 @@ import { proposalText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
+import { officialWages, secLookup } from './global-data';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -321,6 +322,8 @@ function registerIpc() {
   handle('jobs:check', (url: string) => jobstore.checkPosting(String(url ?? '')));
   handle('jobs:trust', (job, employerUrl) => checkJobTrust(job, employerUrl));
   handle('entity:registry', (name, country) => registryLookup(name, country));
+  handle('global:wages', () => officialWages());
+  handle('global:sec', (id:string) => secLookup(id));
   handle('opportunities:overview', () => {
     const {rows,total}=db.queryLeads(scope.scopedQuery({sort:'grade',limit:100}));
     const jobs=db.savedJobs();
