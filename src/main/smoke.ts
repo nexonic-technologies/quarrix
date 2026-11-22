@@ -115,6 +115,10 @@ export async function runSmoke(win: BrowserWindow) {
     if (!found) throw new Error('No occupation recommendation was rendered');
     return 'real occupation returned without a CV or network request';
   });
+  await check('public vacancies and dashboard evidence controls render without network calls',async()=>{
+    const ok=await js<boolean>(`(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));const nav=t=>[...document.querySelectorAll('nav.nav button')].find(b=>b.textContent.trim().startsWith(t))?.click();nav('Dashboard');await wait(900);const coverage=!!document.querySelector('.quality-overview progress[aria-label]');nav('Job search');await wait(900);const panel=[...document.querySelectorAll('main details')].find(x=>x.querySelector('.public-result'));if(panel)panel.open=true;return coverage&&!![...document.querySelectorAll('main button')].find(b=>b.textContent.trim()==='Load public vacancies');})()`);
+    if(!ok)throw new Error('public vacancy or evidence visual missing');return 'local dashboard and on-demand public source controls';
+  });
   await check('job trust panel reports unavailable evidence honestly', async () => {
     const id = 'smoke-job-trust';
     await ipc('jobs:save', { id, title: 'Smoke Test Role', company: 'Smoke Test Employer', url: '', location: '', source: 'Smoke test', workplace: '', type: '', level: '', salary: '', posted: '', tags: [], snippet: '', status: 'Saved' });

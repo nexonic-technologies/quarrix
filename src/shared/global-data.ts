@@ -1,4 +1,7 @@
 export const REGIONAL_SOURCES = [
+  {region:'NO',kind:'registry',name:'Brønnøysund Register Centre',url:'https://www.brreg.no/en/'},
+  {region:'FR',kind:'registry',name:'Annuaire des Entreprises',url:'https://annuaire-entreprises.data.gouv.fr/'},
+  {region:'US',kind:'job',name:'Jobs NYC',url:'https://cityjobs.nyc.gov/'},
   {region:'PK',kind:'registry',name:'SECP company name search',url:'https://eservices.secp.gov.pk/eServices/NameSearch.jsp'},
   {region:'GB',kind:'registry',name:'Companies House',url:'https://find-and-update.company-information.service.gov.uk/'},
   {region:'US',kind:'registry',name:'SEC EDGAR filings',url:'https://www.sec.gov/edgar/search/'},
@@ -17,6 +20,21 @@ export const REGIONAL_SOURCES = [
   {region:'PK',kind:'salary',name:'Pakistan Bureau of Statistics labour force statistics',url:'https://www.pbs.gov.pk/'},
   {region:'EU',kind:'salary',name:'Eurostat earnings statistics',url:'https://ec.europa.eu/eurostat/web/labour-market/earnings'},
 ] as const;
+export type RegistryRecord={id:string;name:string;country:'NO'|'FR';status:string;source:string};
+export type PublicVacancy={id:string;title:string;agency:string;posted:string};
+const field=(v:unknown,max=250)=>typeof v==='string'?v.trim().slice(0,max):'';
+export function parseNationalRegistry(country:'NO'|'FR',id:string,data:unknown):RegistryRecord {
+ const d=data as any;
+ if(country==='NO'&&d?.organisasjonsnummer===id&&field(d.navn)&&!d?.slettedato)return {id,name:field(d.navn),country,status:d.konkurs===true?'Bankruptcy reported':d.underAvvikling===true?'Dissolution reported':'Registration found',source:'Brønnøysund Register Centre'};
+ if(country==='FR'&&Array.isArray(d?.results)){const row=d.results.find((x:any)=>x?.siren===id);if(row&&field(row.nom_complet))return {id,name:field(row.nom_complet),country,status:row.etat_administratif==='A'?'Active registration':row.etat_administratif==='C'?'Closed registration':'Registration found',source:'Annuaire des Entreprises'};}
+ throw new Error('No matching public registration returned.');
+}
+export function parseNycJobs(data:unknown):PublicVacancy[]{
+ if(!Array.isArray(data))throw new Error('Unexpected public jobs response.');
+ const rows=new Map<string,PublicVacancy>();
+ for(const r of data){const id=field(r?.job_id,30),title=field(r?.business_title),agency=field(r?.agency);if(r?.posting_type!=='External'||!/^\d+$/.test(id)||!title||!agency)continue;rows.set(id,{id,title,agency,posted:field(r.posting_date,30)});}
+ return [...rows.values()].slice(0,100);
+}
 export const BLS_SERIES='CES0500000003';
 export function secCompany(value:unknown,cik:string){
  const d=value as any;

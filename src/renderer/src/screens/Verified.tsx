@@ -7,7 +7,7 @@ import { RegionalSources } from './GlobalData';
 import { OpportunityCenter } from './OpportunityCenter';
 import {spotlight,spotlightReset} from '../Art';
 
-type Overview={sample:number;total:number;review:number;stale:number;leads:{id:number;name:string;city:string;grade:string}[];jobs:{id:string;title:string;company:string;match:number}[]};
+type Overview={sample:number;total:number;review:number;stale:number;leads:{id:number;name:string;city:string;grade:string}[];jobs:{id:string;title:string;company:string;match:number}[];localMatch?:boolean};
 export function OpportunityHome({ onChoose,workspace,tick,onLead,onJob }: { onChoose: (mode: Workspace) => void;workspace:Workspace;tick:number;onLead:(id:number)=>void;onJob:(id:string)=>void }) {
   const [overview,setOverview]=useState<Overview|null>(null);
   useEffect(()=>{let alive=true;call<Overview>('opportunities:overview').then(r=>{if(alive)setOverview(r);}).catch(()=>{if(alive)setOverview(null);});return()=>{alive=false;};},[workspace,tick]);
@@ -18,8 +18,8 @@ export function OpportunityHome({ onChoose,workspace,tick,onLead,onJob }: { onCh
       <button className="opportunity-option" onClick={()=>onChoose('career')}><Briefcase size={25}/><span><b>Find a job</b><small>Explore vacancies and check listing evidence.</small></span><ArrowRight size={18}/></button>
     </div>
     {overview&&<details className="registry-check"><summary>Recommended opportunities</summary>
-      {workspace!=='career'&&<><p className="muted small">Lead quality sample: {overview.sample}/{overview.total} · {overview.review} <span>Review evidence</span> · {overview.stale} <span>Needs a fresh check</span></p>{overview.leads.map(l=><button key={l.id} className="btn small" onClick={()=>onLead(l.id)} translate="no">{l.name} · {l.city} · {l.grade}</button>)}</>}
-      {workspace!=='business'&&<>{overview.jobs.map(j=><button key={j.id} className="btn small" onClick={()=>onJob(j.id)} translate="no">{j.title} · {j.company} · {j.match}%</button>)}<p className="muted small">Recommendations use recorded match scores, not confirmed eligibility or availability.</p></>}
+      {workspace!=='career'&&<><p className="muted small">Lead quality sample: {overview.sample}/{overview.total}</p><div className="quality-overview"><div><b>{overview.review}</b><span>Review evidence</span><progress value={overview.review} max={Math.max(1,overview.sample)} aria-label="Review evidence"/></div><div><b>{overview.stale}</b><span>Needs a fresh check</span><progress value={overview.stale} max={Math.max(1,overview.sample)} aria-label="Needs a fresh check"/></div></div>{overview.leads.map(l=><button key={l.id} className="btn small" onClick={()=>onLead(l.id)} translate="no">{l.name} · {l.city} · {l.grade}</button>)}</>}
+      {workspace!=='business'&&<>{overview.jobs.map(j=><button key={j.id} className="btn small" onClick={()=>onJob(j.id)} translate="no">{j.title} · {j.company} · {j.match}%</button>)}<p className="muted small">{overview.localMatch?'Recommendations use current CV evidence, not confirmed eligibility or availability.':'Recommendations use recorded match scores, not confirmed eligibility or availability.'}</p></>}
     </details>}
     <OpportunityCenter workspace={workspace} tick={tick} onLead={onLead} onJob={onJob}/>
   </section>;
