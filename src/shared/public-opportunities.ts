@@ -4,6 +4,9 @@ export const PORTALS = [
   { id:'us-jobs', country:'US', kind:'job', title:'USAJOBS', url:'https://www.usajobs.gov/', hosts:['usajobs.gov','www.usajobs.gov'] },
   { id:'us-tenders', country:'US', kind:'tender', title:'SAM.gov', url:'https://sam.gov/opportunities', hosts:['sam.gov','www.sam.gov'] },
   { id:'uk-jobs', country:'GB', kind:'job', title:'UK Civil Service Jobs', url:'https://www.civilservicejobs.service.gov.uk/', hosts:['www.civilservicejobs.service.gov.uk','civilservicejobs.service.gov.uk'] },
+  { id:'uk-find-jobs', country:'GB', kind:'job', title:'UK Find a job', url:'https://www.gov.uk/find-a-job', hosts:['findajob.dwp.gov.uk'] },
+  { id:'ca-jobs', country:'CA', kind:'job', title:'Canada Job Bank', url:'https://www.jobbank.gc.ca/', hosts:['www.jobbank.gc.ca','jobbank.gc.ca'] },
+  { id:'eu-jobs', country:'EU', kind:'job', title:'EURES', url:'https://eures.europa.eu/', hosts:['eures.europa.eu'] },
   { id:'uk-tenders', country:'GB', kind:'tender', title:'UK Find a Tender', url:'https://www.find-tender.service.gov.uk/', hosts:['www.find-tender.service.gov.uk','find-tender.service.gov.uk'] },
   { id:'eu-tenders', country:'EU', kind:'tender', title:'EU Tenders Electronic Daily', url:'https://ted.europa.eu/', hosts:['ted.europa.eu'] },
 ] as const;

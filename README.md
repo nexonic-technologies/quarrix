@@ -8,6 +8,8 @@ A local-first desktop workspace for job discovery, career exploration and busine
 
 ## What it does
 
+- **Unified opportunities.** Review daily application and watchlist deadlines, manage saved searches, and opt into a local daily reminder. Compare scoped sales by currency, segment customers, add proposal validity and discounts, review posting-grounded skill wording, and open authorized regional public data services. Public SEC and BLS lookups distinguish official company filing data and broad hourly earnings from individual job offers or licensing claims.
+
 - **Find customers or find a job.** Two dashboard entry points take you directly to the relevant search. Optional recommendations use recorded match and evidence scores; review freshness and conflicts before acting. Look up legal-entity name and country candidates in the public GLEIF register, and compare advertised salary ranges by currency. Registry matches do not verify contacts or vacancies; advertised salaries are not market averages.
 
 - **Explore careers.** Compare your skills and target role against 1,016 occupations, understand matching evidence, explore skills to develop and search for real vacancies, with no mandatory account or model.

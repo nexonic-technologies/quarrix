@@ -18,6 +18,7 @@ import { previewSearch } from '../../src/main/jobs';
 import { checkSources } from '../../src/main/health';
 import { searchTed } from '../../src/main/public-opportunities';
 import { registryLookup } from '../../src/main/registry';
+import { officialWages,secLookup } from '../../src/main/global-data';
 
 type R = { check: string; qf: string; ok: boolean; detail: string; ms: number; kind?: 'outage' | 'failure' };
 /** A provider that is busy, rate-limiting or unreachable is a temporary outage, not a defect in Quarrix. */
@@ -35,6 +36,8 @@ const noop = () => undefined;
   db.openDb(join(dir, 'quarrix.db')); db.migrateData(); crm.migrate(); jobstore.migrate();
   await run('EU official contract notices (TED)', 'Public opportunities', async()=>need((await searchTed(1)).notices.length,'standard contract notices'));
   await run('GLEIF legal entity register','Verified opportunities',async()=>need((await registryLookup('Apple Inc.','US')).matches.length,'exact legal name and country candidates'));
+  await run('BLS hourly earnings','Global data',async()=>need((await officialWages()).length,'monthly observations'));
+  await run('SEC operating entity','Global data',async()=>{const r=await secLookup('320193');return `${r.name} ${r.cik}`;});
   await run('OpenStreetMap geocoding (Nominatim)', 'QF-015', async () => { const p = await geocode('Austin, Texas'); if (!p) throw new Error('not found'); return `${p.label} ${p.lat.toFixed(2)},${p.lon.toFixed(2)}`; });
   await run('OpenStreetMap businesses (Overpass)', 'QF-002', async () => need((await searchOsm('dentist', 'Austin, Texas', 10)).length, 'dentists'));
   await run('Wikidata business source', 'QF-009', async () => need((await searchWikidata('hospital', 'London', 10, noop)).length, 'hospitals'));

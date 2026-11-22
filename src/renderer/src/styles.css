@@ -258,6 +258,8 @@ table.leads .name { cursor: pointer; }
 table.leads .name .t { display: block; color: var(--ink); font-weight: 500; max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
 table.leads .name:hover .t { color: var(--violet); }
 .who { display: flex; align-items: center; gap: 10px; }
+.result-name { border:0; background:transparent; color:inherit; padding:3px 2px; text-align:start; font:inherit; cursor:pointer; max-width:100%; }
+.result-name:hover { color:var(--violet-ink); text-decoration:underline; }
 table.leads .sub { display: block; color: var(--ink-3); font-size: 12px; }
 .bulk { position: sticky; bottom: 16px; margin: 14px auto 0; width: fit-content; display: flex; gap: 6px; align-items: center; background: #18181f; color: #fff; padding: 6px 8px 6px 14px; border-radius: 12px; box-shadow: 0 16px 36px -14px rgba(20, 20, 40, 0.6); animation: rise 0.25s var(--ease); z-index: 5; font-size: 12.5px; }
 .bulk .btn { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.12); color: #fff; box-shadow: none; }

@@ -19,6 +19,9 @@ import { proposalText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
+import { officialWages, secLookup } from './global-data';
+import { salesByCurrency } from './market';
+import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest } from './opportunity-center';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -321,6 +324,12 @@ function registerIpc() {
   handle('jobs:check', (url: string) => jobstore.checkPosting(String(url ?? '')));
   handle('jobs:trust', (job, employerUrl) => checkJobTrust(job, employerUrl));
   handle('entity:registry', (name, country) => registryLookup(name, country));
+  handle('global:wages', () => officialWages());
+  handle('global:sec', (id:string) => secLookup(id));
+  handle('market:sales',()=>salesByCurrency(scope.current()));
+  handle('opportunities:center',()=>centerOverview());
+  handle('opportunities:digest',(enabled)=>setDigest(enabled));
+  handle('opportunities:toggle',(kind,id,enabled)=>toggleSavedSearch(kind,id,enabled));
   handle('opportunities:overview', () => {
     const {rows,total}=db.queryLeads(scope.scopedQuery({sort:'grade',limit:100}));
     const jobs=db.savedJobs();
@@ -463,7 +472,7 @@ app.whenReady().then(() => {
   db.migrateData();
   useBackups(() => load().aiKeys ?? {});
   crm.migrate();
-  migrateProposals(); migratePublicOpportunities();
+  migrateProposals(); migratePublicOpportunities(); migrateDigest();
   jobstore.migrate();
   career.migrateTables();
   try { career.ensureRadar(); } catch { /* the radar is created on the next scan */ }
@@ -486,6 +495,7 @@ app.whenReady().then(() => {
   // Checked every 5 minutes, and a minute after start, so an alert runs within 5 minutes of when it is due.
   setTimeout(alertTick, 60_000);
   setInterval(alertTick, 5 * 60_000);
+  setInterval(()=>{try{const n=claimDigest(load().workspace);if(n){new Notification({title:'Quarrix daily opportunities',body:`${n} items need your review. Open the dashboard.`}).show();send('alerts');}}catch{/* no notification on unavailable data */}},60_000);
   // Task reminders (QF-049): a desktop notification when a task falls due.
   setInterval(() => {
     for (const t of crm.dueReminders() as any[]) {

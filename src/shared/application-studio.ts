@@ -22,3 +22,12 @@ export function validDay(value: string): boolean {
 export function dueItems(items: { id: string; title: string; studio?: StudioNotes }[], today: string) {
   return items.flatMap(j => (['deadline', 'interview', 'followUp'] as const).filter(k => j.studio?.[k] && j.studio[k] <= today).map(k => ({ id: j.id, title: j.title, kind: k, day: j.studio![k] }))).sort((a, b) => a.day.localeCompare(b.day));
 }
+/** Evidence from the posting, not an ATS score or a claim about ability. */
+export function resumeGap(text:string,posting:string,candidates:string[]) {
+  const terms=[...new Map(candidates.map(s=>s.trim()).filter(s=>s.length>=2&&s.length<=120).map(s=>[s.toLowerCase(),s])).values()].slice(0,200);
+  const requested=terms.filter(s=>term(posting,s));
+  return {requested,documented:requested.filter(s=>term(text,s)),notDocumented:requested.filter(s=>!term(text,s))};
+}
+export function upcomingItems(items:{id:string;title:string;studio?:StudioNotes}[],today:string,through:string){
+ return items.flatMap(j=>(['deadline','interview','followUp'] as const).filter(k=>{const day=j.studio?.[k];return !!day&&validDay(day)&&day>today&&day<=through;}).map(k=>({id:j.id,title:j.title,kind:k,day:j.studio![k]}))).sort((a,b)=>a.day.localeCompare(b.day));
+}

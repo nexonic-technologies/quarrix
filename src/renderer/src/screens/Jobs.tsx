@@ -13,6 +13,7 @@ import { CareerExplorer } from './CareerExplorer';
 import { JobTrust } from './JobTrust';
 import { ApplicationOverview, ApplicationStudio } from './ApplicationStudio';
 import { PublicOpportunities } from './PublicOpportunities';
+import { RegionalSources } from './GlobalData';
 import type { StudioNotes } from '../../../shared/application-studio';
 import type { TrustReport } from '../../../shared/job-trust';
 import { jobQuality, salarySamples } from '../../../shared/verified';
@@ -209,6 +210,7 @@ export function Jobs() {
 
       {panel === 'employers' && <EmployersPanel />}
       {publicOpen && <PublicOpportunities />}
+      {tab==='results'&&<div className="panel panel-pad"><RegionalSources kind="job"/><RegionalSources kind="salary"/></div>}
       {panel === 'alerts' && <AlertsPanel current={{ ...query(kw.trim()), name: kw.trim() }} onOpen={(list) => { setJobs(list as Job[]); setTab('results'); }} />}
       {tab === 'saved' && saved.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 8 }}><span className="muted small">Export my applications:</span>{(['csv', 'json', 'md'] as const).map((f) => <button key={f} className="btn small ghost" onClick={async () => { const n = await call('jobs:export', f); if (n) toast.push(`Exported ${n} jobs`); }}>{f === 'md' ? 'Markdown' : f.toUpperCase()}</button>)}</div>}
       {tab === 'saved' && <ApplicationOverview jobs={saved as (Job & { studio?: StudioNotes })[]} onOpen={setOpen} />}
@@ -263,7 +265,7 @@ export function Jobs() {
             <div key={j.id} className="panel job" onClick={() => setOpen(j.id)}>
               <Avatar name={j.company || j.title} size={40} />
               <div className="grow">
-                <div className="job-title">{j.title}{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
+                <div className="job-title"><button type="button" className="result-name" onClick={e=>{e.stopPropagation();setOpen(j.id);}}>{j.title}</button>{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
                 <div className="muted small">{j.company} · {j.location || 'Location not given'}</div>
                 <div className="row job-tags">
                   <span className={`tag ${['closed','review','check'].includes(jobQuality(j,trust[j.id]))?'warn':''}`}>{({closed:'Listing appears closed',review:'Review before applying',check:'Needs a fresh check',corroborated:'Corroborated listing',unchecked:'Not checked'})[jobQuality(j,trust[j.id])]}</span>

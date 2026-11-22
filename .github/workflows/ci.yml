@@ -21,7 +21,7 @@ jobs:
       - run: npm run build
       - name: Exercise built desktop interface before merge
         timeout-minutes: 5
-        run: QUARRIX_SMOKE_OUT="$PWD/ci-smoke.json" QUARRIX_SMOKE_SCREENSHOT="$PWD/ci-dashboard.png" xvfb-run -a npm start -- --no-sandbox
+        run: QUARRIX_AXE_SOURCE="$PWD/node_modules/axe-core/axe.min.js" QUARRIX_SMOKE_OUT="$PWD/ci-smoke.json" QUARRIX_SMOKE_SCREENSHOT="$PWD/ci-dashboard.png" xvfb-run -a npm start -- --no-sandbox
       - uses: actions/upload-artifact@v4
         if: always()
         with:

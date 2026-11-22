@@ -8,7 +8,20 @@ import { migrateProposals,getProposal,saveProposal } from '../../src/main/propos
 import { migratePublicOpportunities,listPublicOpportunities,savePublicOpportunity,deletePublicOpportunity } from '../../src/main/public-opportunities';
 import { EMPTY_PROPOSAL } from '../../src/shared/proposals';
 import { EMPTY_OPPORTUNITY } from '../../src/shared/public-opportunities';
+import * as jobstore from '../../src/main/jobstore';
+import {migrateDigest,centerOverview,setDigest,claimDigest,toggleSavedSearch} from '../../src/main/opportunity-center';
+import {salesByCurrency,marketReport} from '../../src/main/market';
 before(()=>{db.openDb(join(process.env.QUARRIX_TEST_DIR!,'v100.db'));db.migrateData();crm.migrate();migrateProposals();migratePublicOpportunities();});
+test('daily digest is opt-in, scoped and claimed once per day',()=>{
+ jobstore.migrate();migrateDigest();save({currentClient:'Digest A'});const p=savePublicOpportunity({...EMPTY_OPPORTUNITY,title:'Due notice',deadline:'2026-11-20',url:'https://njp.gov.pk/jobs/345'});const w=db.saveWatch({category:'Dentists',place:'Lahore',client:'Digest A'});const date=new Date(2026,10,22,12);
+ assert.equal(claimDigest('both',date),0);setDigest(true);assert.equal(centerOverview(date).notices.length,1);assert.equal(claimDigest('both',date),1);assert.equal(claimDigest('both',date),0);
+ save({currentClient:'Digest B'});assert.equal(centerOverview(date).notices.length,0);assert.throws(()=>toggleSavedSearch('watch',w,false),/workspace/);save({currentClient:'Digest A'});toggleSavedSearch('watch',w,false);assert.equal(centerOverview(date).watches[0].enabled,false);deletePublicOpportunity(p.id!);db.deleteWatch(w);save({currentClient:''});
+});
+test('sales reports separate currencies and client scope',()=>{
+ const [a]=db.upsertLead({name:'Sales A',source:'manual',source_ref:'sales-a',client:'Sales A',grade:'A',rating:4.5});const [b]=db.upsertLead({name:'Sales B',source:'manual',source_ref:'sales-b',client:'Sales B',grade:'B'});
+ crm.saveDeal({title:'USD deal',lead_id:a,stage:'won',value:100,currency:'USD'});crm.saveDeal({title:'EUR deal',lead_id:a,stage:'won',value:200,currency:'EUR'});crm.saveDeal({title:'Other client',lead_id:b,stage:'won',value:900,currency:'USD'});
+ assert.deepEqual(salesByCurrency('Sales A').map(x=>[x.currency,x.wonValue]),[['EUR',200],['USD',100]]);assert.equal(marketReport('grade','','','Sales A').groups[0].averageRating,4.5);db.deleteLeads([a,b]);
+});
 test('proposal persistence and migration are scoped and idempotent',()=>{
  const [id]=db.upsertLead({name:'A Business',source:'manual',source_ref:'proposal-a',client:'A'});
  save({currentClient:'A'});saveProposal(id,{...EMPTY_PROPOSAL,title:'Local proposal'});migrateProposals();assert.equal(getProposal(id).title,'Local proposal');

@@ -32,7 +32,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       # Each platform signs only when its own certificate is present (macOS also needs the notarization account).
-      HAS_MAC_CERT: ${{ secrets.CSC_LINK != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_MAC_CERT: ${{ secrets.CSC_LINK != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' }}
       HAS_WIN_CERT: ${{ secrets.WIN_CSC_LINK != '' }}
     steps:
       - uses: actions/checkout@v5
@@ -273,7 +273,16 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v1.1.0 ]; then
+            if [ "$TAG" = v2.0.0 ]; then
+              echo "## Quarrix 2.0 — Unified opportunity intelligence"
+              echo
+              echo "- Public regional directories, SEC operating-company lookup and real BLS wage observations. Directory links are not automated data connectors."
+              echo "- Resume skill evidence, learning links and upcoming application dates."
+              echo "- Business segmentation, sample competitor comparisons, currency-separated sales and proposal validity/discounts."
+              echo "- Daily opportunity center, opt-in local reminders and saved-search controls."
+              echo "- Lazy-loaded discovery screens, visibility-aware dashboard refresh, and accessibility regression checks."
+              echo
+            elif [ "$TAG" = v1.1.0 ]; then
               echo "## Quarrix Verified Intelligence & Simplified Experience"
               echo
               echo "- Two primary entry points: Find customers and Find a job; existing advanced tools remain available."

@@ -146,7 +146,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
               {rows.map((l) => (
                 <tr key={l.id} className={sel.has(l.id) ? 'sel' : ''}>
                   <td><input type="checkbox" aria-label={`Select ${l.name}`} checked={sel.has(l.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(l.id) ? n.delete(l.id) : n.add(l.id); return n; })} /></td>
-                  <td className="name" onClick={() => setOpen(l.id)}><span className="who"><Avatar name={l.name} size={32} /><span><span className="t">{l.name}</span><span className="sub">{l.phone || 'no phone'}</span></span></span></td>
+                  <td className="name" onClick={() => setOpen(l.id)}><button type="button" className="who result-name" onClick={e=>{e.stopPropagation();setOpen(l.id);}}><Avatar name={l.name} size={32} /><span><span className="t">{l.name}</span><span className="sub">{l.phone || 'no phone'}</span></span></button></td>
                   <td className="clip">{l.contact_name ? <><span className="t2">{l.contact_name}</span><span className="sub">{l.contact_role}</span></> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'not found'}</span>}</td>
                   <td className="clip">{l.category}</td>
                   <td className="clip" title={[l.city, l.region, l.country].filter(Boolean).join(', ')}>{[l.city || l.region, l.country].filter(Boolean).join(', ') || <span className="muted">unknown</span>}</td>

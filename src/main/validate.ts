@@ -51,7 +51,7 @@ export const CHECKS: Record<string, Check> = {
   'public:delete': ([id]) => [int(id,'opportunity')],
   'public:ted': ([page]) => {const n=int(page,'page');if(n>20)fail('Page limit reached.');return [n];},
   'market:report': ([group, country, category]) => {
-    if (!['category', 'country', 'city', 'source', 'company'].includes(String(group))) fail('Unknown market grouping.');
+    if (!['category', 'country', 'city', 'source', 'company','grade','status'].includes(String(group))) fail('Unknown market grouping.');
     return [String(group), str(country ?? '', 'Country', 80), str(category ?? '', 'Category', 120)];
   },
   'market:export': (a) => CHECKS['market:report'](a),
@@ -65,6 +65,9 @@ export const CHECKS: Record<string, Check> = {
     return [{ url: str(job.url, 'Job URL', 2000), title: str(job.title, 'Job title', 300), company: str(job.company, 'Company', 300), snippet: str(job.snippet, 'Job description', 30000) }, str(employer ?? '', 'Employer URL', 2000)];
   },
   'entity:registry': ([name,country]) => [str(name,'Company',200),str(country,'Country',2).toUpperCase()],
+  'global:sec': ([id]) => [str(id,'CIK',10)],
+  'opportunities:digest': ([enabled]) => [!!bit(enabled,'Daily digest')],
+  'opportunities:toggle': ([kind,id,enabled]) => [kind==='watch'||kind==='alert'?kind:fail('Invalid saved search type.'),int(id,'search'),!!bit(enabled,'Enabled')],
   'leads:update': ([id, patch]) => { const n = int(id, 'lead'); return [n, leadPatch(patch)]; },
   'leads:add': ([l]) => [{ ...(isObj(l) && String(l.name ?? '').trim() ? {} : fail('Give the business a name.')), ...leadPatch(l, { lat: coord(-90, 90), lon: coord(-180, 180) }), status: STATUSES.includes(String((l as any)?.status)) ? (l as any).status : 'new' }],
   'leads:delete': ([v]) => [ids(v)], 'leads:enrich': ([v, ...r]) => [ids(v), ...r], 'draft:create': ([v, ...r]) => [ids(v), ...r],
