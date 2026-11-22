@@ -8,6 +8,14 @@ export function learningPlan(match:CareerMatch){
  const skills=[...new Set(match.explore.map(s=>s.trim()).filter(s=>s.length>1))].slice(0,6);
  return skills.map((skill,i)=>({skill,week:Math.floor(i/2)+1}));
 }
+/** Adjacent catalog roles with shared documented tools; not an asserted promotion ladder. */
+export function relatedOccupations(id:string,knownSkills:string[],occupations:Occupation[]=catalog){
+ const base=occupations.find(x=>x.id===id);if(!base)return [];
+ const tools=new Set(base.tools.map(normal)),known=new Set(knownSkills.map(normal));
+ return occupations.filter(x=>x.id!==id).flatMap(x=>{const overlap=[...new Set(x.tools.filter(t=>tools.has(normal(t))))];if(!overlap.length)return [];
+ const next=[...new Set([...x.skills,...x.tools].filter(s=>!known.has(normal(s))))].slice(0,6);
+ return [{id:x.id,title:x.title,shared:overlap.slice(0,5),count:overlap.length,roadmap:next.map((skill,i)=>({skill,week:Math.floor(i/2)+1}))}];}).sort((a,b)=>b.count-a.count||a.title.localeCompare(b.title)).slice(0,3);
+}
 export function occupationTerms(title:string):string[]{
  const matches=exploreCareers({titles:[title],skills:[]},1);
  if(!matches.length||matches[0].score<45)return [];

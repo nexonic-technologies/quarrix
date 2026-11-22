@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
-import type { MarketGroup, MarketReport } from '../../../main/market';
+import type { MarketGroup, MarketReport,marketInsights } from '../../../main/market';
 
 export function MarketIntelligence({ tick, countries, categories }: { tick: number; countries: string[]; categories: string[] }) {
   const [group, setGroup] = useState<MarketGroup>('category');
@@ -9,6 +9,8 @@ export function MarketIntelligence({ tick, countries, categories }: { tick: numb
   const [category, setCategory] = useState('');
   const [report, setReport] = useState<MarketReport | null>(null);
   const [error, setError] = useState(false);
+  const [insights,setInsights]=useState<ReturnType<typeof marketInsights>|null>(null);
+  useEffect(()=>{let alive=true;setInsights(null);call<ReturnType<typeof marketInsights>>('market:insights',country,category).then(r=>{if(alive)setInsights(r);}).catch(()=>{});return()=>{alive=false;};},[country,category,tick]);
   const [sales,setSales]=useState<{currency:string;deals:number;won:number;lost:number;wonValue:number;openValue:number}[]>([]);
   useEffect(()=>{let alive=true;setSales([]);call<typeof sales>('market:sales').then(x=>{if(alive&&Array.isArray(x))setSales(x);}).catch(()=>{});return()=>{alive=false;};},[tick]);
   useEffect(() => {
@@ -29,6 +31,7 @@ export function MarketIntelligence({ tick, countries, categories }: { tick: numb
       {(['pdf','docx'] as const).map(f=><button key={f} className="btn" disabled={!report} onClick={async()=>{try{if(await call('market:document',group,country,category,f))toast.push('Saved');}catch(e:any){toast.push(e.message,true);}}}>{f==='pdf'?'Export PDF':'Save as Word'}</button>)}
     </div>
     {sales.length>0&&<details><summary>Sales by currency</summary><p className="muted small">Recorded deal values only; currencies are never combined.</p>{sales.map(s=><p key={s.currency} translate="no">{s.currency} · {s.deals} deals · {s.won} won · {s.lost} lost · {s.wonValue.toLocaleString()} won / {s.openValue.toLocaleString()} open</p>)}</details>}
+    {insights&&<details><summary>Customer repeat wins and market comparison</summary><p className="muted small">Adjacent 90-day periods from stored records. Repeat wins are not subscription retention or churn.</p><div className="grid2"><div className="panel panel-pad"><b>Recent records</b><h2>{insights.observations.recent}</h2><p><span>Previous period:</span> {insights.observations.prior}</p></div><div className="panel panel-pad"><b>Repeat customers</b><h2>{insights.repeatCustomers}/{insights.priorCustomers}</h2><p>{insights.repeatRate==null?'Unknown':insights.repeatRate+'%'}</p></div></div></details>}
     {error ? <p role="alert">Market report unavailable.</p> : !total ? <p aria-live="polite">Loading market report…</p> : <>
       <div className="kpis" style={{ margin: '12px 0' }}><div className="panel panel-pad"><span className="muted small">Business records</span><h2>{n(total.records)}</h2></div><div className="panel panel-pad"><span className="muted small">Linked companies</span><h2>{n(total.companies)}</h2></div><div className="panel panel-pad"><span className="muted small">Unlinked records</span><h2>{n(total.unlinked)}</h2></div><div className="panel panel-pad"><span className="muted small">Checked in last 90 days</span><h2>{n(total.recentlyChecked)}</h2></div></div>
       <p className="muted small">Records with a website: {n(total.website)} · <span>Rated records:</span> {n(total.rated)} · <span>Scored records:</span> {n(total.scored)} · <span>Won records:</span> {n(total.won)}</p>

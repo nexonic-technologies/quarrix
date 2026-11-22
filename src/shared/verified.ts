@@ -55,6 +55,10 @@ export function salarySamples(rows: { salaryYearly?: { min: number; max: number;
   const median = (a: number[]) => { a.sort((x,y)=>x-y); const m=Math.floor(a.length/2); return a.length%2 ? a[m] : (a[m-1]+a[m])/2; };
   return [...groups].map(([currency,g])=>({currency,count:g.length,min:median(g.map(x=>x.min)),max:median(g.map(x=>x.max))}));
 }
+export function salaryByLevel(rows:{level?:string;salaryYearly?:{min:number;max:number;currency:string;period:string}|null}[]){
+ const groups=new Map<string,typeof rows>();for(const r of rows){const level=['Internship','Entry level','Mid level','Senior','Director'].includes(r.level??'')?r.level!:'Unknown';const list=groups.get(level)??[];list.push(r);groups.set(level,list);}
+ return [...groups].flatMap(([level,rs])=>salarySamples(rs).map(s=>({...s,level,total:rs.length}))).sort((a,b)=>a.currency.localeCompare(b.currency)||a.level.localeCompare(b.level));
+}
 export function recommendLeads<T extends LeadEvidence>(rows: T[], now=Date.now()) {
   return rows.filter(l => l.status === 'new' && (l.grade === 'A' || l.grade === 'B') && ['recent','mailbox'].includes(leadQuality(l,now)) && Number.isFinite(l.relevance) && Number.isFinite(l.evidence)).sort((a,b)=>(b.relevance!+b.evidence!+leadConfidence(b,now).score)-(a.relevance!+a.evidence!+leadConfidence(a,now).score)).slice(0,3);
 }

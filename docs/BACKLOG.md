@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v3.9.0 candidate:** public scholarships, traineeships, apprenticeships and Grants.gov notices; scoped 90-day repeat-win and observation comparisons; related occupation maps and level/currency salary samples; offline snapshot freshness, bounded storage and expired-data removal. Web edition is a separate future architecture decision. Existing external blockers unchanged; installer/live verification pending.
+
 **v3.5.0 candidate:** combined regional discovery, local career portfolio, quotation-only PDF, currency-separated forecast and lifecycle, universal search and favorites, dashboard preferences and backup verification/cancellation. The 17 external blockers remain unchanged. Live and installer verification pending.
 
 **v3.0.0 candidate:** combined opportunity intelligence, career accelerator and unified local opportunity platform. Recent Norway limited-company registration sample, scoped business signals, deduplicated local observation trends, due-date priority queue, learning plan and interview worksheet. Existing 17 external blockers unchanged; live and installer gates pending.

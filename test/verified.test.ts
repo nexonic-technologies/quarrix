@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leadQuality, leadReviewReason,leadConfidence,jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples } from '../src/shared/verified';
+import { leadQuality, leadReviewReason,leadConfidence,jobQuality, parseRegistry, recommendLeads, recommendJobs, salarySamples,salaryByLevel } from '../src/shared/verified';
+test('salary level comparison preserves currency and denominator including missing salary',()=>{
+ const s={min:10,max:20,currency:'USD',period:'year'};const r=salaryByLevel([{level:'Senior',salaryYearly:s},{level:'Senior',salaryYearly:null},{level:'Entry level',salaryYearly:s},{level:'Senior',salaryYearly:{...s,currency:'EUR'}}]);
+ assert.equal(r.length,3);assert.equal(r.find(x=>x.currency==='USD'&&x.level==='Senior')?.total,3);assert.equal(r.find(x=>x.currency==='USD'&&x.level==='Senior')?.count,1);
+});
 test('evidence coverage needs documented agreement and loses credit after edits or conflict',()=>{
  const l={...lead,city:'Lahore',provenance:JSON.stringify({listing:{source:'osm',ref:'one',at:checkedAt},checked:{website:lead.website,at:checkedAt},agreements:[{field:'city',value:'Lahore',website:lead.website,at:checkedAt}]})};
  assert.equal(leadConfidence(l,now).score,80);assert.equal(leadConfidence({...l,city:'Karachi'},now).score,60);assert.equal(leadConfidence({...l,status:'do_not_contact'},now).score,25);assert.equal(leadConfidence(l,now+91*864e5).score,0);

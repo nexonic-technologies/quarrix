@@ -1,4 +1,13 @@
-# Final audit, v3.5.0 candidate
+# Final audit, v3.9.0 candidate
+
+## Combined v3.6–v3.9 desktop milestone
+
+- Global opportunities: authorized keyless [Grants.gov search API](https://www.grants.gov/api/common/search2), 25 posted notices per request, with dated snapshots and manual watchlist; official HEC, Erasmus Mundus, Blue Book and apprenticeship directory links. Tender functionality remains. Eligibility and deadlines require original-source confirmation.
+- Business intelligence: compare adjacent 90-day stored-record counts and distinct customer repeat wins, scoped by workspace and current filters. Report exports include cohort results. Repeat wins are not subscription retention/churn; no market-wide claims.
+- Career intelligence: related roles require shared occupation-catalog tools, and personalized topics omit recorded skills. Salary samples split by experience level and currency; not market averages.
+- Data reliability: public cache inventory groups source families, distinguishes five-minute fresh, dated and seven-day expired snapshots, bounds serialized size and allows explicit removal of expired snapshots only. Health checks older than one day are labeled outdated. No paid dependency, unauthorized crawling or automatic submission.
+- Web edition v4.0 remains undecided; no hosting deployment. Existing access and signing blockers remain. Live and installer verification pending.
+- Local verification: typecheck, 117 unit tests, 83 integration tests, production build and production dependency audit passed. New live grants and desktop smoke checks are prepared for CI, but not yet run.
 
 ## Combined v3.1–v3.5 milestone
 

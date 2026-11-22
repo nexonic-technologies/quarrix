@@ -17,7 +17,7 @@ import { PublicOpportunities } from './PublicOpportunities';
 import { RegionalSources } from './GlobalData';
 import type { StudioNotes } from '../../../shared/application-studio';
 import type { TrustReport } from '../../../shared/job-trust';
-import { jobQuality, salarySamples } from '../../../shared/verified';
+import { jobQuality, salarySamples,salaryByLevel } from '../../../shared/verified';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
 type Cv = { file: string; text?: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -167,6 +167,7 @@ export function Jobs() {
   };
   const list = tab === 'saved' ? saved : jobs;
   const samples=useMemo(()=>salarySamples(jobs),[jobs]);
+  const levelSamples=useMemo(()=>salaryByLevel(jobs),[jobs]);
   const remoteCount = useMemo(() => jobs.filter((j) => j.workplace === 'remote').length, [jobs]);
 
   return (
@@ -240,7 +241,7 @@ export function Jobs() {
       {tab==='results'&&<CareerPortfolio/>}
       {tab === 'results' && (ranking || (cv && jobs.some((j) => j.match != null))) && <p className="muted small rank-note"><Sparkles size={12} /> {ranking ? 'Ranking jobs against your CV…' : `Ranked against your CV ${ai === 'none' ? 'by matching skills (add a model for smarter ranking)' : `with ${ai}`}.`}</p>}
       {tab === 'results' && jobs.length > 0 && <p className="muted small" style={{ margin: '0 0 8px' }}>{jobs.length} jobs, {remoteCount} remote{errors.length ? ` · not available right now: ${errors.map((e) => e.split(':')[0]).join(', ')}` : ''}</p>}
-      {tab==='results'&&samples.length>0&&<details className="panel panel-pad salary-sample"><summary>Salary comparison</summary><p className="muted small">Annualized advertised ranges in these results only. Not market averages; missing salaries are excluded and currencies stay separate.</p>{samples.map(s=><p key={s.currency} translate="no">{s.currency} {Math.round(s.min).toLocaleString()}–{Math.round(s.max).toLocaleString()} · {s.count}/{jobs.length}</p>)}</details>}
+      {tab==='results'&&samples.length>0&&<details className="panel panel-pad salary-sample"><summary>Salary comparison</summary><p className="muted small">Annualized advertised ranges in these results only. Not market averages; missing salaries are excluded and currencies stay separate.</p>{samples.map(s=><p key={s.currency} translate="no">{s.currency} {Math.round(s.min).toLocaleString()}–{Math.round(s.max).toLocaleString()} · {s.count}/{jobs.length}</p>)}<h3>Salary by experience level</h3>{levelSamples.map(s=><p key={s.currency+':'+s.level}><span>{s.level}</span> · <span translate="no">{s.currency} {Math.round(s.min).toLocaleString()}–{Math.round(s.max).toLocaleString()} · {s.count}/{s.total}</span></p>)}</details>}
 
       {tab === 'results' && boards.length > 0 && (
         <div className="boards" aria-live="polite">

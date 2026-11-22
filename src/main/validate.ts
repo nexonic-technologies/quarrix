@@ -55,10 +55,12 @@ export const CHECKS: Record<string, Check> = {
   'public:save': ([p]) => [validateOpportunity(p)],
   'public:delete': ([id]) => [int(id,'opportunity')],
   'public:ted': ([page]) => {const n=int(page,'page');if(n>20)fail('Page limit reached.');return [n];},
+  'public:grants':([q])=>[str(q,'Keyword',100)],
   'market:report': ([group, country, category]) => {
     if (!['category', 'country', 'city', 'source', 'company','grade','status'].includes(String(group))) fail('Unknown market grouping.');
     return [String(group), str(country ?? '', 'Country', 80), str(category ?? '', 'Category', 120)];
   },
+  'market:insights':([country,category])=>[str(country??'','Country',80),str(category??'','Category',120)],
   'market:export': (a) => CHECKS['market:report'](a),
   'studio:save': ([id, value]) => {
     if (!isObj(value)) fail('Invalid application notes.');

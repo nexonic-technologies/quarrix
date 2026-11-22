@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
 import { Activity, Plus, Trash2 } from 'lucide-react';
+import type {publicCacheSummary} from '../../../main/public-cache';
 
 type Info = { id: string; name: string; fields: string; coverage: string; license: string; auth: string; cost: string; freshness: string; restrictions: string; export: boolean; contact: boolean; attribution: string };
 type Health = { id: string; name: string; status: 'ok' | 'warn' | 'fail' | 'off'; message: string; fix: string; ms: number; usedToday: number; limit: number;checkedAt:string };
@@ -17,6 +18,9 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
   const [health, setHealth] = useState<Health[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [issues,setIssues]=useState(false);
+  const [cache,setCache]=useState<ReturnType<typeof publicCacheSummary>>([]);
+  const reloadCache=()=>call<ReturnType<typeof publicCacheSummary>>('global:cacheSummary').then(r=>setCache(Array.isArray(r)?r:[])).catch(()=>{});
+  useEffect(()=>{void reloadCache();},[]);
   const [open, setOpen] = useState('');
   useEffect(() => { call<Info[]>('sources:catalog').then((x) => setCatalog(x ?? [])).catch(()=>{}); call<Record<string, number>>('sources:usage').then((x) => setUsage(x ?? {})).catch(()=>{});call<Health[]>('sources:healthSnapshot').then(x=>{if(Array.isArray(x))setHealth(x);}).catch(()=>{}); }, []);
 
@@ -41,6 +45,7 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
         <button className="btn small" onClick={()=>check()} disabled={checking}><Activity size={14} /> {checking ? 'Checking…' : 'Check all sources'}</button>
       </div>
       <p className="muted small" style={{ margin: 0 }}>Reachability is not proof of valid search results. Checks are on demand and reused for one minute.</p>
+      <details className="registry-check"><summary>Offline public data</summary><p className="muted small">Snapshots are fresh for five minutes, dated thereafter, and expire after seven days. They are not live evidence.</p>{cache.map(c=><div key={c.source} className="row"><b translate="no">{c.source}</b><span>{c.fresh} <span>Fresh</span> · {c.dated} <span>Dated</span> · {c.expired} <span>Expired</span></span>{c.latest&&<time dateTime={c.latest} translate="no">{new Date(c.latest).toLocaleString()}</time>}</div>)}<div className="row"><button className="btn small" onClick={()=>void reloadCache()}>Refresh</button><button className="btn small" disabled={!cache.some(c=>c.expired)} onClick={async()=>{if(!window.confirm('Remove expired public snapshots only?'))return;try{await call('global:cachePurgeExpired');await reloadCache();}catch(e){toast.push(String(e),true);}}}>Remove expired snapshots</button></div></details>
       <div className="row" role="status" aria-live="polite">{health&&<><span className="tag">{health.filter(h=>h.status==='ok').length} <span>Reachable</span></span><span className="tag warn">{health.filter(h=>h.status==='fail'||h.status==='warn').length} <span>Needs attention</span></span></>}<label className="switch"><input type="checkbox" checked={issues} onChange={e=>setIssues(e.target.checked)}/> Show issues only</label></div>
       <div className="src-table" role="table">
         {catalog.filter(c=>!issues||health?.some(h=>h.id===c.id&&['fail','warn'].includes(h.status))).map((c) => {
@@ -51,7 +56,7 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
               <button className="src-main" onClick={() => setOpen(open === c.id ? '' : c.id)} aria-expanded={open === c.id}>
                 <i className="dot" style={{ background: h ? DOT[h.status] : '#cbd5e1' }} aria-label={h?.status ?? 'not checked'} />
                 <b>{c.name}</b>
-                <span className="muted small">{h ? `${h.message}${h.ms ? ` · ${h.ms} ms` : ''}` : c.cost}</span>
+                <span className="muted small">{h ? `${h.message}${h.ms ? ` · ${h.ms} ms` : ''}` : c.cost}{h&&Date.now()-Date.parse(h.checkedAt)>864e5&&<> · <span>Check is outdated</span></>}</span>
               </button>
               <label className="src-limit" title={c.auth.includes('key')?'Most requests a day; 0 pauses this optional service':'Most requests a day; 0 means no limit'}>
                 <span className="muted small">{usage[c.id] ?? 0} today, limit</span>

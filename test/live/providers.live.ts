@@ -16,7 +16,7 @@ import { checkDomain } from '../../src/main/deliverability';
 import { fetchText } from '../../src/main/util';
 import { previewSearch } from '../../src/main/jobs';
 import { checkSources } from '../../src/main/health';
-import { searchTed } from '../../src/main/public-opportunities';
+import { searchTed,searchGrants } from '../../src/main/public-opportunities';
 import { registryLookup } from '../../src/main/registry';
 import { officialWages,secLookup,nationalRegistry,nycVacancies,recentRegistrations,fdicLookup } from '../../src/main/global-data';
 
@@ -35,6 +35,7 @@ const noop = () => undefined;
   const dir = process.env.QUARRIX_TEST_DIR!;
   db.openDb(join(dir, 'quarrix.db')); db.migrateData(); crm.migrate(); jobstore.migrate();
   await run('EU official contract notices (TED)', 'Public opportunities', async()=>need((await searchTed(1)).notices.length,'standard contract notices'));
+  await run('Grants.gov posted funding notices','Global opportunities',async()=>{const r=await searchGrants('education');if(r.cached)throw new Error('Expected live grants response');return need(r.data.notices.length,'posted funding notices');});
   await run('GLEIF legal entity register','Verified opportunities',async()=>need((await registryLookup('Apple Inc.','US')).matches.length,'exact legal name and country candidates'));
   await run('BLS hourly earnings','Global data',async()=>need((await officialWages()).length,'monthly observations'));
   await run('SEC operating entity','Global data',async()=>{const r=await secLookup('320193');return `${r.name} ${r.cik}`;});
