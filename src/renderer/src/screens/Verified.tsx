@@ -5,12 +5,13 @@ import type { RegistryMatch } from '../../../shared/verified';
 import type { Workspace } from '../../../shared/navigation';
 import { RegionalSources } from './GlobalData';
 import { OpportunityCenter } from './OpportunityCenter';
+import {spotlight,spotlightReset} from '../Art';
 
 type Overview={sample:number;total:number;review:number;stale:number;leads:{id:number;name:string;city:string;grade:string}[];jobs:{id:string;title:string;company:string;match:number}[]};
 export function OpportunityHome({ onChoose,workspace,tick,onLead,onJob }: { onChoose: (mode: Workspace) => void;workspace:Workspace;tick:number;onLead:(id:number)=>void;onJob:(id:string)=>void }) {
   const [overview,setOverview]=useState<Overview|null>(null);
   useEffect(()=>{let alive=true;call<Overview>('opportunities:overview').then(r=>{if(alive)setOverview(r);}).catch(()=>{if(alive)setOverview(null);});return()=>{alive=false;};},[workspace,tick]);
-  return <section className="opportunity-home" data-opportunity-home>
+  return <section className="opportunity-home" data-opportunity-home onMouseMove={spotlight} onMouseLeave={spotlightReset}>
     <div className="opportunity-heading"><ShieldCheck size={19}/><h2>Discover opportunities</h2></div>
     <div className="opportunity-options">
       <button className="opportunity-option" onClick={()=>onChoose('business')}><Building2 size={25}/><span><b>Find customers</b><small>Find businesses and review their evidence.</small></span><ArrowRight size={18}/></button>

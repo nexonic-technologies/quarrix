@@ -5,7 +5,7 @@ import * as db from './db';
 import { load } from './settings';
 import { isPlatformHost } from './util';
 import { compile, evaluate } from './formula';
-import { scopeArgs, scopeSql } from './scope';
+import { scopeArgs, scopeSql,current } from './scope';
 import { sourceInfo } from './sources/catalog';
 
 const raw = () => db.raw();
@@ -185,7 +185,7 @@ export const deleteView = (id: number) => raw().prepare('DELETE FROM saved_views
 // ── Duplicate review with undo (QF-053) ──
 const norm = (s = '') => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 export function duplicateGroups(limit = 100) {
-  const rows = raw().prepare('SELECT id, name, phone, email, domain, city, address, lat, lon, source, created_at, client FROM leads').all() as any[];
+  const client=current();const rows = raw().prepare("SELECT id, name, phone, email, domain, city, address, lat, lon, source, created_at, client FROM leads WHERE (?='' OR client=?)").all(client,client) as any[];
   const groups = new Map<string, any[]>();
   const add = (k: string, r: any) => { if (!k) return; const g = groups.get(k) ?? []; g.push(r); groups.set(k, g); };
   for (const r of rows) {

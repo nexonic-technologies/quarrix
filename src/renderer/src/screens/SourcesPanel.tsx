@@ -6,7 +6,8 @@ import { toast } from '../App';
 import { Activity, Plus, Trash2 } from 'lucide-react';
 
 type Info = { id: string; name: string; fields: string; coverage: string; license: string; auth: string; cost: string; freshness: string; restrictions: string; export: boolean; contact: boolean; attribution: string };
-type Health = { id: string; name: string; status: 'ok' | 'warn' | 'fail' | 'off'; message: string; fix: string; ms: number; usedToday: number; limit: number };
+type Health = { id: string; name: string; status: 'ok' | 'warn' | 'fail' | 'off'; message: string; fix: string; ms: number; usedToday: number; limit: number;checkedAt:string };
+const CHECKABLE=new Set(['osm','gmaps','web','dir','posts','npi','wikidata','tomtom','foursquare','places','opendata']);
 const DOT: Record<string, string> = { ok: '#16a34a', warn: '#f59e0b', fail: '#dc2626', off: '#94a3b8' };
 const blankFeed = { kind: 'socrata', name: '', url: '', on: true, nameField: '', categoryField: '', addressField: '', cityField: '', phoneField: '', websiteField: '', extraWhere: '' };
 
@@ -15,12 +16,13 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
   const [usage, setUsage] = useState<Record<string, number>>({});
   const [health, setHealth] = useState<Health[] | null>(null);
   const [checking, setChecking] = useState(false);
+  const [issues,setIssues]=useState(false);
   const [open, setOpen] = useState('');
-  useEffect(() => { call<Info[]>('sources:catalog').then((x) => setCatalog(x ?? [])); call<Record<string, number>>('sources:usage').then((x) => setUsage(x ?? {})); }, []);
+  useEffect(() => { call<Info[]>('sources:catalog').then((x) => setCatalog(x ?? [])).catch(()=>{}); call<Record<string, number>>('sources:usage').then((x) => setUsage(x ?? {})).catch(()=>{});call<Health[]>('sources:healthSnapshot').then(x=>{if(Array.isArray(x))setHealth(x);}).catch(()=>{}); }, []);
 
-  const check = async () => {
+  const check = async (id?:string) => {
     setChecking(true);
-    try { setHealth((await call<Health[]>('sources:health')) ?? []); setUsage((await call('sources:usage')) ?? {}); } catch (e: any) { toast.push(e.message, true); }
+    try { const next=await call<Health[]>('sources:health',id);setHealth(old=>id?[...(old??[]).filter(x=>x.id!==id),...next]:next); setUsage((await call('sources:usage')) ?? {}); } catch (e: any) { toast.push(e.message, true); }
     setChecking(false);
   };
   const feeds: any[] = s.openFeeds ?? [];
@@ -36,11 +38,12 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
 
       <div className="row" style={{ justifyContent: 'space-between', marginTop: 10 }}>
         <h2 style={{ margin: 0 }}>Source health</h2>
-        <button className="btn small" onClick={check} disabled={checking}><Activity size={14} /> {checking ? 'Checking…' : 'Check all sources'}</button>
+        <button className="btn small" onClick={()=>check()} disabled={checking}><Activity size={14} /> {checking ? 'Checking…' : 'Check all sources'}</button>
       </div>
-      <p className="muted small" style={{ margin: 0 }}>A quick, read-only test of each source. Nothing is saved. Paid keys use one request each.</p>
+      <p className="muted small" style={{ margin: 0 }}>Reachability is not proof of valid search results. Checks are on demand and reused for one minute.</p>
+      <div className="row" role="status" aria-live="polite">{health&&<><span className="tag">{health.filter(h=>h.status==='ok').length} <span>Reachable</span></span><span className="tag warn">{health.filter(h=>h.status==='fail'||h.status==='warn').length} <span>Needs attention</span></span></>}<label className="switch"><input type="checkbox" checked={issues} onChange={e=>setIssues(e.target.checked)}/> Show issues only</label></div>
       <div className="src-table" role="table">
-        {catalog.map((c) => {
+        {catalog.filter(c=>!issues||health?.some(h=>h.id===c.id&&['fail','warn'].includes(h.status))).map((c) => {
           const h = health?.find((x) => x.id === c.id);
           const limit = s.budgets?.[c.id] ?? 0;
           return (
@@ -56,6 +59,7 @@ export function SourcesPanel({ s, set }: { s: any; set: (path: string, v: unknow
                   onChange={(e) => set('budgets', { ...(s.budgets ?? {}), [c.id]: Math.max(0, Number(e.target.value) || 0) })} />
               </label>
               {h?.fix && <div className="src-fix">{h.fix}</div>}
+              {CHECKABLE.has(c.id)&&<div className="row src-fix"><button className="btn small ghost" disabled={checking} onClick={()=>check(c.id)}>Check source</button>{h?.checkedAt&&<small className="muted"><span>Last checked:</span> <time dateTime={h.checkedAt}>{new Date(h.checkedAt).toLocaleString()}</time></small>}</div>}
               {open === c.id && (
                 <dl className="src-info">
                   <dt>Gives</dt><dd>{c.fields}</dd>

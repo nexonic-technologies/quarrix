@@ -1,6 +1,6 @@
 // First-launch setup (QF-114): what Quarrix is for, who you are, who you sell to, and what leaves this computer.
 // Every step can be skipped; nothing is sent anywhere until the user starts a search or connects a mailbox.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef,useState } from 'react';
 import { call } from '../api';
 import { toast } from '../App';
 import { Briefcase, Building2, Layers, ShieldCheck, ArrowRight } from 'lucide-react';
@@ -14,22 +14,23 @@ export function Onboarding({ onDone }: { onDone: (ws: Ws | null) => void }) {
   const [preset, setPreset] = useState('web');
   const [country, setCountry] = useState('');
   const [presets, setPresets] = useState<Record<string, { label: string; icp: any }>>({});
-  useEffect(() => { call<any>('icp:presets').then((x) => setPresets(x ?? {})); }, []);
+  const [busy,setBusy]=useState(false);const modal=useRef<HTMLDivElement>(null);
+  useEffect(() => { call<any>('icp:presets').then((x) => setPresets(x ?? {})).catch(()=>{});modal.current?.querySelector('button')?.focus(); }, []);
   const finish = async () => {
-    try {
+    setBusy(true);try {
       const s = await call<any>('settings:get');
       const icp = { ...(s.icp ?? {}), preset, ...(presets[preset]?.icp ?? {}), countries: country ? [country] : [] };
       await call('settings:save', { onboarded: true, workspace: ws, profile: { ...s.profile, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v)) }, ...(ws !== 'career' ? { icp } : {}) });
       onDone(ws);
-    } catch (e: any) { toast.push(e.message, true); }
+    } catch (e: any) { toast.push(e.message, true); } finally {setBusy(false);}
   };
-  const skip = async () => { await call('settings:save', { onboarded: true }); onDone(null); };
+  const skip = async () => {setBusy(true);try{await call('settings:save', { onboarded: true });onDone(null);}catch(e){toast.push(String(e),true);}finally{setBusy(false);}};
   const steps = ws === 'career' ? 3 : 4;
   return (
     <>
       <div className="scrim" />
-      <div className="modal onboard" role="dialog" aria-modal="true" aria-label="Set up Quarrix">
-        <header><div className="grow"><b>Welcome to Quarrix</b><span className="muted small">Step {step + 1} of {steps}. You can change all of this later in Settings.</span></div><button className="btn small ghost" onClick={skip}>Skip setup</button></header>
+      <div ref={modal} className="modal onboard" role="dialog" aria-modal="true" aria-label="Set up Quarrix" onKeyDown={e=>{if(e.key!=='Tab')return;const nodes=[...e.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled])')].filter(x=>x.getClientRects().length);if(!nodes.length)return;const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}}>
+        <header><div className="grow"><b>Welcome to Quarrix</b><span className="muted small">Step {step + 1} of {steps}. You can change all of this later in Settings.</span><progress className="onboard-progress" value={step+1} max={steps} aria-label="Setup progress"/></div><button className="btn small ghost" disabled={busy} onClick={skip}>Skip setup</button></header>
         <div style={{ padding: 18, overflow: 'auto', display: 'grid', gap: 12 }}>
           {step === 0 && <>
             <h2 style={{ margin: 0 }}>What will you use Quarrix for?</h2>
@@ -68,9 +69,9 @@ export function Onboarding({ onDone }: { onDone: (ws: Ws | null) => void }) {
           </>}
         </div>
         <footer className="row" style={{ justifyContent: 'space-between' }}>
-          <button className="btn ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</button>
-          {step < steps - 1 ? <button className="btn primary" onClick={() => setStep(step + 1 === 2 && ws === 'career' ? 2 : step + 1)}>Next <ArrowRight size={14} /></button>
-            : <button className="btn primary" onClick={finish}>Start using Quarrix</button>}
+          <button className="btn ghost" disabled={step === 0||busy} onClick={() => setStep(step - 1)}>Back</button>
+          {step < steps - 1 ? <button className="btn primary" disabled={busy} onClick={() => setStep(step+1)}>Next <ArrowRight size={14} /></button>
+            : <button className="btn primary" disabled={busy} onClick={finish}>Start using Quarrix</button>}
         </footer>
       </div>
     </>

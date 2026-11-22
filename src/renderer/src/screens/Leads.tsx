@@ -1,6 +1,6 @@
 import { LeadMap } from './FindTools';
 import { EvidenceCard, EMAIL_TEXT } from './Evidence';
-import { leadQuality } from '../../../shared/verified';
+import { leadQuality,leadReviewReason } from '../../../shared/verified';
 import { ClientPicker, Companies, Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
 import { ExportWizard } from './ExportWizard';
 import { MarketIntelligence } from './MarketIntelligence';
@@ -35,6 +35,8 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [switching, setSwitching] = useState(false);
   const [grade, setGrade] = useState('');
   const [dupes, setDupes] = useState(false);
+  const [dupeCount,setDupeCount]=useState<{count:number;limit:number}|null>(null);
+  const [loadError,setLoadError]=useState(false);
   const [exporting, setExporting] = useState(false);
   const [role, setRole] = useState('');
   const [open, setOpen] = useState<number | null>(() => { const v = Number(sessionStorage.getItem('quarrix.openLead')) || null; sessionStorage.removeItem('quarrix.openLead'); return v; });
@@ -43,18 +45,19 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const filter = { q, status, country, category, sort, searchId, hasEmail: has === 'email', hasPhone: has === 'phone', hasWebsite: has === 'website', shortlist: has === 'shortlist', stale: has === 'stale' ? 90 : undefined, emailStatus: has.startsWith('es:') ? has.slice(3) : undefined, grade: grade || undefined, role: role || undefined };
   const load = useCallback(async () => {
     const sequence = ++request.current;
-    try {
+    setLoadError(false);try {
       const r = await call<{ total: number; rows: Lead[] }>('leads:query', { ...filter, limit: PAGE, offset: page * PAGE });
       if (sequence !== request.current) return;
       setRows(r.rows);
       setTotal(r.total);
       if (page > 0 && page * PAGE >= r.total) setPage(Math.max(0, Math.ceil(r.total / PAGE) - 1));
-    } catch (e) { if (sequence === request.current) toast.push(String(e), true); }
+    } catch (e) { if (sequence === request.current) {setLoadError(true);toast.push(String(e), true);} }
   }, [q, status, country, category, has, sort, page, searchId, grade, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { if (!switching) void load(); return () => { request.current++; }; }, [load, tick, marketTick, switching]);
+  useEffect(() => { const timer=!switching?setTimeout(()=>void load(),160):undefined; return () => { clearTimeout(timer);request.current++; }; }, [load, tick, marketTick, switching]);
   useEffect(() => { let alive = true; if (!switching) call('facets').then(r => { if (alive) setFacets(r); }).catch(e => toast.push(String(e), true)); return () => { alive = false; }; }, [tick, marketTick, switching]);
   useEffect(() => { sessionStorage.removeItem('quarrix.search'); }, []);
+  useEffect(()=>{let alive=true;setDupeCount(null);if(switching)return;const timer=setTimeout(()=>call<{count:number;limit:number}>('dupes:summary').then(r=>{if(alive)setDupeCount(r);}).catch(()=>{}),650);return()=>{alive=false;clearTimeout(timer);};},[tick,marketTick,switching,dupes]);
 
   const ids = [...sel];
   const bulk = async (what: string) => {
@@ -93,11 +96,13 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       <div className="page-head">
         <div className="grow"><p><b className="big-n">{total.toLocaleString()}</b> businesses{searchId ? ' from one search' : ''}</p></div>
         {searchId && <button className="btn ghost" onClick={() => setSearchId(undefined)}><X size={15} /> Show all leads</button>}
-        <button className="btn ghost" onClick={() => setDupes(true)}>Duplicates</button>
+        <button className="btn ghost" onClick={() => setDupes(true)}>Duplicates {dupeCount&&dupeCount.count>0&&<span className="score">{dupeCount.count}{dupeCount.count===dupeCount.limit?'+':''}</span>}</button>
         <button className={`btn ${market ? 'primary' : 'ghost'}`} aria-pressed={market} onClick={() => setMarket(!market)}>Market intelligence</button>
         <button className={`btn ${publicOpen?'primary':'ghost'}`} aria-pressed={publicOpen} onClick={()=>setPublicOpen(!publicOpen)}>Public opportunities</button>
         <button className="btn" onClick={() => setExporting(true)}><Download size={15} /> Export these</button>
       </div>
+      {loadError&&<div className="note warn" role="alert"><span>Could not load leads.</span> <button className="btn small" onClick={()=>void load()}>Try again</button></div>}
+      {rows.length>0&&<div className="quality-strip" data-quality-strip><span className="muted small">Current page quality</span>{(['review','check','recent','mailbox'] as const).map(k=>{const matches=rows.filter(l=>leadQuality(l)===k);return <button key={k} className={`quality-chip ${k}`} disabled={!matches.length} onClick={()=>setOpen(matches[0].id)}><b>{matches.length}</b> <span>{({review:'Review evidence',check:'Needs a fresh check',recent:'Recently checked',mailbox:'Mailbox recently confirmed'})[k]}</span></button>;})}</div>}
       <div className="toolbar">
         <label className="search-box"><SearchIcon size={16} /><input placeholder="Search name, city, email, phone" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} /></label>
         <select className="select" value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} aria-label="Status">
@@ -153,7 +158,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                   <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={EMAIL_TEXT[l.email_status ?? ''] ?? ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
-                  <td>{l.grade ? <span className={`grade g${l.grade}`} title={`${json<any>(l.reasons, {}).summary ?? ''} · relevance ${l.relevance ?? '?'}, evidence ${l.evidence ?? '?'}`}>{l.grade}</span> : <span className="muted">–</span>}<span className="sub">{({review:'Review evidence',check:'Needs a fresh check',mailbox:'Mailbox recently confirmed',recent:'Recently checked'})[leadQuality(l)]}</span></td>
+                  <td>{l.grade ? <span className={`grade g${l.grade}`} title={`${json<any>(l.reasons, {}).summary ?? ''} · relevance ${l.relevance ?? '?'}, evidence ${l.evidence ?? '?'}`}>{l.grade}</span> : <span className="muted">–</span>}<span className="sub">{({closed:'Business closure reported',restricted:'Do not contact',mail:'Email needs review',conflict:'Sources disagree.',unchecked:'No current website check',stale:'Needs a fresh check',recent:'Recently checked',mailbox:'Mailbox recently confirmed'})[leadReviewReason(l)]}</span></td>
                   <td>{l.fit != null ? <span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`} title={l.needs || ''}>{l.fit}{l.needs ? <em>{l.needs.split(',')[0]}</em> : null}</span> : <span className="muted">{l.enriched_at ? 'n/a' : 'checking'}</span>}</td>
                   <td><span className={`status ${l.status}`}>{STATUS_LABEL[l.status] ?? l.status}</span></td>
                 </tr>

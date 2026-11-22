@@ -39,8 +39,10 @@ export async function runSmoke(win: BrowserWindow) {
     let shown = false;
     for (let i = 0; i < 40 && !shown; i++) { shown = await js<boolean>('[...document.querySelectorAll("button")].some((b) => b.textContent.trim() === "Skip setup")'); if (!shown) await new Promise((r) => setTimeout(r, 250)); }
     if (!shown) throw new Error('no setup wizard on first launch');
+    if (!await js<boolean>(`!!document.querySelector('progress[aria-label="Setup progress"]') && document.querySelector('main').inert && document.querySelector('aside').inert`)) throw new Error('setup progress or modal isolation missing');
     await js('[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "Skip setup").click()');
     await new Promise((r) => setTimeout(r, 600));
+    if (await js<boolean>('document.querySelector("main").inert')) throw new Error('main remains locked after setup');
     return 'shown and skipped';
   });
   await check('every screen draws without an error (QF-116 workspaces included)', async () => {

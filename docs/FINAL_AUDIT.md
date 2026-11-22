@@ -1,4 +1,11 @@
-# Final audit, v2.0.0
+# Final audit, v2.1.0 candidate
+
+## v2.1.0 (candidate)
+
+- Discovery and onboarding: pointer-reactive dashboard lighting, reduced-motion fallback, progress indicator, keyboard focus containment and inert background. No continuous decorative animation.
+- Data review: explicit evidence reasons, current-page quality counts, client-scoped duplicate grouping before the group limit, debounced queries and retryable errors.
+- Provider health: per-source checks, session timestamps, bounded concurrency, one-minute cache, shared in-flight checks and budget guards. Reachability is not proof of usable search results; restrictions are respected.
+- Local verification: 105 unit tests, 75 integration tests and production build passed. Release installers and live providers must still pass the release workflow; the 17 external blockers remain.
 
 ## v2.0.0 (released)
 
