@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v0.31.0 and v0.32.0 integrated into the v1.0.0 candidate:** proposal and client reporting studio; official public-opportunity directory, recent EU contract notices and local watchlist. Production CI and installed-app release checks pending. Existing external blockers remain unchanged.
+
 **v0.30.0 released:** Market Intelligence reports group stored records by category, country, city, source or linked company and show coverage, check recency, recorded fit and won records. Workspace isolation and aggregate CSV export are covered by tests; CI passed and all six installer configurations passed 21/21 checks. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.30.0).
 
 **v0.29.0 released:** local resume review, contextual interview practice, per-application document drafts and a due-date planner. CI passed; all six installed-app runs passed 20/20 checks. See [release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.29.0).

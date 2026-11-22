@@ -14,6 +14,9 @@ import * as validate from './validate';
 import * as career from './career';
 import * as jobstore from './jobstore';
 import { marketReport, marketCsv } from './market';
+import { migrateProposals, getProposal, saveProposal, documentPdf } from './proposals';
+import { proposalText } from '../shared/proposals';
+import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import * as automation from './automation';
 import * as localapi from './localapi';
@@ -263,6 +266,29 @@ function registerIpc() {
 
   handle('leads:query', (q) => db.queryLeads(scope.scopedQuery({ ...(q ?? {}) })));
   handle('market:report', (group, country, category) => marketReport(group, country, category, scope.current()));
+  handle('proposal:get', (id) => getProposal(id));
+  handle('proposal:save', (id,p) => saveProposal(id,p));
+  handle('proposal:export', async (id, p, format) => {
+    scope.assertLead(id); const lead=db.getLead(id); if(!lead) throw new Error('Business not found.');
+    if(sourceInfo(lead.source)?.export === false) throw new Error('This data source does not permit export.');
+    const text=proposalText(p,lead.name);
+    const r=await dialog.showSaveDialog(win!,{defaultPath:`proposal.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
+    if(r.canceled||!r.filePath)return null;
+    if(format==='pdf') (await import('node:fs')).writeFileSync(r.filePath,await documentPdf(text)); else await cv.saveDocx(r.filePath,text);
+    return r.filePath;
+  });
+  handle('market:document', async (group,country,category,format) => {
+    const report=marketReport(group,country,category,scope.current());
+    const text=['Client market report',load().profile.company||load().profile.name||'Quarrix',`Generated: ${report.generatedAt}`,`Grouping: ${group}; country: ${country||'All'}; category: ${category||'All'}`,'',`Business records: ${report.total.records}`,`Linked companies: ${report.total.companies}`,`Recent checks: ${report.total.recentlyChecked}`,`Scored records: ${report.total.scored}`,`Mean fit: ${report.total.averageFit??'Unknown'}`,'','GROUP SUMMARY',...report.groups.map(g=>`${g.label}: ${g.records} records; ${g.companies} linked companies; ${g.recentlyChecked} recent checks; mean fit ${g.averageFit??'Unknown'}`),'','Stored sample only, not market size, market share or revenue potential. Company counts can overlap.'].join('\n');
+    const r=await dialog.showSaveDialog(win!,{defaultPath:`market-report.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
+    if(r.canceled||!r.filePath)return null;
+    if(format==='pdf') (await import('node:fs')).writeFileSync(r.filePath,await documentPdf(text)); else await cv.saveDocx(r.filePath,text);
+    return r.filePath;
+  });
+  handle('public:list', () => listPublicOpportunities());
+  handle('public:save', (p) => savePublicOpportunity(p));
+  handle('public:delete', (id) => deletePublicOpportunity(id));
+  handle('public:ted', (page) => searchTed(page));
   handle('market:export', async (group, country, category) => {
     const client = scope.current();
     const r = await dialog.showSaveDialog(win!, { defaultPath: 'quarrix-market-report.csv', filters: [{ name: 'CSV', extensions: ['csv'] }] });
@@ -429,6 +455,7 @@ app.whenReady().then(() => {
   db.migrateData();
   useBackups(() => load().aiKeys ?? {});
   crm.migrate();
+  migrateProposals(); migratePublicOpportunities();
   jobstore.migrate();
   career.migrateTables();
   try { career.ensureRadar(); } catch { /* the radar is created on the next scan */ }

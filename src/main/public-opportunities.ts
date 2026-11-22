@@ -1,0 +1,19 @@
+import * as db from './db';
+import * as scope from './scope';
+import { fetchText, BOT_UA } from './util';
+import { validateOpportunity, parseTed, type Opportunity } from '../shared/public-opportunities';
+export function migratePublicOpportunities() { db.raw().exec("CREATE TABLE IF NOT EXISTS public_opportunities (id INTEGER PRIMARY KEY, client TEXT NOT NULL DEFAULT '', data TEXT NOT NULL, updated_at TEXT NOT NULL)"); }
+export function listPublicOpportunities(): Opportunity[] { const c=scope.current(); return (db.raw().prepare("SELECT id,data FROM public_opportunities WHERE (?='' OR client=?) ORDER BY updated_at DESC,id DESC").all(c,c) as {id:number;data:string}[]).map(r=>({...JSON.parse(r.data),id:r.id})); }
+export function savePublicOpportunity(value: unknown): Opportunity {
+  const p=validateOpportunity(value), c=scope.current(); const {id,...data}=p;
+  if(id!==undefined){const r=db.raw().prepare("UPDATE public_opportunities SET data=?,updated_at=? WHERE id=? AND (?='' OR client=?)").run(JSON.stringify(data),db.now(),id,c,c);if(!r.changes) throw new Error('Opportunity not found in this workspace.');return p;}
+  if(db.raw().prepare("SELECT 1 FROM public_opportunities WHERE client=? AND json_extract(data,'$.url')=?").get(c,data.url)) throw new Error('This opportunity is already saved.');
+  const r=db.raw().prepare('INSERT INTO public_opportunities (client,data,updated_at) VALUES (?,?,?)').run(c,JSON.stringify(data),db.now());return {...p,id:Number(r.lastInsertRowid)};
+}
+export function deletePublicOpportunity(id:number) {const c=scope.current();return db.raw().prepare("DELETE FROM public_opportunities WHERE id=? AND (?='' OR client=?)").run(id,c,c).changes;}
+export async function searchTed(page:number) {
+  const date=new Date(Date.now()-7*864e5).toISOString().slice(0,10).replace(/-/g,'');
+  const r=await fetchText('https://api.ted.europa.eu/v3/notices/search',{method:'POST',ua:BOT_UA,timeout:20000,maxBytes:2000000,headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({query:`publication-date >= ${date} AND notice-type = cn-standard`,fields:['publication-number','notice-title','buyer-name','publication-date','notice-type','deadline-receipt-tender-date-lot'],page,limit:25,scope:'ACTIVE',paginationMode:'PAGE_NUMBER'})});
+  if(!r.ok) throw new Error(`Official notice service returned HTTP ${r.status}.`);
+  return parseTed(JSON.parse(r.text));
+}

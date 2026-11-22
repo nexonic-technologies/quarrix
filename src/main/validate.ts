@@ -2,6 +2,8 @@
 // and integrity between linked records. Runs before the workspace checks (scope.ts) and the handler.
 import * as db from './db';
 import { validDay } from '../shared/application-studio';
+import { validateProposal } from '../shared/proposals';
+import { validateOpportunity } from '../shared/public-opportunities';
 
 export class InputError extends Error { constructor(m: string) { super(m); this.name = 'InputError'; } }
 const fail = (m: string): never => { throw new InputError(m); };
@@ -41,6 +43,13 @@ const ids = (v: unknown) => { if (!Array.isArray(v)) fail('Send a list of record
 type Check = (a: any[]) => any[];
 /** Checks per channel. Exported for tests. */
 export const CHECKS: Record<string, Check> = {
+  'proposal:get': ([id]) => [int(id,'lead')],
+  'proposal:save': ([id,p]) => [int(id,'lead'),validateProposal(p)],
+  'proposal:export': ([id,p,format]) => [int(id,'lead'),validateProposal(p), ['pdf','docx'].includes(format)?format:fail('Unknown document format.')],
+  'market:document': ([group,country,category,format]) => [...CHECKS['market:report']([group,country,category]),['pdf','docx'].includes(format)?format:fail('Unknown document format.')],
+  'public:save': ([p]) => [validateOpportunity(p)],
+  'public:delete': ([id]) => [int(id,'opportunity')],
+  'public:ted': ([page]) => {const n=int(page,'page');if(n>20)fail('Page limit reached.');return [n];},
   'market:report': ([group, country, category]) => {
     if (!['category', 'country', 'city', 'source', 'company'].includes(String(group))) fail('Unknown market grouping.');
     return [String(group), str(country ?? '', 'Country', 80), str(category ?? '', 'Category', 120)];

@@ -15,6 +15,8 @@ export function privacySummary() {
     row('Job trust checks', false, 'Only requested public job and employer-page URLs', 'The selected public websites', 'Evidence is displayed locally; no CV, credentials or identity documents are sent'),
     row('Application studio', false, 'No data leaves your device', 'None', 'Application dates, notes, interview practice and drafts stay in the local saved job; application exports include dates and notes but not drafts or practice'),
     row('Market intelligence', false, 'No data leaves your device', 'None', 'Aggregated business records in the selected workspace; CSV export omits individual contact fields'),
+    row('Proposal studio', false, 'No data leaves your device', 'None', 'Draft quotations and status saved locally; PDF and Word exports require user action'),
+    row('Public opportunities', false, 'Only the fixed recent-notice query when requested', 'Official EU procurement search API', 'Watchlist dates and notes stay in the selected local workspace; official portal links open in your browser'),
     row('CV matching and documents', s.ai.provider !== 'none', 'Your CV text and the job post', s.ai.provider, 'Your CV is stored only on this computer'),
     row('HubSpot, Notion, Google Sheets', !!(s.hubspot?.token || s.notion?.token || s.sheets?.refresh), 'Only the leads you choose to send', 'The tool you send to', 'In that tool, under your account'),
     row('Webhooks', (s.webhooks ?? []).some((w) => w.on), 'Event details, including the lead', (s.webhooks ?? []).filter((w) => w.on).map((w) => { try { return new URL(w.url).host; } catch { return w.url; } }).join(', ') || 'None', 'At the receiving service'),

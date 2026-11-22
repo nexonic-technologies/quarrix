@@ -273,7 +273,16 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v0.30.0 ]; then
+            if [ "$TAG" = v1.0.0 ]; then
+              echo "## Quarrix 1.0 — Proposal and Public Opportunity Studios"
+              echo
+              echo "- Editable local proposals, itemized quotations, templates, status tracking and PDF/Word exports."
+              echo "- Branded market reports from stored samples; official government job and procurement portal directory."
+              echo "- Recent standard EU contract notices via the official API and local deadline/checklist watchlist."
+              echo "- Combines milestones 0.31 and 0.32 into the production release; no automatic submission."
+              echo "- Previously documented partner/API/signing blockers remain external requirements."
+              echo
+            elif [ "$TAG" = v0.30.0 ]; then
               echo "## Business and Market Intelligence"
               echo
               echo "- Compare recorded businesses by category, country, city, source and linked company."

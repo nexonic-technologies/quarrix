@@ -6,6 +6,9 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as db from './db';
 import { fetchText } from './util';
+import { documentPdf } from './proposals';
+import { EMPTY_PROPOSAL,proposalText } from '../shared/proposals';
+import { EMPTY_OPPORTUNITY } from '../shared/public-opportunities';
 
 type Check = { name: string; ok: boolean; detail: string };
 
@@ -159,6 +162,20 @@ export async function runSmoke(win: BrowserWindow) {
       if (!shown || result.total.records !== 1) throw new Error('Market report did not isolate its workspace');
       return 'only the selected client’s record was reported';
     } finally { await ipc('clients:set', ''); }
+  });
+  await check('proposal studio persists and exports a real offline PDF',async()=>{
+    const id=await ipc('leads:add',{name:'Proposal Smoke Business',category:'Services',city:'Lahore',country:'PK'});
+    const p={...EMPTY_PROPOSAL,title:'Smoke proposal',items:[{description:'Service',quantity:2,unitMinor:1250}]};
+    await ipc('proposal:save',id,p);const stored=await ipc('proposal:get',id);
+    if(stored.title!==p.title)throw new Error('Proposal not saved');
+    const pdf=await documentPdf(proposalText(stored,'Proposal Smoke Business'));
+    if(pdf.subarray(0,5).toString()!=='%PDF-'||pdf.length<500)throw new Error('PDF not generated');
+    return 'saved proposal and rendered local PDF';
+  });
+  await check('public opportunity watchlist saves official links locally',async()=>{
+    const p=await ipc('public:save',{...EMPTY_OPPORTUNITY,title:'Public opportunity smoke fixture',url:'https://njp.gov.pk/jobs/123'});
+    const found=(await ipc('public:list')).some((x:any)=>x.id===p.id&&x.url===p.url);
+    await ipc('public:delete',p.id);if(!found)throw new Error('Watchlist not saved');return 'official link saved and removed locally';
   });
   await check('sending stays off until approved', async () => { const r = await js<{ ok: boolean; error?: string }>('window.quarrix.call("messages:approveAll")'); return r.ok ? `approved ${(r as any).data} (no mailbox)` : r.error ?? ''; });
   await check('network guard refuses this computer', async () => {

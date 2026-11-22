@@ -3,6 +3,8 @@ import { EvidenceCard, EMAIL_TEXT } from './Evidence';
 import { ClientPicker, Companies, Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
 import { ExportWizard } from './ExportWizard';
 import { MarketIntelligence } from './MarketIntelligence';
+import { ProposalStudio } from './ProposalStudio';
+import { PublicOpportunities } from './PublicOpportunities';
 import { useCallback, useEffect, useState } from 'react';
 import { Mail, Star, X, Download, Search as SearchIcon, PenLine, MessageCircle, RefreshCw, Ban, MapPin, FileBarChart, Send, ExternalLink } from 'lucide-react';
 import { Avatar, EmptyArt } from '../Art';
@@ -26,6 +28,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [view, setView] = useState<'list' | 'map' | 'companies'>('list');
   const [market, setMarket] = useState(false);
+  const [publicOpen,setPublicOpen]=useState(false);
   const [marketTick, setMarketTick] = useState(0);
   const [grade, setGrade] = useState('');
   const [dupes, setDupes] = useState(false);
@@ -84,6 +87,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
         {searchId && <button className="btn ghost" onClick={() => setSearchId(undefined)}><X size={15} /> Show all leads</button>}
         <button className="btn ghost" onClick={() => setDupes(true)}>Duplicates</button>
         <button className={`btn ${market ? 'primary' : 'ghost'}`} aria-pressed={market} onClick={() => setMarket(!market)}>Market intelligence</button>
+        <button className={`btn ${publicOpen?'primary':'ghost'}`} aria-pressed={publicOpen} onClick={()=>setPublicOpen(!publicOpen)}>Public opportunities</button>
         <button className="btn" onClick={() => setExporting(true)}><Download size={15} /> Export these</button>
       </div>
       <div className="toolbar">
@@ -116,6 +120,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
       {exporting && <ExportWizard filter={filter} total={total} onClose={() => setExporting(false)} />}
       {dupes && <Duplicates onClose={() => { setDupes(false); void load(); }} />}
       {market && <MarketIntelligence tick={tick + marketTick} countries={facets.countries} categories={facets.categories} />}
+      {publicOpen && <PublicOpportunities key={marketTick} tick={marketTick} />}
       {rows.length === 0 ? (
         <div className="panel empty"><EmptyArt /><h3>No leads here yet</h3>Run a search on the Find screen, or import a spreadsheet.<div className="row" style={{ justifyContent: 'center', marginTop: 14 }}><button className="btn primary" onClick={() => go('find')}>Find businesses</button><button className="btn" onClick={() => go('files')}>Import a file</button></div></div>
       ) : view === 'companies' ? (
@@ -221,6 +226,7 @@ export function LeadDrawer({ id, onClose, onChange, go }: { id: number; onClose:
           )}
           <EvidenceCard lead={l} onChange={reload} />
           <LeadCrmCard lead={l} onChange={reload} />
+          <ProposalStudio key={id} id={id} />
           <ProofCard id={id} hasEmail={!!l.email} onChange={reload} />
           <dl className="kv">
             <dt>Email</dt><dd>{l.email ? <><a href={`mailto:${l.email}`}>{l.email}</a>{l.email_status === 'ok' && <span className="ok-pill">accepts mail</span>}{l.email_status === 'no-mx' && <span className="bad-pill">no mail server</span>}</> : <span className="muted">{l.enriched_at ? 'none found' : 'not checked yet'}</span>}{emails.length > 1 && <div className="muted">Also: {emails.filter((e) => e !== l.email).join(', ')}</div>}</dd>

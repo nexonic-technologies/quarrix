@@ -12,6 +12,7 @@ import { JOB_TITLES } from '../../../shared/jobtitles';
 import { CareerExplorer } from './CareerExplorer';
 import { JobTrust } from './JobTrust';
 import { ApplicationOverview, ApplicationStudio } from './ApplicationStudio';
+import { PublicOpportunities } from './PublicOpportunities';
 import type { StudioNotes } from '../../../shared/application-studio';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
@@ -91,6 +92,7 @@ export function Jobs() {
   const [saved, setSaved] = useState<Job[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const [cv, setCv] = useState<Cv | null>(null);
+  const [publicOpen,setPublicOpen]=useState(false);
   const [ai, setAi] = useState('none');
   const [ranking, setRanking] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -192,6 +194,7 @@ export function Jobs() {
         <Pill label="More filters" options={OPT.extra} value={extra} multi onChange={setExtra} />
         <button className="pill-btn" onClick={() => setPanel(panel === 'employers' ? '' : 'employers')}>Employers</button>
         <button className="pill-btn" onClick={() => setPanel(panel === 'alerts' ? '' : 'alerts')}>Alerts</button>
+        <button className="pill-btn" aria-pressed={publicOpen} onClick={()=>setPublicOpen(!publicOpen)}>Public opportunities</button>
         <button className={`pill-btn ${workplace.length === 1 && workplace[0] === 'remote' ? 'on' : ''}`} onClick={() => setWorkplace(workplace[0] === 'remote' && workplace.length === 1 ? [] : ['remote'])}>Remote only</button>
         <span className="grow" />
         <div className="tabs seg" role="tablist" aria-label="Results" style={{ margin: 0 }}>
@@ -201,6 +204,7 @@ export function Jobs() {
       </div>
 
       {panel === 'employers' && <EmployersPanel />}
+      {publicOpen && <PublicOpportunities />}
       {panel === 'alerts' && <AlertsPanel current={{ ...query(kw.trim()), name: kw.trim() }} onOpen={(list) => { setJobs(list as Job[]); setTab('results'); }} />}
       {tab === 'saved' && saved.length > 0 && <div className="row" style={{ gap: 6, marginBottom: 8 }}><span className="muted small">Export my applications:</span>{(['csv', 'json', 'md'] as const).map((f) => <button key={f} className="btn small ghost" onClick={async () => { const n = await call('jobs:export', f); if (n) toast.push(`Exported ${n} jobs`); }}>{f === 'md' ? 'Markdown' : f.toUpperCase()}</button>)}</div>}
       {tab === 'saved' && <ApplicationOverview jobs={saved as (Job & { studio?: StudioNotes })[]} onOpen={setOpen} />}

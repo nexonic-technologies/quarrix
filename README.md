@@ -12,6 +12,8 @@ A local-first desktop workspace for job discovery, career exploration and busine
 - **Review job trust.** Check listing evidence, employer careers-page corroboration and contextual recruitment warning signs before applying. An evidence score is not a guarantee of legitimacy.
 - **Manage applications.** Review extracted resume text, practice interview prompts, keep drafts and plan deadlines, interviews, follow-ups and next actions locally.
 - **Compare markets.** Explore stored business records by category, location, source and linked company; compare data coverage and recorded fit, with local aggregate CSV export.
+- **Prepare proposals and reports.** Create editable service quotations, record proposal status, and export PDF or Word documents. Export branded market reports from your stored business samples.
+- **Explore public opportunities.** Open official government job and procurement portals, browse recent standard EU contract notices, and maintain a local watchlist with deadlines and document checklists.
 
 - **Find businesses anywhere.** Type a kind of business and a place, for example *dentists in Austin, Texas*. Quarrix searches Google Maps, OpenStreetMap and, with your own key, the Google Places API. Over 140 categories, or type your own.
 - **Fill in the details.** For each business it visits the business's own website for published email addresses, phone numbers and social profiles, reads its address details, and checks the site (HTTPS, mobile-ready, outdated footer, contact form, optional Google PageSpeed score).
