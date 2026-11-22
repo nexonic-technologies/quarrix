@@ -15,11 +15,14 @@ import * as career from './career';
 import * as jobstore from './jobstore';
 import { marketReport, marketCsv } from './market';
 import { migrateProposals, getProposal, saveProposal, documentPdf } from './proposals';
-import { proposalText } from '../shared/proposals';
+import {migratePortfolio,getPortfolio,savePortfolio} from './portfolio';
+import {desktopSearch} from './desktop';
+import {validatePortfolio,portfolioText} from '../shared/portfolio';
+import { proposalText,quotationText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
 import { registryLookup } from './registry';
-import { officialWages, secLookup,nationalRegistry,nycVacancies,recentRegistrations } from './global-data';
+import { officialWages, secLookup,nationalRegistry,nycVacancies,recentRegistrations,fdicLookup } from './global-data';
 import { salesByCurrency } from './market';
 import { migrateDigest,centerOverview,setDigest,toggleSavedSearch,claimDigest,opportunityTrends } from './opportunity-center';
 import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
@@ -194,7 +197,7 @@ function registerIpc() {
   handle('deals:delete', (id: number) => crm.deleteDeal(Number(id)));
   handle('deals:history', (id: number) => crm.dealHistory(Number(id)));
   handle('deals:forLead', (id: number) => crm.leadDeals(Number(id)));
-  handle('deals:forecast', () => crm.forecast());
+  handle('deals:forecast', (currency?:string) => ({...crm.forecast(currency),lifecycle:crm.customerLifecycle()}));
   handle('tasks:list', (f) => crm.listTasks(f ?? {}));
   handle('tasks:save', (t) => crm.saveTask(t ?? {}));
   handle('tasks:delete', (id: number) => crm.deleteTask(Number(id)));
@@ -221,8 +224,13 @@ function registerIpc() {
   handle('backup:restore', async (pass: string) => {
     const r = await dialog.showOpenDialog(win!, { properties: ['openFile'], filters: [{ name: 'Quarrix backup', extensions: ['qbak'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
+    const preview=backup.inspectBackup(r.filePaths[0],String(pass??''));
+    const consent=await dialog.showMessageBox(win!,{type:'warning',buttons:['Cancel','Restore and restart'],defaultId:0,cancelId:0,message:'Restore this verified backup?',detail:`Contains ${preview.leads} leads. Current data will be retained as a safety copy. The restore replaces local database and settings on restart.`});
+    if(consent.response!==1)return null;
     return backup.prepareRestore(r.filePaths[0], String(pass ?? ''));
   });
+  handle('backup:inspect',async(pass:string)=>{const r=await dialog.showOpenDialog(win!,{properties:['openFile'],filters:[{name:'Quarrix backup',extensions:['qbak']}]});return r.canceled||!r.filePaths[0]?null:backup.inspectBackup(r.filePaths[0],String(pass??''));});
+  handle('backup:cancelRestore',()=>backup.cancelPendingRestore());
   handle('app:restart', () => { app.relaunch(); app.exit(0); });
   handle('auto:templates', () => ({ templates: automation.TEMPLATES, triggers: automation.TRIGGERS, fields: automation.FIELDS }));
   handle('auto:runs', () => automation.recentRuns());
@@ -275,10 +283,10 @@ function registerIpc() {
   handle('market:report', (group, country, category) => marketReport(group, country, category, scope.current()));
   handle('proposal:get', (id) => getProposal(id));
   handle('proposal:save', (id,p) => saveProposal(id,p));
-  handle('proposal:export', async (id, p, format) => {
+  handle('proposal:export', async (id, p, format,kind) => {
     scope.assertLead(id); const lead=db.getLead(id); if(!lead) throw new Error('Business not found.');
     if(sourceInfo(lead.source)?.export === false) throw new Error('This data source does not permit export.');
-    const text=proposalText(p,lead.name);
+    const text=kind==='quotation'?quotationText(p,lead.name):proposalText(p,lead.name);
     const r=await dialog.showSaveDialog(win!,{defaultPath:`proposal.${format}`,filters:[{name:format.toUpperCase(),extensions:[format]}]});
     if(r.canceled||!r.filePath)return null;
     if(format==='pdf') (await import('node:fs')).writeFileSync(r.filePath,await documentPdf(text)); else await cv.saveDocx(r.filePath,text);
@@ -331,6 +339,7 @@ function registerIpc() {
   handle('global:nationalRegistry',(country:string,id:string)=>nationalRegistry(country,id));
   handle('global:nycJobs',()=>nycVacancies());
   handle('global:recentRegistrations',()=>recentRegistrations());
+  handle('global:fdic',(cert:string)=>fdicLookup(cert));
   handle('market:sales',()=>salesByCurrency(scope.current()));
   handle('opportunities:center',()=>centerOverview());
   handle('opportunities:trends',()=>opportunityTrends());
@@ -364,6 +373,10 @@ function registerIpc() {
     return matchJobs(s, jobs, `${c.profile.summary}\nTarget roles: ${c.profile.roles.join(', ')}\nLevel: ${c.profile.level}\nSkills: ${c.profile.skills.join(', ')}\n\n${c.text}`);
   });
   handle('cv:get', () => cv.getCv());
+  handle('portfolio:get',()=>getPortfolio());
+  handle('desktop:search',(q)=>desktopSearch(q));
+  handle('portfolio:save',(p)=>savePortfolio(p));
+  handle('portfolio:export',async(p,kind)=>{const v=validatePortfolio(p);if(!['cv','portfolio','application'].includes(kind))throw new Error('Invalid document type.');const r=await dialog.showSaveDialog(win!,{defaultPath:`quarrix-${kind}.docx`,filters:[{name:'Word',extensions:['docx']}]});if(r.canceled||!r.filePath)return null;await cv.saveDocx(r.filePath,portfolioText(v,kind));return r.filePath;});
   handle('cv:upload', async () => {
     const r = await dialog.showOpenDialog(win!, { title: 'Choose your CV', properties: ['openFile'], filters: [{ name: 'CV', extensions: ['pdf', 'docx', 'txt', 'md'] }] });
     if (r.canceled || !r.filePaths[0]) return null;
@@ -482,7 +495,7 @@ app.whenReady().then(() => {
   useBackups(() => load().allowModelFallback === true ? runtimeSettings().aiKeys : {});
   useModelGuard(ai => { if (!isLocalWriting(ai)) budget.spend('writing'); });
   crm.migrate();
-  migrateProposals(); migratePublicOpportunities(); migrateDigest();
+  migrateProposals(); migratePublicOpportunities(); migrateDigest();migratePortfolio();
   jobstore.migrate();
   career.migrateTables();
   try { career.ensureRadar(); } catch { /* the radar is created on the next scan */ }

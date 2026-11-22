@@ -115,6 +115,14 @@ export async function runSmoke(win: BrowserWindow) {
     if (!found) throw new Error('No occupation recommendation was rendered');
     return 'real occupation returned without a CV or network request';
   });
+  await check('desktop search keyboard and focus controls work without network calls',async()=>{
+    const ok=await js<boolean>(`(async()=>{const button=document.getElementById('desktop-search-button');if(!button)return false;window.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));await new Promise(r=>setTimeout(r,250));const dialog=document.querySelector('[role=dialog][aria-label="Universal search"]');if(!dialog||document.activeElement!==dialog.querySelector('input')||!document.querySelector('main').inert)return false;document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await new Promise(r=>setTimeout(r,250));return !document.querySelector('[role=dialog][aria-label="Universal search"]')&&document.activeElement===button&&!document.querySelector('main').inert;})()`);
+    if(!ok)throw new Error('Universal search keyboard or modal focus failed');return 'shortcut, focus, escape and background isolation';
+  });
+  await check('career portfolio builder loads local record',async()=>{
+    const ok=await js<boolean>(`(async()=>{const nav=[...document.querySelectorAll('nav.nav button')].find(b=>b.textContent.trim().startsWith('Job search'));nav?.click();await new Promise(r=>setTimeout(r,900));const p=document.querySelector('[data-career-portfolio]');if(!p)return false;p.open=true;await new Promise(r=>setTimeout(r,600));return !!p.querySelector('textarea')&&!![...p.querySelectorAll('button')].find(b=>b.textContent.trim()==='Save');})()`);
+    if(!ok)throw new Error('Career portfolio controls missing');return 'local document builder';
+  });
   await check('priority and recent-registration controls render without network calls',async()=>{
     const ok=await js<boolean>(`(async()=>{document.querySelector('nav.nav button')?.click();await new Promise(r=>setTimeout(r,900));const center=document.querySelector('[data-opportunity-center]');if(!center)return false;center.open=true;const registry=document.querySelector('[data-recent-registrations]');if(!registry)return false;registry.open=true;await new Promise(r=>setTimeout(r,400));return center.textContent.includes('Priority queue')&&!![...registry.querySelectorAll('button')].find(b=>b.textContent.trim()==='Load registrations');})()`);
     if(!ok)throw new Error('priority or registration controls missing');return 'on-demand registry and local priority controls';

@@ -1,7 +1,8 @@
 import { fetchText, BOT_UA } from './util';
-import { BLS_SERIES, parseBls, secCompany,parseNationalRegistry,parseNycJobs,parseRecentRegistrations } from '../shared/global-data';
+import { BLS_SERIES, parseBls, secCompany,parseNationalRegistry,parseNycJobs,parseRecentRegistrations,parseBankRecord } from '../shared/global-data';
 import { cachedPublic } from './public-cache';
 async function publicJson(url:string){const r=await fetchText(url,{ua:BOT_UA,timeout:15000,maxBytes:2_000_000,headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`Public source HTTP ${r.status}`);return JSON.parse(r.text);}
+export async function fdicLookup(cert:string){if(!/^[1-9]\d{0,8}$/.test(cert))throw new Error('Enter a valid FDIC certificate number.');const q=new URLSearchParams({filters:`CERT:${cert}`,fields:'CERT,NAME,CITY,STALP,ACTIVE',limit:'1'});return cachedPublic(`fdic:${cert}`,async()=>parseBankRecord(await publicJson(`https://api.fdic.gov/banks/institutions?${q}`),cert));}
 export async function nationalRegistry(country:string,id:string){
  if((country!=='NO'&&country!=='FR')||!/^\d{9}$/.test(id))throw new Error('Enter a nine-digit public registration number.');
  return cachedPublic(`registry:${country}:${id}`,async()=>parseNationalRegistry(country,id,await publicJson(country==='NO'?`https://data.brreg.no/enhetsregisteret/api/enheter/${id}`:`https://recherche-entreprises.api.gouv.fr/search?q=${id}&per_page=1`)));

@@ -132,10 +132,11 @@ export function DataSettings({ s, set }: { s: any; set: (p: string, v: unknown) 
       <div className="row" style={{ gap: 6 }}>
         <input className="input" type="password" placeholder="Passphrase (8+ characters)" value={pass} onChange={(e) => setPass(e.target.value)} style={{ maxWidth: 260 }} />
         <button className="btn" disabled={pass.length < 8} onClick={async () => { try { const r = await call<any>('backup:make', pass); if (r) toast.push(`Backup saved (${Math.round(r.bytes / 1024).toLocaleString()} KB of data)`); } catch (e: any) { toast.push(e.message, true); } }}><Download size={14} /> Make a backup</button>
+        <button className="btn" disabled={pass.length<8} onClick={async()=>{try{const r=await call<any>('backup:inspect',pass);if(r)toast.push(`Backup verified · ${r.leads} leads`);}catch(e){toast.push(String(e),true);}}}>Verify backup</button>
         <button className="btn ghost" disabled={pass.length < 8} onClick={async () => {
           try {
             const r = await call<any>('backup:restore', pass);
-            if (r && confirm(`The backup is sound and holds ${r.leads.toLocaleString()} leads. Restart Quarrix now to restore it? Your current data is kept as a safety copy.`)) await call('app:restart');
+            if(r)await call('app:restart');
           } catch (e: any) { toast.push(e.message, true); }
         }}><Upload size={14} /> Restore…</button>
       </div>

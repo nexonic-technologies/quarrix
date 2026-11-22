@@ -1,5 +1,7 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+**v3.5.0 candidate:** combined regional discovery, local career portfolio, quotation-only PDF, currency-separated forecast and lifecycle, universal search and favorites, dashboard preferences and backup verification/cancellation. The 17 external blockers remain unchanged. Live and installer verification pending.
+
 **v3.0.0 candidate:** combined opportunity intelligence, career accelerator and unified local opportunity platform. Recent Norway limited-company registration sample, scoped business signals, deduplicated local observation trends, due-date priority queue, learning plan and interview worksheet. Existing 17 external blockers unchanged; live and installer gates pending.
 
 **v2.3–v2.7 combined candidate:** official Norway and France registration lookups, NYC external postings, evidence coverage and recorded field agreement, refreshed offline CV matching, bounded public-source cache and accessible quality visualization. Existing external access and signing blockers unchanged. Live verification and installer gates pending.

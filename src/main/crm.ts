@@ -92,9 +92,11 @@ export function moveDeal(id: number, stage: string, beforeId: number | null) {
 }
 
 // ── Forecast (QF-055) ──
-export function forecast() {
+export function forecast(currency?:string) {
   const st = stages();
-  const deals = raw().prepare(`SELECT * FROM deals WHERE ${scopeSql()}`).all(...scopeArgs()) as any[];
+  const all = raw().prepare(`SELECT * FROM deals WHERE ${scopeSql()}`).all(...scopeArgs()) as any[];
+  const currencies=[...new Set<string>(all.map(d=>d.currency))].sort(),selected=currency&&currencies.includes(currency)?currency:currencies[0]??'USD';
+  const deals=all.filter(d=>d.currency===selected);
   const prob = (d: any) => d.probability ?? st.find((s) => s.key === d.stage)?.probability ?? 0;
   const open = deals.filter((d) => d.stage !== 'won' && d.stage !== 'lost');
   const byStage = st.map((s) => { const ds = deals.filter((d) => d.stage === s.key); return { stage: s.key, label: s.label, count: ds.length, value: ds.reduce((a, d) => a + d.value, 0), weighted: ds.reduce((a, d) => a + (d.value * prob(d)) / 100, 0) }; });
@@ -103,11 +105,13 @@ export function forecast() {
   return {
     open: open.length, pipeline: open.reduce((a, d) => a + d.value, 0), weighted: open.reduce((a, d) => a + (d.value * prob(d)) / 100, 0),
     won: won.reduce((a, d) => a + d.value, 0), winRate: won.length + lost.length ? Math.round((won.length / (won.length + lost.length)) * 100) : null,
-    byStage, currencies: [...new Set(deals.map((d) => d.currency))],
+    byStage, currencies,selected,
+    future:Array.from({length:6},(_,i)=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+i);const month=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;const scope=open.filter(x=>(x.expected_close??'').startsWith(month));return {month,value:scope.reduce((n,x)=>n+x.value,0),weighted:scope.reduce((n,x)=>n+x.value*prob(x)/100,0)};}),
     byMonth: months.map((m) => ({ month: m, won: won.filter((d) => (d.closed_at ?? '').startsWith(m)).reduce((a, d) => a + d.value, 0), expected: open.filter((d) => (d.expected_close ?? '').startsWith(m)).reduce((a, d) => a + (d.value * prob(d)) / 100, 0) })),
-    lostReasons: raw().prepare(`SELECT lost_reason reason, COUNT(*) n FROM deals WHERE stage = 'lost' AND lost_reason <> '' AND ${scopeSql()} GROUP BY lost_reason ORDER BY n DESC LIMIT 6`).all(...scopeArgs()),
+    lostReasons: raw().prepare(`SELECT lost_reason reason, COUNT(*) n FROM deals WHERE stage = 'lost' AND lost_reason <> '' AND currency=? AND ${scopeSql()} GROUP BY lost_reason ORDER BY n DESC LIMIT 6`).all(selected,...scopeArgs()),
   };
 }
+export function customerLifecycle(){return raw().prepare("SELECT status,COUNT(*) n FROM leads WHERE (?='' OR client=?) GROUP BY status ORDER BY status").all(...scopeArgs()) as {status:string;n:number}[];}
 
 // ── Tasks and reminders (QF-049, QF-054) ──
 export function listTasks(f: { leadId?: number; dealId?: number; open?: boolean; from?: string; to?: string } = {}) {
