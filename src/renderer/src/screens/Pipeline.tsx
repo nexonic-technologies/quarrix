@@ -163,14 +163,15 @@ function Tasks({ tick, openLead }: { tick: number; openLead: (id: number) => voi
 
 function Forecast({ tick }: { tick: number }) {
   const [f, setF] = useState<any>(null);
-  useEffect(() => { call('deals:forecast').then(setF); }, [tick]);
+  const [currency,setCurrency]=useState('');
+  useEffect(() => {let alive=true;call('deals:forecast',currency).then(x=>{if(alive)setF(x);}).catch(()=>{if(alive)setF(null);});return()=>{alive=false;};}, [tick,currency]);
   if (!f) return null;
-  const cur = f.currencies?.[0] ?? 'USD';
+  const cur = f.selected??f.currencies?.[0]??'USD';
   const max = Math.max(1, ...f.byMonth.map((m: any) => Math.max(m.won, m.expected)));
   return (
     <div className="bento">
       <div className="panel panel-pad">
-        <div className="panel-title"><h2>Pipeline</h2>{f.currencies.length > 1 && <span className="pill">Mixed currencies: totals are not converted</span>}</div>
+        <div className="panel-title"><h2>Pipeline</h2><label className="field"><span>Currency</span><select className="select" value={cur} onChange={e=>setCurrency(e.target.value)}>{(f.currencies.length?f.currencies:[cur]).map((c:string)=><option key={c} value={c}>{c}</option>)}</select></label></div>
         <div className="metrics-strip">
           <div><b>{f.open}</b><span>Open deals</span></div><div><b>{money(f.pipeline, cur)}</b><span>Open value</span></div>
           <div><b>{money(f.weighted, cur)}</b><span>Weighted by chance</span></div><div><b>{money(f.won, cur)}</b><span>Won</span></div>
@@ -178,6 +179,8 @@ function Forecast({ tick }: { tick: number }) {
         </div>
         <div className="pipeline">{f.byStage.map((s: any) => <div key={s.stage} className="stage"><span>{s.label}</span><div className="stage-bar"><i style={{ width: `${f.pipeline ? Math.min(100, (s.value / Math.max(f.pipeline, f.won, 1)) * 100) : 0}%` }} /></div><b>{s.count} · {money(s.value, cur)}</b></div>)}</div>
       </div>
+      <div className="panel panel-pad"><h2>Six-month revenue outlook</h2><p className="muted small">Expected value from recorded close dates and stage probabilities, not guaranteed revenue.</p>{(f.future??[]).map((m:any)=><div className="row" key={m.month}><span>{m.month}</span><b>{money(m.weighted,cur)}</b><span className="muted small">{money(m.value,cur)}</span></div>)}</div>
+      <div className="panel panel-pad"><h2>Customer lifecycle</h2>{(f.lifecycle??[]).map((r:any)=><div className="row" key={r.status}><span>{r.status}</span><b>{r.n}</b></div>)}</div>
       <div className="panel panel-pad">
         <div className="panel-title"><h2>By month</h2><span className="pill">Won and expected (weighted)</span></div>
         <div className="months">{f.byMonth.map((m: any) => (

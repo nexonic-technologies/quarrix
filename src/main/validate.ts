@@ -4,6 +4,7 @@ import * as db from './db';
 import { validDay } from '../shared/application-studio';
 import { validateProposal } from '../shared/proposals';
 import { validateOpportunity } from '../shared/public-opportunities';
+import {validatePortfolio} from '../shared/portfolio';
 
 export class InputError extends Error { constructor(m: string) { super(m); this.name = 'InputError'; } }
 const fail = (m: string): never => { throw new InputError(m); };
@@ -43,9 +44,13 @@ const ids = (v: unknown) => { if (!Array.isArray(v)) fail('Send a list of record
 type Check = (a: any[]) => any[];
 /** Checks per channel. Exported for tests. */
 export const CHECKS: Record<string, Check> = {
+  'portfolio:save':([p])=>[validatePortfolio(p)],
+  'portfolio:export':([p,k])=>[validatePortfolio(p),['cv','portfolio','application'].includes(k)?k:fail('Invalid document type.')],
+  'desktop:search':([q])=>[str(q,'Search',120)],
+  'global:fdic':([c])=>[str(c,'FDIC certificate',9)],
   'proposal:get': ([id]) => [int(id,'lead')],
   'proposal:save': ([id,p]) => [int(id,'lead'),validateProposal(p)],
-  'proposal:export': ([id,p,format]) => [int(id,'lead'),validateProposal(p), ['pdf','docx'].includes(format)?format:fail('Unknown document format.')],
+  'proposal:export': ([id,p,format,kind]) => [int(id,'lead'),validateProposal(p), ['pdf','docx'].includes(format)?format:fail('Unknown document format.'),kind==null||kind==='proposal'?'proposal':kind==='quotation'?'quotation':fail('Unknown document type.')],
   'market:document': ([group,country,category,format]) => [...CHECKS['market:report']([group,country,category]),['pdf','docx'].includes(format)?format:fail('Unknown document format.')],
   'public:save': ([p]) => [validateOpportunity(p)],
   'public:delete': ([id]) => [int(id,'opportunity')],

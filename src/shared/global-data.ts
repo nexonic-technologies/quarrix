@@ -1,4 +1,9 @@
 export const REGIONAL_SOURCES = [
+  {region:'AU',kind:'registry',name:'Australian Business Register (ABN Lookup)',url:'https://abr.business.gov.au/'},
+  {region:'NZ',kind:'registry',name:'New Zealand Companies Register',url:'https://companies-register.companiesoffice.govt.nz/'},
+  {region:'AU',kind:'job',name:'Workforce Australia',url:'https://www.workforceaustralia.gov.au/individuals/jobs/'},
+  {region:'AU',kind:'salary',name:'ABS employee earnings',url:'https://www.abs.gov.au/statistics/labour/earnings-and-working-conditions/employee-earnings'},
+  {region:'US',kind:'registry',name:'FDIC BankFind Suite',url:'https://banks.data.fdic.gov/bankfind-suite/bankfind/'},
   {region:'NO',kind:'registry',name:'Brønnøysund Register Centre',url:'https://www.brreg.no/en/'},
   {region:'FR',kind:'registry',name:'Annuaire des Entreprises',url:'https://annuaire-entreprises.data.gouv.fr/'},
   {region:'US',kind:'job',name:'Jobs NYC',url:'https://cityjobs.nyc.gov/'},
@@ -22,6 +27,13 @@ export const REGIONAL_SOURCES = [
 ] as const;
 export type RegistryRecord={id:string;name:string;country:'NO'|'FR';status:string;source:string};
 export type PublicVacancy={id:string;title:string;agency:string;posted:string};
+export type BankRecord={cert:string;name:string;city:string;state:string;active:boolean|null};
+export function parseBankRecord(value:unknown,cert:string):BankRecord{
+ const rows=(value as any)?.data;if(!Array.isArray(rows))throw new Error('Unexpected FDIC response.');
+ const r=rows.map((x:any)=>x?.data).find((x:any)=>String(x?.CERT)===cert&&typeof x?.NAME==='string'&&x.NAME.trim());
+ if(!r)throw new Error('No matching FDIC registration returned.');
+ return {cert,name:r.NAME.slice(0,250),city:typeof r.CITY==='string'?r.CITY.slice(0,120):'',state:typeof r.STALP==='string'?r.STALP.slice(0,20):'',active:[1,'1',true].includes(r.ACTIVE)?true:[0,'0',false].includes(r.ACTIVE)?false:null};
+}
 export type RecentRegistration={id:string;name:string;registered:string};
 export function parseRecentRegistrations(data:unknown,from:string,to:string):RecentRegistration[]{
  const rows=(data as any)?._embedded?.enheter;

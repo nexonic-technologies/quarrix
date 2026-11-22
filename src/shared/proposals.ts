@@ -24,6 +24,10 @@ export function proposalText(p: Proposal, customer: string): string {
   const money = (n: number) => `${p.currency} ${(n / 100).toFixed(2)}`;
   return [p.title || 'Business proposal', `Prepared for: ${customer}`, `Prepared by: ${p.provider || '—'}`, `Status: ${p.status}`, ...(p.validUntil?[`Valid until: ${p.validUntil}`]:[]), '', 'SCOPE', p.scope || '—', '', 'DELIVERABLES', p.deliverables || '—', '', 'QUOTATION', ...p.items.map(i => `${i.description || 'Item'} · ${i.quantity} × ${money(i.unitMinor)} = ${money(i.quantity * i.unitMinor)}`), ...(p.discountBps?[`Subtotal: ${money(proposalSubtotal(p))}`,`Discount: ${(p.discountBps/100).toFixed(2)}%`]:[]), `Total: ${money(proposalTotal(p))}`, '', 'TERMS', p.terms || '—', '', 'Review and confirm all scope, pricing and terms before sending.'].join('\n');
 }
+export function quotationText(p:Proposal,customer:string){
+ const money=(n:number)=>`${p.currency} ${(n/100).toFixed(2)}`;
+ return [p.title||'Quotation',`Prepared for: ${customer}`,`Prepared by: ${p.provider||'—'}`,`Status: ${p.status}`,...(p.validUntil?[`Valid until: ${p.validUntil}`]:[]),'','ITEMS',...p.items.map(i=>`${i.description||'Item'} · ${i.quantity} × ${money(i.unitMinor)} = ${money(i.quantity*i.unitMinor)}`),`Subtotal: ${money(proposalSubtotal(p))}`,`Discount: ${money(proposalSubtotal(p)-proposalTotal(p))}`,`Total: ${money(proposalTotal(p))}`,'','TERMS',p.terms||'—','Review all prices and terms before sending.'].join('\n');
+}
 export function documentHtml(text: string): string {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>@page{size:A4;margin:18mm}body{font:14px Arial,sans-serif;color:#18243a}h1{font-size:24px;color:#512da8;border-bottom:2px solid #7c3aed;padding-bottom:12px}p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;margin:7px 0}</style></head><body>${text.split('\n').map((s,i)=>i===0?`<h1>${esc(s)}</h1>`:`<p>${esc(s)}</p>`).join('')}</body></html>`;

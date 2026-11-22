@@ -12,8 +12,9 @@ import { CareerSignals } from './screens/CareerSignals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
 import { OpportunityHome } from './screens/Verified';
+import {DesktopSearch} from './screens/DesktopSearch';
 import { setLang, t } from './i18n';
-import { CAREER, resolveScreen, type Screen } from '../../shared/navigation';
+import { CAREER, SCREENS, resolveScreen, type Screen } from '../../shared/navigation';
 const Leads=lazy(()=>import('./screens/Leads').then(m=>({default:m.Leads})));
 const Jobs=lazy(()=>import('./screens/Jobs').then(m=>({default:m.Jobs})));
 const Signals=lazy(()=>import('./screens/Signals').then(m=>({default:m.Signals})));
@@ -32,7 +33,12 @@ export function App() {
   const [me, setMe] = useState({ name: '', company: '' });
   const [ws, setWs] = useState<'both' | 'business' | 'career'>('both');
   const [onboard, setOnboard] = useState(false);
+  const [search,setSearch]=useState(false),[screenRevision,setScreenRevision]=useState(0);
+  const [favorites,setFavorites]=useState<Screen[]>(()=>{try{const a=JSON.parse(localStorage.getItem('quarrix.favorites')||'[]');return Array.isArray(a)?[...new Set<Screen>(a.filter(x=>SCREENS.includes(x)))].slice(0,8):[];}catch{return [];}});
+  const [showMetrics,setShowMetrics]=useState(()=>localStorage.getItem('quarrix.dashboard.metrics')!=='off');
   const [, setLangTick] = useState(0);
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(!onboard&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setSearch(x=>!x);}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);},[onboard]);
+  const closeSearch=()=>{setSearch(false);requestAnimationFrame(()=>document.getElementById('desktop-search-button')?.focus());};
 
   toast.push = (text, err) => {
     const id = ++toastId;
@@ -63,7 +69,7 @@ export function App() {
     leads: ['Leads', 'Everyone you have found or imported, in one place.'],
     autopilot: ['Autopilot', 'Find, check and email new businesses every day, on its own.'],
     jobradar: ['Job signals', 'New jobs that fit your CV, your alerts and the employers you follow, as soon as they appear.'],
-    jobs: ['Job search', 'LinkedIn, Indeed, Google Jobs, Rozee and remote boards, matched to your CV.'],
+    jobs: ['Job search', 'Find vacancies from authorized sources and match them to your CV.'],
     outreach: ['Outreach', 'Read, tweak and approve. Follow-ups stop when someone replies.'],
     files: ['Import and export', 'Bring in the lists you have, or take your leads anywhere.'],
     settings: ['Settings', 'Your details, mailbox, writing model and sources.'],
@@ -82,10 +88,11 @@ export function App() {
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
-      <a className="skip" href="#main" tabIndex={onboard?-1:0} onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      <a className="skip" href="#main" tabIndex={onboard||search?-1:0} onClick={e => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      {search&&!onboard&&<DesktopSearch nav={shown.map(([id,label])=>[id,t(label)])} workspace={ws} onClose={closeSearch} onGo={s=>{closeSearch();go(s);}} onLead={id=>{sessionStorage.setItem('quarrix.openLead',String(id));setScreenRevision(n=>n+1);go('leads');closeSearch();}} onJob={id=>{sessionStorage.setItem('quarrix.openJob',id);setScreenRevision(n=>n+1);go('jobs');closeSearch();}}/>}
       {onboard && <Onboarding onDone={(v) => { setOnboard(false); if (v) { setWs(v);setScreen(v==='career'?'jobs':'find'); } requestAnimationFrame(()=>document.getElementById('main')?.focus()); }} />}
       <div className="backdrop" aria-hidden><i /><i /><i /></div>
-      <aside className="side" inert={onboard}>
+      <aside className="side" inert={onboard||search}>
         <div className="brand"><Logo size={30} /> <span>Quarrix</span></div>
         <div className="ws-switch" role="group" aria-label="Workspace">
           {([['business', 'Business'], ['career', 'Career'], ['both', 'Both']] as const).map(([k, v]) => <button key={k} aria-pressed={ws === k} onClick={() => switchWs(k)}>{t(v)}</button>)}
@@ -114,16 +121,18 @@ export function App() {
           <span><b>{me.name || 'Your name'}</b><small>{me.company || 'Add your company'}</small></span>
         </button>
       </aside>
-      <main className="main" id="main" tabIndex={-1} inert={onboard}>
+      <main className="main" id="main" tabIndex={-1} inert={onboard||search}>
         <header className="topbar">
           <div className="grow">
             <RiseText as="h1" text={t(TITLES[screen][0])} />
             <p className="fade-in" key={screen}>{TITLES[screen][1]}</p>
           </div>
+          <div className="row"><button id="desktop-search-button" className="btn small" onClick={()=>setSearch(true)}>Universal search <kbd>{platform==='darwin'?'⌘':'Ctrl'}+K</kbd></button><button className="btn small" aria-pressed={favorites.includes(screen)} onClick={()=>{const next=favorites.includes(screen)?favorites.filter(x=>x!==screen):[...favorites,screen].slice(-8);setFavorites(next);localStorage.setItem('quarrix.favorites',JSON.stringify(next));}}>{favorites.includes(screen)?'Remove favorite':'Add favorite'}</button></div>
         </header>
-        <div className="screen" key={screen}>
+        {favorites.some(id=>shown.some(x=>x[0]===id))&&<div className="favorite-bar" aria-label="Favorites">{favorites.filter(id=>shown.some(x=>x[0]===id)).map(id=><button key={id} className="btn small" onClick={()=>go(id)}>{t(TITLES[id][0])}</button>)}</div>}
+        <div className="screen" key={screen+':'+screenRevision}>
           <ScreenGuard><Suspense fallback={<div className="page" role="status">Loading…</div>}>
-          {screen === 'dashboard' && <><div className="page opportunity-entry"><OpportunityHome onChoose={choose} workspace={ws} tick={tick} onLead={id=>{sessionStorage.setItem('quarrix.openLead',String(id));go('leads');}} onJob={id=>{sessionStorage.setItem('quarrix.openJob',id);go('jobs');}}/></div><Dashboard key={ws} workspace={ws} tick={tick} go={go} /></>}
+          {screen === 'dashboard' && <><div className="page opportunity-entry"><OpportunityHome onChoose={choose} workspace={ws} tick={tick} onLead={id=>{sessionStorage.setItem('quarrix.openLead',String(id));go('leads');}} onJob={id=>{sessionStorage.setItem('quarrix.openJob',id);go('jobs');}}/><label className="row"><input type="checkbox" checked={showMetrics} onChange={e=>{setShowMetrics(e.target.checked);localStorage.setItem('quarrix.dashboard.metrics',e.target.checked?'on':'off');}}/> Show dashboard analytics</label></div>{showMetrics&&<Dashboard key={ws} workspace={ws} tick={tick} go={go}/>}</>}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} />}
           {screen === 'find' && <Find tick={tick} go={go} />}

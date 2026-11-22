@@ -273,7 +273,13 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v3.0.0 ]; then
+            if [ "$TAG" = v3.5.0 ]; then
+              echo "## Quarrix 3.5 — Career, Business and Desktop Productivity"
+              echo
+              echo "- Official regional sources, offline CV/portfolio/application templates, separate quotes and currency-specific forecasting."
+              echo "- Universal search, favorites, dashboard preferences and verified backup recovery."
+              echo
+            elif [ "$TAG" = v3.0.0 ]; then
               echo "## Quarrix 3.0 — Universal Opportunity Platform"
               echo
               echo "- Recent public company registrations, scoped signals and deduplicated local observation trends."

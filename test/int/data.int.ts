@@ -2,11 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync,writeFileSync } from 'node:fs';
 import * as db from '../../src/main/db';
 import * as crm from '../../src/main/crm';
 import { load, save } from '../../src/main/settings';
-import { applyPendingRestore, makeBackup, prepareRestore } from '../../src/main/backup';
+import { applyPendingRestore, makeBackup, prepareRestore,inspectBackup,cancelPendingRestore } from '../../src/main/backup';
+import {encryptBackup} from '../../src/main/backupcrypto';
+import {migratePortfolio,getPortfolio,savePortfolio} from '../../src/main/portfolio';
+import {EMPTY_PORTFOLIO} from '../../src/shared/portfolio';
+import {desktopSearch} from '../../src/main/desktop';
 
 const dir = process.env.QUARRIX_TEST_DIR!;
 db.openDb(join(dir, 'quarrix.db'));
@@ -61,17 +65,30 @@ test('encrypted backup restores data and settings', async () => {
   const before = (db.raw().prepare('SELECT COUNT(*) n FROM leads').get() as { n: number }).n;
   const file = join(dir, 'b.qbak');
   await makeBackup(file, 'correct horse battery');
+  assert.equal(inspectBackup(file,'correct horse battery').leads,before);assert.equal(applyPendingRestore(),false);
   assert.ok(!readFileSync(file).includes(Buffer.from('Before Backup')), 'backup is encrypted');
   db.upsertLead({ name: 'After Backup', source: 'import', client: '' });
   save({ profile: { ...load().profile, name: 'Changed Later' } });
   await assert.rejects(async () => prepareRestore(file, 'wrong passphrase'), /Wrong passphrase/);
   assert.deepEqual(prepareRestore(file, 'correct horse battery'), { leads: before });
+  const bad=join(dir,'malformed.qbak');writeFileSync(bad,encryptBackup(Buffer.from([0,0,0,99]),'correct horse battery'));
+  assert.throws(()=>prepareRestore(bad,'correct horse battery'),/Invalid backup/);
+  cancelPendingRestore();assert.equal(applyPendingRestore(),false);
+  assert.deepEqual(prepareRestore(file,'correct horse battery'),{leads:before});
   db.raw().close();
   assert.equal(applyPendingRestore(), true);
   db.openDb(join(dir, 'quarrix.db'));
   assert.equal((db.raw().prepare('SELECT COUNT(*) n FROM leads').get() as { n: number }).n, before);
   assert.match(readFileSync(join(dir, 'settings.json'), 'utf8'), /Before Backup/);
   assert.ok(existsSync(dir) && (require('node:fs').readdirSync(dir) as string[]).some((f) => f.startsWith('quarrix-before-restore-')), 'safety copy kept');
+});
+test('portfolio persists and universal search stays in selected client; forecasts never mix currencies',()=>{
+ migratePortfolio();savePortfolio({...EMPTY_PORTFOLIO,name:'Local Portfolio',projects:'Actual project'});migratePortfolio();assert.equal(getPortfolio().projects,'Actual project');
+ const [a]=db.upsertLead({name:'Desktop match A',client:'Desktop A',source:'manual',source_ref:'desktop-a'}),[b]=db.upsertLead({name:'Desktop match B',client:'Desktop B',source:'manual',source_ref:'desktop-b'});
+ save({currentClient:'Desktop A'});assert.deepEqual(desktopSearch('Desktop match').leads.map(x=>x.id),[a]);
+ crm.saveDeal({title:'USD',lead_id:a,value:100,currency:'USD',stage:'won'});crm.saveDeal({title:'EUR',lead_id:a,value:200,currency:'EUR',stage:'won'});
+ assert.equal(crm.forecast('USD').won,100);assert.equal(crm.forecast('EUR').won,200);assert.equal(crm.customerLifecycle().reduce((sum,x)=>sum+x.n,0),1);
+ save({currentClient:''});db.deleteLeads([a,b]);
 });
 
 test('0.20 company table migrates to per-client companies', () => {

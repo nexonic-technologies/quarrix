@@ -1,5 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {BLS_SERIES,parseBls,secCompany,REGIONAL_SOURCES,parseNationalRegistry,parseNycJobs,parseRecentRegistrations} from '../src/shared/global-data';
+import {BLS_SERIES,parseBls,secCompany,REGIONAL_SOURCES,parseNationalRegistry,parseNycJobs,parseRecentRegistrations,parseBankRecord} from '../src/shared/global-data';
+test('FDIC record must match exact requested certificate and retain inactive state',()=>{const d={data:[{data:{CERT:3510,NAME:'Example Bank',CITY:'City',STALP:'CA',ACTIVE:0}}]};assert.equal(parseBankRecord(d,'3510').active,false);assert.throws(()=>parseBankRecord(d,'3511'));assert.equal(parseBankRecord({data:[{data:{CERT:3510,NAME:'Example Bank'}}]},'3510').active,null);});
 test('recent registration sample excludes out-of-range, closed and non-company records',()=>{
  const row={organisasjonsnummer:'123456789',navn:'Example AS',organisasjonsform:{kode:'AS'},registreringsdatoEnhetsregisteret:'2026-11-10'};
  assert.deepEqual(parseRecentRegistrations({_embedded:{enheter:[row,row,{...row,organisasjonsnummer:'123456780',konkurs:true},{...row,organisasjonsnummer:'123456781',registreringsdatoEnhetsregisteret:'2026-09-01'},{...row,organisasjonsnummer:'123456782',organisasjonsform:{kode:'ENK'}}]}},'2026-11-01','2026-11-22'),[{id:'123456789',name:'Example AS',registered:'2026-11-10'}]);

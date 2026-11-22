@@ -1,4 +1,13 @@
-# Final audit, v3.0.0 candidate
+# Final audit, v3.5.0 candidate
+
+## Combined v3.1–v3.5 milestone
+
+- Global discovery: [FDIC BankFind](https://api.fdic.gov/banks/docs/) lookup by certificate, public [Australian Business Register](https://abr.business.gov.au/), New Zealand Companies Register, Workforce Australia and ABS earnings links. Links open official sites; no unauthorized automated access.
+- Career portfolio: local SQLite record with explicit user-written facts, CV, portfolio and custom application template preview and Word export. No automatic sending.
+- Business workspace: quotation-only PDF, scoped customer status counts and six-month forecast based on recorded expected dates and probabilities, separated by currency; not guaranteed revenue.
+- Productivity: bounded local search with workspace-filtered business results, keyboard shortcut, favorite screens and optional dashboard analytics. Navigation and record actions remain local.
+- Recovery: backup verification without staging, malformed bundle validation before staging, explicit confirmation before restore, cancellable staged data, safety copy of existing database WAL. Existing credentials remain machine-bound.
+- Local typecheck, 114 unit tests, 81 integration tests, production build and dependency audit passed. Release verification includes separate keyboard/modal, portfolio and FDIC live checks; not yet run.
 
 ## v3.0.0 combined v2.8–v3.0
 
