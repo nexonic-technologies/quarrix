@@ -1,5 +1,9 @@
 # Final audit, v1.0.0
 
+## v1.1.0 Verified Intelligence candidate
+
+Two dashboard entry points select the matching workspace and open its search. Optional recommendations use up to 100 grade-ranked records in the selected client scope, and saved jobs with recorded match scores; no invented leads or automatic application/contact action. Lead evidence labels use the recorded website check and date, conflict flags, current mailbox status and check date. Changed addresses invalidate previous verification. Saved/search vacancies show contextual warnings, older/reposted states, and current-session corroboration after user-requested checks. A job warning or a registry name match is not a guarantee of employer authenticity. The [GLEIF public API](https://www.gleif.org/en/lei-data/gleif-api/) is queried only on request with legal name and ISO country code, capped at 20 response records; exact name and country candidates include legal and registration status. No match is not proof of nonexistence; many entities lack an LEI. Salary comparisons are median advertised annualized endpoints within the current result sample, grouped by currency, not official market wage benchmarks. Unit, SQLite, localization and desktop regressions added; release verification pending. Existing 17 external blockers remain.
+
 ## Post-1.0 desktop quality pass
 
 - Navigation validates stored routes and preserves the route when using the keyboard skip link. Career and business modes now show the relevant dashboard cards and navigation groups.

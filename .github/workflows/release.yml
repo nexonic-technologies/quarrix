@@ -273,7 +273,15 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v1.0.1 ]; then
+            if [ "$TAG" = v1.1.0 ]; then
+              echo "## Quarrix Verified Intelligence & Simplified Experience"
+              echo
+              echo "- Two primary entry points: Find customers and Find a job; existing advanced tools remain available."
+              echo "- Evidence and freshness labels, on-demand GLEIF legal-entity candidate lookup, and vacancy review warnings."
+              echo "- Local recommendations based on recorded fit and evidence; advertised annualized salary comparisons by currency."
+              echo "- Registry listings do not confirm contacts, websites or vacancies. Advertised salary samples are not market averages."
+              echo
+            elif [ "$TAG" = v1.0.1 ]; then
               echo "## Quarrix 1.0.1 — Desktop polish and reliability"
               echo
               echo "- Refined typography, navigation, responsive layouts and workspace-specific dashboards."

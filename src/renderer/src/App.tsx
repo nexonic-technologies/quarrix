@@ -14,6 +14,7 @@ import { Signals } from './screens/Signals';
 import { CareerSignals } from './screens/CareerSignals';
 import { Pipeline } from './screens/Pipeline';
 import { Onboarding } from './screens/Onboarding';
+import { OpportunityHome } from './screens/Verified';
 import { setLang, t } from './i18n';
 import { CAREER, resolveScreen, type Screen } from '../../shared/navigation';
 
@@ -77,6 +78,7 @@ export function App() {
   // Workspaces (QF-116): sales and job-hunting screens can be shown apart.
   const shown = nav.filter(([id]) => ws === 'both' || ['dashboard', 'settings'].includes(id) || (ws === 'career' ? CAREER.includes(id) : !CAREER.includes(id)));
   const switchWs = async (v: typeof ws) => { try { await call('settings:save', { workspace: v }); setWs(v); } catch (e) { toast.push(String(e), true); } };
+  const choose = async (v: typeof ws) => { try { await call('settings:save', { workspace:v }); setWs(v); setScreen(v==='career'?'jobs':'find'); } catch(e) { toast.push(String(e),true); } };
 
   return (
     <div className={`shell ${platform === 'darwin' ? 'mac' : ''}`}>
@@ -121,7 +123,7 @@ export function App() {
         </header>
         <div className="screen" key={screen}>
           <ScreenGuard>
-          {screen === 'dashboard' && <Dashboard key={ws} workspace={ws} tick={tick} go={go} />}
+          {screen === 'dashboard' && <><div className="page opportunity-entry"><OpportunityHome onChoose={choose} workspace={ws} tick={tick} onLead={id=>{sessionStorage.setItem('quarrix.openLead',String(id));go('leads');}} onJob={id=>{sessionStorage.setItem('quarrix.openJob',id);go('jobs');}}/></div><Dashboard key={ws} workspace={ws} tick={tick} go={go} /></>}
           {screen === 'pipeline' && <Pipeline tick={tick} openLead={(id) => { sessionStorage.setItem('quarrix.openLead', String(id)); go('leads'); }} />}
           {screen === 'signals' && <Signals tick={tick} go={go} />}
           {screen === 'find' && <Find tick={tick} go={go} />}

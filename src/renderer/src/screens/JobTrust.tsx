@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { ShieldCheck, AlertTriangle } from 'lucide-react';
 import { call } from '../api';
 import { warningSignals, webUrl, type TrustJob, type TrustReport } from '../../../shared/job-trust';
+import { RegistryCheck } from './Verified';
 
-export function JobTrust({ job }: { job: TrustJob }) {
+export function JobTrust({ job, onReport }: { job: TrustJob; onReport?: (report: TrustReport)=>void }) {
   const [site, setSite] = useState('');
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<TrustReport | null>(null);
@@ -13,7 +14,7 @@ export function JobTrust({ job }: { job: TrustJob }) {
   return <section className="panel panel-pad" data-job-trust style={{ marginBottom: 12 }}>
     <div className="row" style={{ alignItems: 'center' }}><ShieldCheck size={18} /><b>Job Trust Score</b></div>
     <p className="muted small">Evidence, not a guarantee of legitimacy. An unavailable page is not proof of a scam.</p>
-    <form onSubmit={async e => { e.preventDefault(); setBusy(true); setFailed(false); setReport(null); try { const r = await call<TrustReport>('jobs:trust', { url: job.url, title: job.title, company: job.company, snippet: job.snippet }, site.trim()); if (!r || typeof r.score !== 'number') throw new Error(); setReport(r); } catch { setFailed(true); } finally { setBusy(false); } }}>
+    <form onSubmit={async e => { e.preventDefault(); setBusy(true); setFailed(false); setReport(null); try { const r = await call<TrustReport>('jobs:trust', { url: job.url, title: job.title, company: job.company, snippet: job.snippet }, site.trim()); if (!r || typeof r.score !== 'number') throw new Error(); setReport(r); onReport?.(r); } catch { setFailed(true); } finally { setBusy(false); } }}>
       <label>Employer careers page (optional)<input className="input" value={site} maxLength={2000} disabled={busy} placeholder="https://example.com/careers" onChange={e => { setSite(e.target.value); setReport(null); setFailed(false); }} /></label>
       <p className="muted small">Enter a careers page you independently know belongs to the employer. We check for a link to this exact vacancy.</p>
       <button className="btn primary" type="submit" disabled={busy || !valid}>{busy ? 'Checking…' : 'Check job and employer'}</button>
@@ -37,5 +38,6 @@ export function JobTrust({ job }: { job: TrustJob }) {
     </div>}
     {warnings.length > 0 && <div style={{ marginTop: 10 }} role="status"><div className="row"><AlertTriangle size={16} /><b>Potential warning signs</b></div>{warnings.map(w => <div key={w.kind} style={{ marginTop: 6 }}><b className="small">{w.kind === 'fee' ? 'Possible recruitment fee request' : w.kind === 'payment' ? 'Possible unusual payment request' : 'Possible sensitive information request'}</b><p className="muted small" translate="no">{w.excerpt}</p></div>)}</div>}
     <p className="muted small" style={{ marginBottom: 0 }}>Do not pay upfront recruitment fees or share banking credentials. Confirm the role using an independently trusted employer channel.</p>
+    <RegistryCheck key={job.company} name={job.company}/>
   </section>;
 }

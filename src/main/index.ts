@@ -18,6 +18,8 @@ import { migrateProposals, getProposal, saveProposal, documentPdf } from './prop
 import { proposalText } from '../shared/proposals';
 import { migratePublicOpportunities, listPublicOpportunities, savePublicOpportunity, deletePublicOpportunity, searchTed } from './public-opportunities';
 import { checkJobTrust } from './job-trust';
+import { registryLookup } from './registry';
+import { recommendLeads, recommendJobs, leadQuality } from '../shared/verified';
 import * as automation from './automation';
 import * as localapi from './localapi';
 import * as cli from './cli';
@@ -318,6 +320,12 @@ function registerIpc() {
   handle('employers:remove', (id: number) => jobstore.removeEmployer(Number(id)));
   handle('jobs:check', (url: string) => jobstore.checkPosting(String(url ?? '')));
   handle('jobs:trust', (job, employerUrl) => checkJobTrust(job, employerUrl));
+  handle('entity:registry', (name, country) => registryLookup(name, country));
+  handle('opportunities:overview', () => {
+    const {rows,total}=db.queryLeads(scope.scopedQuery({sort:'grade',limit:100}));
+    const jobs=db.savedJobs();
+    return {sample:rows.length,total,review:rows.filter(l=>leadQuality(l)==='review').length,stale:rows.filter(l=>leadQuality(l)==='check').length,leads:recommendLeads(rows).map(l=>({id:l.id,name:l.name,city:l.city,grade:l.grade})),jobs:recommendJobs(jobs as {id:string;title:string;company:string;match?:number;status?:string}[]).map(j=>({id:j.id,title:j.title,company:j.company,match:j.match}))};
+  });
   handle('alerts:list', () => jobstore.listAlerts());
   handle('alerts:save', (a) => jobstore.saveAlert(a));
   handle('alerts:delete', (id: number) => jobstore.deleteAlert(Number(id)));

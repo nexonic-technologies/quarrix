@@ -194,6 +194,7 @@ export function upsertLead(l: Partial<Lead>): [number, boolean] {
 }
 
 export function updateLead(id: number, patch: Record<string, unknown>) {
+  if (typeof patch.email === 'string' && patch.email !== getLead(id)?.email && !Object.hasOwn(patch,'email_status')) patch = {...patch,email_status:'',email_checked_at:null};
   const cols = Object.keys(patch).filter((k) => LEAD_COLS.includes(k));
   if (!cols.length) return;
   db.prepare(`UPDATE leads SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...cols.map((c) => patch[c] as never), now(), id);
