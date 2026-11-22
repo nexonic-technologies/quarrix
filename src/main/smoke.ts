@@ -84,6 +84,10 @@ export async function runSmoke(win: BrowserWindow) {
     }
     return 'skip link preserves route and dashboard fits minimum window';
   });
+  await check('two primary opportunity entry points open the intended workspace', async () => {
+    const result=await js<boolean>(`(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));const dashboard=()=>document.querySelector('nav.nav button')?.click();dashboard();await wait(400);const b=document.querySelectorAll('[data-opportunity-home] button.opportunity-option');if(b.length!==2)return false;b[1].click();await wait(600);if(location.hash!=='#jobs')return false;dashboard();await wait(400);document.querySelector('[data-opportunity-home] button.opportunity-option')?.click();await wait(600);if(location.hash!=='#find')return false;document.querySelector('.ws-switch button:last-child')?.click();await wait(400);return true;})()`);
+    if(!result)throw new Error('Opportunity mode navigation failed');return 'business and career entry points open correct screens';
+  });
   await check('offline career exploration works without an uploaded CV', async () => {
     const found = await js<boolean>(`(async () => {
       [...document.querySelectorAll('nav.nav button')].find(b => b.textContent.trim().startsWith('Job search'))?.click();

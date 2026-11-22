@@ -25,3 +25,7 @@ test('editing a watchlist URL cannot duplicate a listing, including in all-clien
  save({currentClient:''}); assert.throws(()=>savePublicOpportunity({...b,url:a.url}),/already saved/); assert.equal(listPublicOpportunities().find(x=>x.id===b.id)?.url,b.url);
  deletePublicOpportunity(a.id!);deletePublicOpportunity(b.id!);
 });
+test('editing an email invalidates the previous mailbox verification',()=>{
+ const [id]=db.upsertLead({name:'Email verification fixture',source:'manual',source_ref:'verification-edit',email:'old@example.com',email_status:'verified',email_checked_at:'2026-11-21T00:00:00Z'});
+ db.updateLead(id,{email:'new@example.com'});assert.equal(db.getLead(id)?.email_status,'');assert.equal(db.getLead(id)?.email_checked_at,null);db.deleteLeads([id]);
+});

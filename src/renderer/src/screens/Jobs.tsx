@@ -14,6 +14,8 @@ import { JobTrust } from './JobTrust';
 import { ApplicationOverview, ApplicationStudio } from './ApplicationStudio';
 import { PublicOpportunities } from './PublicOpportunities';
 import type { StudioNotes } from '../../../shared/application-studio';
+import type { TrustReport } from '../../../shared/job-trust';
+import { jobQuality, salarySamples } from '../../../shared/verified';
 const TITLE_OPTIONS = JOB_TITLES.map((t) => ({ value: t.name, label: t.name, hint: t.group }));
 
 type Cv = { file: string; text?: string; analysedWith: string; profile: { name: string; title: string; years: number; skills: string[]; roles: string[]; level: string; locations: string[]; summary: string } };
@@ -88,9 +90,10 @@ export function Jobs() {
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => { let alive = true; if (!busy) call<any[]>('jobs:recent').then((x) => { if (alive) setRecent(x ?? []); }).catch(e => toast.push(String(e), true)); return () => { alive = false; }; }, [busy]);
-  const [tab, setTab] = useState<'results' | 'saved'>('results');
+  const [tab, setTab] = useState<'results' | 'saved'>(()=>sessionStorage.getItem('quarrix.openJob')?'saved':'results');
   const [saved, setSaved] = useState<Job[]>([]);
-  const [open, setOpen] = useState<string | null>(null);
+  const [trust,setTrust]=useState<Record<string,TrustReport>>({});
+  const [open, setOpen] = useState<string | null>(()=>{const id=sessionStorage.getItem('quarrix.openJob');sessionStorage.removeItem('quarrix.openJob');return id;});
   const [cv, setCv] = useState<Cv | null>(null);
   const [publicOpen,setPublicOpen]=useState(false);
   const [ai, setAi] = useState('none');
@@ -161,6 +164,7 @@ export function Jobs() {
     setSaved(await call('jobs:saved'));
   };
   const list = tab === 'saved' ? saved : jobs;
+  const samples=useMemo(()=>salarySamples(jobs),[jobs]);
   const remoteCount = useMemo(() => jobs.filter((j) => j.workplace === 'remote').length, [jobs]);
 
   return (
@@ -231,6 +235,7 @@ export function Jobs() {
       {tab === 'results' && <CareerExplorer profile={cv?.profile} busy={busy} onSearch={title => { setKw(title); void run([title]); }} />}
       {tab === 'results' && (ranking || (cv && jobs.some((j) => j.match != null))) && <p className="muted small rank-note"><Sparkles size={12} /> {ranking ? 'Ranking jobs against your CV…' : `Ranked against your CV ${ai === 'none' ? 'by matching skills (add a model for smarter ranking)' : `with ${ai}`}.`}</p>}
       {tab === 'results' && jobs.length > 0 && <p className="muted small" style={{ margin: '0 0 8px' }}>{jobs.length} jobs, {remoteCount} remote{errors.length ? ` · not available right now: ${errors.map((e) => e.split(':')[0]).join(', ')}` : ''}</p>}
+      {tab==='results'&&samples.length>0&&<details className="panel panel-pad salary-sample"><summary>Salary comparison</summary><p className="muted small">Annualized advertised ranges in these results only. Not market averages; missing salaries are excluded and currencies stay separate.</p>{samples.map(s=><p key={s.currency} translate="no">{s.currency} {Math.round(s.min).toLocaleString()}–{Math.round(s.max).toLocaleString()} · {s.count}/{jobs.length}</p>)}</details>}
 
       {tab === 'results' && boards.length > 0 && (
         <div className="boards" aria-live="polite">
@@ -261,6 +266,7 @@ export function Jobs() {
                 <div className="job-title">{j.title}{j.match != null && <span className={`match ${j.match >= 70 ? 'hi' : j.match >= 45 ? 'mid' : ''}`}>{j.match}% match</span>}</div>
                 <div className="muted small">{j.company} · {j.location || 'Location not given'}</div>
                 <div className="row job-tags">
+                  <span className={`tag ${['closed','review','check'].includes(jobQuality(j,trust[j.id]))?'warn':''}`}>{({closed:'Listing appears closed',review:'Review before applying',check:'Needs a fresh check',corroborated:'Corroborated listing',unchecked:'Not checked'})[jobQuality(j,trust[j.id])]}</span>
                   {j.workplace && <span className="tag">{j.workplace === 'onsite' ? 'On-site' : j.workplace[0].toUpperCase() + j.workplace.slice(1)}</span>}
                   {j.type && <span className="tag">{j.type}</span>}
                   {j.level && <span className="tag">{j.level}</span>}
@@ -290,7 +296,7 @@ export function Jobs() {
           ))}
         </div>
       )}
-      {open && (() => { const j = saved.find((x) => x.id === open) ?? list.find((x) => x.id === open); return j ? <JobDetail job={j} cv={cv} onStudioUpdated={async () => setSaved(await call('jobs:saved'))} onClose={() => setOpen(null)} onApply={() => apply(j)} onLetter={() => makeDoc(j, 'letter')} onTailor={() => makeDoc(j, 'cv')} saved={isSaved(j.id)} onSave={() => toggleSave(j)} /> : null; })()}
+      {open && (() => { const j = saved.find((x) => x.id === open) ?? list.find((x) => x.id === open); return j ? <JobDetail key={j.id} job={j} cv={cv} onReport={r=>setTrust(old=>({...old,[j.id]:r}))} onStudioUpdated={async () => setSaved(await call('jobs:saved'))} onClose={() => setOpen(null)} onApply={() => apply(j)} onLetter={() => makeDoc(j, 'letter')} onTailor={() => makeDoc(j, 'cv')} saved={isSaved(j.id)} onSave={() => toggleSave(j)} /> : null; })()}
       {doc && (
         <>
           <div className="scrim" onClick={() => !doc.busy && setDoc(null)} />
@@ -311,7 +317,7 @@ export function Jobs() {
   );
 }
 
-function JobDetail({ job, cv, onStudioUpdated, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job & { studio?: StudioNotes }; cv: Cv | null; onStudioUpdated: () => Promise<void>; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
+function JobDetail({ job, cv, onReport, onStudioUpdated, onClose, onApply, onLetter, onTailor, saved, onSave }: { job: Job & { studio?: StudioNotes }; cv: Cv | null; onReport:(report:TrustReport)=>void; onStudioUpdated: () => Promise<void>; onClose: () => void; onApply: () => void; onLetter: () => void; onTailor: () => void; saved: boolean; onSave: () => void }) {
   const [d, setD] = useState<{ text: string; seniority: string; employment: string; func: string; industries: string } | null>(null);
   const [err, setErr] = useState(false);
   useEffect(() => { let alive = true; setD(null); setErr(false); call('jobs:detail', job).then(x => { if (alive) setD(x); }).catch(() => { if (alive) setErr(true); }); return () => { alive = false; }; }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -343,7 +349,7 @@ function JobDetail({ job, cv, onStudioUpdated, onClose, onApply, onLetter, onTai
           </div>
         </header>
         <div className="body">
-          <JobTrust key={job.id} job={job} />
+          <JobTrust key={job.id} job={job} onReport={onReport} />
           <ApplicationStudio key={`${job.id}:${saved}`} job={job} cv={cv} posting={d?.text || job.snippet} saved={saved} onSave={onSave} onUpdated={onStudioUpdated} />
           <dl className="kv">{facts.filter(([, v]) => v).flatMap(([k, v]) => [<dt key={k}>{k}</dt>, <dd key={k + 'v'}>{v}</dd>])}</dl>
           <div className="row">

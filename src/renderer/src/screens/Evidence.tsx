@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { call, json, type Lead } from '../api';
 import { toast } from '../App';
+import { RegistryCheck } from './Verified';
+import { leadQuality } from '../../../shared/verified';
 import { ExternalLink, ShieldCheck, Plus, Trash2, UserRound, MailCheck, Search as SearchIcon } from 'lucide-react';
 
 export const EMAIL_TEXT: Record<string, string> = {
@@ -38,6 +40,8 @@ export function EvidenceCard({ lead: l, onChange }: { lead: Lead; onChange: () =
     <div className="panel panel-pad evidence">
       {site.image && /^https:/.test(site.image) && <img className="biz-img" src={site.image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />}
       <div className="panel-title"><h2><ShieldCheck size={16} /> Evidence</h2>{l.grade && <span className={`grade g${l.grade}`}>{l.grade}</span>}</div>
+      <p className="small"><b>{({review:'Review evidence',check:'Needs a fresh check',mailbox:'Mailbox recently confirmed',recent:'Recently checked'})[leadQuality(l)]}</b></p>
+      <RegistryCheck key={`${l.id}:${l.name}:${l.country}`} name={l.name} country={l.country}/>
       {r.summary && <p className="small" style={{ margin: '0 0 6px' }}><b>{r.summary}.</b> Match {l.relevance ?? '?'}/100 · evidence {l.evidence ?? '?'}/100</p>}
       {(r.why?.length > 0 || r.against?.length > 0) && <ul className="reasons">{(r.why ?? []).map((w: string) => <li key={w} className="plus">{w}</li>)}{(r.against ?? []).map((w: string) => <li key={w} className="minus">{w}</li>)}</ul>}
 

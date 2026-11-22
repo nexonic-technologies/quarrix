@@ -8,6 +8,8 @@ A local-first desktop workspace for job discovery, career exploration and busine
 
 ## What it does
 
+- **Find customers or find a job.** Two dashboard entry points take you directly to the relevant search. Optional recommendations use recorded match and evidence scores; review freshness and conflicts before acting. Look up legal-entity name and country candidates in the public GLEIF register, and compare advertised salary ranges by currency. Registry matches do not verify contacts or vacancies; advertised salaries are not market averages.
+
 - **Explore careers.** Compare your skills and target role against 1,016 occupations, understand matching evidence, explore skills to develop and search for real vacancies, with no mandatory account or model.
 - **Review job trust.** Check listing evidence, employer careers-page corroboration and contextual recruitment warning signs before applying. An evidence score is not a guarantee of legitimacy.
 - **Manage applications.** Review extracted resume text, practice interview prompts, keep drafts and plan deadlines, interviews, follow-ups and next actions locally.

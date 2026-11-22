@@ -1,5 +1,6 @@
 import { LeadMap } from './FindTools';
 import { EvidenceCard, EMAIL_TEXT } from './Evidence';
+import { leadQuality } from '../../../shared/verified';
 import { ClientPicker, Companies, Duplicates, LeadCrmCard, SavedViews } from './CrmParts';
 import { ExportWizard } from './ExportWizard';
 import { MarketIntelligence } from './MarketIntelligence';
@@ -152,7 +153,7 @@ export function Leads({ tick, go }: { tick: number; go: (s: Screen) => void }) {
                   <td className="clip">{l.email ? <span className={`mail ${l.email_status}`} title={EMAIL_TEXT[l.email_status ?? ''] ?? ''}>{l.email}</span> : <span className="muted">{l.website && !l.enriched_at ? 'checking…' : 'none'}</span>}</td>
                   <td>{l.domain ? <span className="domain">{l.domain}</span> : <span className="muted">none</span>}</td>
                   <td>{l.rating ? <span className="rating"><Star size={12} fill="currentColor" />{l.rating}<span className="muted">({l.reviews ?? 0})</span></span> : <span className="muted">none</span>}</td>
-                  <td>{l.grade ? <span className={`grade g${l.grade}`} title={`${json<any>(l.reasons, {}).summary ?? ''} · relevance ${l.relevance ?? '?'}, evidence ${l.evidence ?? '?'}`}>{l.grade}</span> : <span className="muted">–</span>}</td>
+                  <td>{l.grade ? <span className={`grade g${l.grade}`} title={`${json<any>(l.reasons, {}).summary ?? ''} · relevance ${l.relevance ?? '?'}, evidence ${l.evidence ?? '?'}`}>{l.grade}</span> : <span className="muted">–</span>}<span className="sub">{({review:'Review evidence',check:'Needs a fresh check',mailbox:'Mailbox recently confirmed',recent:'Recently checked'})[leadQuality(l)]}</span></td>
                   <td>{l.fit != null ? <span className={`fit ${l.fit >= 75 ? 'hi' : l.fit >= 55 ? 'mid' : ''}`} title={l.needs || ''}>{l.fit}{l.needs ? <em>{l.needs.split(',')[0]}</em> : null}</span> : <span className="muted">{l.enriched_at ? 'n/a' : 'checking'}</span>}</td>
                   <td><span className={`status ${l.status}`}>{STATUS_LABEL[l.status] ?? l.status}</span></td>
                 </tr>
