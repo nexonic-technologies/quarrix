@@ -1,5 +1,11 @@
 # Final audit, v0.30.0
 
+## v1.0.0 production candidate (includes v0.31.0 and v0.32.0)
+
+- Proposal studio: editable templates, itemized quotations using integer minor-unit arithmetic, manually recorded proposal status, per-business persistence, and offline PDF/Word export. Market Intelligence also exports PDF/Word summaries with the configured business name and sample limitations.
+- Public opportunities: official government job and procurement portal directory for Pakistan, the US, the UK and EU procurement. The documented [TED search API](https://docs.ted.europa.eu/api/latest/search.html) returns recent standard contract notices, with notice identifiers and provider-supplied deadlines. Other portal entries are browser links, not claimed live APIs. Users manually confirm eligibility and deadlines in a scoped local watchlist. No automatic submission or background scraping.
+- Production checks: existing CI, localization, migration and data-integrity tests, dependency audit, and installed-app smoke tests extended for proposal PDF rendering and public opportunity storage. Release verification pending. The 17 previously identified external blockers remain; signing still requires owner certificates and no partner-only API has been bypassed.
+
 ## v0.30.0 (released)
 
 Market Intelligence uses the existing local business database, with country and category filters and grouping by category, country, city, source or linked company. It distinguishes locations from linked companies, reports unlinked records and coverage, averages only recorded fit scores, and counts checks from the last 90 days. The group view and CSV show the largest 100 groups; totals cover all matching records. These are sample summaries, not market size, market share or forecast estimates. No network requests or individual contact details are included. [CI](https://github.com/nexonic-technologies/quarrix/actions/runs/44962900415) passed. [Release verification](https://github.com/nexonic-technologies/quarrix/releases/tag/v0.30.0) confirms 126/126 installed-app checks across six configurations. Live results: 19/20 returned real data, one temporary Overpass outage, no provider failures. The 17 external blockers remain unchanged.

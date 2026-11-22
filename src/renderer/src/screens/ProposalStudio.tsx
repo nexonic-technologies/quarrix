@@ -1,0 +1,20 @@
+import { useEffect,useState } from 'react';
+import { call } from '../api';
+import { toast } from '../App';
+import { proposalTotal,PROPOSAL_TEMPLATES,type Proposal } from '../../../shared/proposals';
+export function ProposalStudio({id}:{id:number}) {
+ const [p,setP]=useState<Proposal|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(false);
+ useEffect(()=>{let alive=true;call<Proposal>('proposal:get',id).then(x=>{if(alive)setP(x);}).catch(()=>{if(alive)setError(true);});return()=>{alive=false;}},[id]);
+ const set=(k:keyof Proposal,v:unknown)=>setP(x=>x?{...x,[k]:v}:x);
+ return <details className="panel panel-pad" data-proposal-studio><summary><b>Proposal studio</b></summary>{error?<p>Proposal unavailable.</p>:!p?<p>Loading…</p>:<>
+  <p className="muted small">Draft quotations for review. Nothing is sent automatically.</p>
+  <label>Proposal template<select className="select" value="" onChange={e=>{const t=PROPOSAL_TEMPLATES[e.target.value as keyof typeof PROPOSAL_TEMPLATES];if(t&&window.confirm('Replace proposal text with template?'))setP({...p,...t});}}><option value="">Choose template</option><option value="consulting">Consulting</option><option value="implementation">Implementation</option><option value="support">Ongoing support</option></select></label>
+  <label>Proposal title<input className="input" value={p.title} maxLength={200} onChange={e=>set('title',e.target.value)}/></label>
+  <label>Prepared by<input className="input" value={p.provider} maxLength={200} onChange={e=>set('provider',e.target.value)}/></label>
+  <div className="row" style={{flexWrap:'wrap'}}><label>Status<select className="select" value={p.status} onChange={e=>set('status',e.target.value)}>{['Draft','Sent','Accepted','Declined'].map(x=><option key={x}>{x}</option>)}</select></label><label>Currency<select className="select" value={p.currency} onChange={e=>set('currency',e.target.value)}>{['USD','PKR','EUR','GBP','CAD','AUD','AED','SAR'].map(x=><option key={x}>{x}</option>)}</select></label></div>
+  <label>Scope<textarea className="input" rows={3} maxLength={10000} value={p.scope} onChange={e=>set('scope',e.target.value)}/></label><label>Deliverables<textarea className="input" rows={3} maxLength={10000} value={p.deliverables} onChange={e=>set('deliverables',e.target.value)}/></label>
+  <b>Quotation items</b>{p.items.map((item,i)=><div key={i} className="row" style={{flexWrap:'wrap',marginTop:6}}><label className="grow">Description<input className="input" maxLength={300} value={item.description} onChange={e=>set('items',p.items.map((x,j)=>j===i?{...x,description:e.target.value}:x))}/></label><label>Quantity<input className="input" type="number" min={1} max={10000} value={item.quantity} onChange={e=>set('items',p.items.map((x,j)=>j===i?{...x,quantity:Number(e.target.value)}:x))}/></label><label>Unit price<input className="input" type="number" min={0} step="0.01" value={item.unitMinor/100} onChange={e=>set('items',p.items.map((x,j)=>j===i?{...x,unitMinor:Math.round(Number(e.target.value)*100)}:x))}/></label><button className="btn small ghost" onClick={()=>set('items',p.items.filter((_,j)=>j!==i))}>Remove</button></div>)}
+  <button className="btn small" disabled={p.items.length>=30} onClick={()=>set('items',[...p.items,{description:'',quantity:1,unitMinor:0}])}>Add item</button><p><b>Total:</b> {p.currency} {(proposalTotal(p)/100).toFixed(2)}</p><label>Terms<textarea className="input" rows={3} maxLength={10000} value={p.terms} onChange={e=>set('terms',e.target.value)}/></label>
+  <div className="row" style={{flexWrap:'wrap'}}><button className="btn primary" disabled={busy} onClick={async()=>{setBusy(true);try{await call('proposal:save',id,p);toast.push('Saved');}catch(e:any){toast.push(e.message,true);}finally{setBusy(false)}}}>Save</button>{(['pdf','docx'] as const).map(f=><button key={f} className="btn" disabled={busy} onClick={async()=>{setBusy(true);try{if(await call('proposal:export',id,p,f))toast.push('Saved');}catch(e:any){toast.push(e.message,true);}finally{setBusy(false)}}}>{f==='pdf'?'Export PDF':'Save as Word'}</button>)}</div>
+ </>}</details>
+}
