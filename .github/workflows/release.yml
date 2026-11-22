@@ -273,7 +273,13 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v2.1.0 ]; then
+            if [ "$TAG" = v2.2.0 ]; then
+              echo "## Quarrix 2.2 — Free-First Intelligence"
+              echo
+              echo "- Keyless discovery and local tools remain available; optional keyed discovery, verification and remote writing require explicit opt-in. Existing keys are preserved."
+              echo "- Positive daily request ceilings for named metered services; zero pauses them. Backup writing providers require separate consent. Provider billing terms still apply."
+              echo
+            elif [ "$TAG" = v2.1.0 ]; then
               echo "## Quarrix 2.1 — User experience and data reliability"
               echo
               echo "- Guided onboarding progress, accessible keyboard navigation and polished interactive discovery cards."

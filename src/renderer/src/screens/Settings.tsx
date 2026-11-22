@@ -43,6 +43,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
   return (
     <div className="page">
       <div className="page-head"><div className="grow"><p>Everything is stored on this computer. Passwords and keys are encrypted with your system keychain.</p></div><button className="btn primary" onClick={save}>Save settings</button></div>
+      <div className="note"><b>{s.allowKeyedServices ? 'Optional services enabled' : 'Free-first mode'}</b><p className="small">Search, local tools and templates need no API key. Optional discovery, verification and remote writing services may charge you directly. Your saved keys are kept when paused.</p>{S('allowKeyedServices','Allow optional credential-based services (may incur charges)')}</div>
       {s?.secretsSessionOnly && <div className="note warn" role="alert">This computer has no system keychain available, so passwords and keys are kept only until Quarrix closes. They are never saved in plain text.</div>}
       <div className="settings">
         <nav>{SECTIONS.map(([k, v]) => <button key={k} aria-current={sec === k} onClick={() => setSec(k)}>{v}</button>)}</nav>
@@ -61,7 +62,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
               <div className="ai-col mid"><b>Free model</b><small>OpenRouter free models, Groq, or Ollama on this computer</small>
                 <ul><li>A personal email for every business, using its website, rating and gaps</li><li>Reads each website to find the owner and write a 2-line summary</li><li>Reads whole business lists from PDFs</li><li>Slower; free models have daily limits</li></ul></div>
               <div className="ai-col paid"><b>Paid key</b><small>Anthropic, OpenAI or Gemini</small>
-                <ul><li>Everything in Free, with better writing and fewer rewrites</li><li>More accurate owner names and summaries</li><li>Fast enough for autopilot at full volume</li><li>Costs about 1 cent or less per lead</li></ul></div>
+                <ul><li>Optional enhanced writing and summaries</li><li>Provider pricing and limits vary</li><li>Requires your own credentials and explicit opt-in</li></ul></div>
             </div>
             <div className="note small">
               <b>What a model changes, and what it doesn't.</b> Finding businesses and jobs is the same with or without a key: Quarrix searches maps, the web, directories and job boards directly, so a key never adds more leads or more jobs. A model is used for the thinking afterwards:
@@ -96,8 +97,10 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
                     : <input className="input" value={s.ai.model} placeholder={prov?.suggest || 'Auto (leave empty)'} onChange={(e) => set('ai.model', e.target.value)} aria-label="Model" />}
                   <button className="btn" onClick={async () => { await save(); try { const m = await call<string[]>('ai:models'); setModels(m); toast.push(`${m.length} models available`); } catch (e: any) { toast.push(e.message, true); } }}>Load models</button>
                 </div>
-                <small>{effective ? <>Now using <b>{effective}</b>. </> : ''}When a model runs out of quota, is rate-limited or needs billing, Quarrix switches to the next one by itself{s.ai.provider === 'openrouter' ? ' (every free model, best first)' : ''}, then to your backup keys below.</small>
+                <small>{effective ? <>Now using <b>{effective}</b>. </> : ''}Model alternatives may incur charges. Backup providers are only used when explicitly enabled below.</small>
               </label>
+              {S('allowModelFallback','Allow automatic fallback to other configured provider keys (may incur charges)')}
+              {T('budgets.writing','Remote writing requests per day','0 pauses remote writing. This is a request ceiling, not a monetary spending limit.','number')}
               <details className="field">
                 <summary>Backup keys (used in turn when the main key runs out)</summary>
                 {Object.entries(providers).filter(([k, p]: any) => p.keyed && k !== 'custom').map(([k, p]: any) => (
@@ -164,7 +167,7 @@ export function SettingsScreen({ onTheme }: { onTheme: (t: string) => void }) {
             {S('sources.googleMaps', 'Google Maps (free, runs in a hidden window at a human pace)')}
             {S('sources.osm', 'OpenStreetMap (free, open data)')}
             {T('sources.placesKey', 'Google Places API key', 'Optional. Google Cloud → enable "Places API (New)" → create a key.', 'password')}
-            <div className="grid2">{T('sources.tomtomKey', 'TomTom key (business search, optional)', 'Free at developer.tomtom.com, 2,500 searches a day. Official listings with phones and websites.')}{T('sources.foursquareKey', 'Foursquare key (business search, optional)', 'Free at foursquare.com/developers. Listings with phones, websites and social profiles.')}{T('sources.adzunaId', 'Adzuna app ID (job search, optional)', 'Free at developer.adzuna.com. Adds Adzuna jobs in 19 countries.')}{T('sources.adzunaKey', 'Adzuna app key')}{T('sources.joobleKey', 'Jooble key (job search, optional)', 'Free at jooble.org/api/about. Adds jobs from thousands of sites worldwide.')}{T('sources.maxPerSearch', 'Most businesses per search', '0 means no limit: collect everything available. Big cities can take an hour or more.', 'number')}{T('sources.mapsDelayMs', 'Pause between Google Maps places (ms)', 'Higher is gentler. Google may ask for a captcha if this is too low.', 'number')}</div>
+            <div className="grid2">{T('sources.tomtomKey', 'TomTom key (business search, optional)', 'Check the provider plan and charges.')}{T('sources.foursquareKey', 'Foursquare key (business search, optional)', 'Check the provider plan and charges.')}{T('sources.adzunaId', 'Adzuna app ID (job search, optional)', 'Check the provider plan and charges.')}{T('sources.adzunaKey', 'Adzuna app key', '', 'password')}{T('sources.joobleKey', 'Jooble key (job search, optional)', 'Check the provider plan and charges.', 'password')}{T('budgets.adzuna','Adzuna requests per day','0 pauses requests.','number')}{T('budgets.jooble','Jooble requests per day','0 pauses requests.','number')}{T('sources.maxPerSearch', 'Most businesses per search', '0 means no limit: collect everything available. Big cities can take an hour or more.', 'number')}{T('sources.mapsDelayMs', 'Pause between Google Maps places (ms)', 'Higher is gentler. Google may ask for a captcha if this is too low.', 'number')}</div>
             <SourcesPanel s={s} set={set} />
             <h2 style={{ marginTop: 10 }}>Website check</h2>
             {S('enrich.auto', 'Visit each new business\'s website for emails, phones and social links')}

@@ -6,6 +6,8 @@ import { sourceForHost, sourceInfo } from './sources/catalog';
 import { onRequest } from './util';
 
 export class BudgetError extends Error {}
+export const KEYED_LIMITS: Record<string,number> = { places:200,tomtom:2000,foursquare:500,hunter:25,zerobounce:50,adzuna:20,jooble:20,writing:50 };
+const capFor = (source:string) => { const n=load().budgets?.[source]; return Object.hasOwn(KEYED_LIMITS,source) ? (Number.isFinite(n)&&n>0?Math.floor(n):0) : n??0; };
 
 function feedHosts() {
   const out: Record<string, string> = {};
@@ -14,17 +16,19 @@ function feedHosts() {
 }
 
 export function spend(source: string, n = 1) {
-  const cap = load().budgets?.[source] ?? 0;
+  const cap = capFor(source);
+  if(Object.hasOwn(KEYED_LIMITS,source)&&(load().allowKeyedServices!==true||cap===0))throw new BudgetError('Optional service paused; enable credential-based services and a positive daily limit in Settings.');
   const used = db.usageToday()[source] ?? 0;
   if (cap > 0 && used + n > cap) throw new BudgetError(`${sourceInfo(source)?.name ?? source} reached today's limit of ${cap} requests (Settings → Sources → Limits).`);
   db.addUsage(source, n);
 }
 
 export const remaining = (source: string) => {
-  const cap = load().budgets?.[source] ?? 0;
+  const cap = capFor(source);
+  if(Object.hasOwn(KEYED_LIMITS,source)&&(load().allowKeyedServices!==true||cap===0))return 0;
   return cap > 0 ? Math.max(0, cap - (db.usageToday()[source] ?? 0)) : Infinity;
 };
 
 export function install() {
-  onRequest((host) => { const src = sourceForHost(host, feedHosts()); if (src) spend(src); });
+  onRequest((host) => { const src = host==='api.adzuna.com'?'adzuna':host==='jooble.org'?'jooble':sourceForHost(host)??sourceForHost(host, feedHosts()); if (src) spend(src); });
 }

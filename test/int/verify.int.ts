@@ -51,10 +51,11 @@ test('QF-002 batch search builder: one search per business type and place, filed
 });
 
 test('QF-012 per-provider request budgets stop a source at its daily limit', () => {
-  save({ budgets: { tomtom: 2 } });
+  save({ allowKeyedServices: true, budgets: { tomtom: 2 } });
   budget.spend('tomtom'); budget.spend('tomtom');
   assert.throws(() => budget.spend('tomtom'), budget.BudgetError);
   assert.equal(budget.remaining('tomtom'), 0);
+  save({allowKeyedServices:false});
 });
 
 test('QF-029 QF-031 QF-032 QF-040 enrichment: emails with the page they came from, waterfall trail, conflicts kept', async () => {
@@ -87,7 +88,7 @@ test('QF-030 field freshness: leads not checked recently are found by the stale 
 });
 
 test('QF-042 QF-043 QF-045 provider-backed email checks: verifier answer, 30-day cache, status on the lead', async () => {
-  save({ verify: { ...load().verify, provider: 'zerobounce', zerobounceKey: 'zb-test', maxPerDay: 50 } });
+  save({ allowKeyedServices:true, verify: { ...load().verify, provider: 'zerobounce', zerobounceKey: 'zb-test', maxPerDay: 50 } });
   let calls = 0;
   serve([[/api\.zerobounce\.net/, (s) => { calls++; return json({ address: new URL(s.url).searchParams.get('email'), status: 'valid', sub_status: '' }); }]]);
   const [id] = db.upsertLead({ name: 'Check Me', email: 'owner@checkme.test', domain: 'checkme.test', source: 'import', client: '' });

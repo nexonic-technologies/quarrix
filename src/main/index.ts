@@ -45,7 +45,7 @@ import * as db from './db';
 import * as jobs from './jobs';
 import * as mail from './mail';
 import * as wa from './whatsapp';
-import { effectiveModel, listModels, PROVIDERS, rankFree, useBackups } from './ai';
+import { effectiveModel, listModels, PROVIDERS, rankFree, useBackups, useModelGuard } from './ai';
 import { approve, approveAll, createDrafts } from './outreach';
 import * as autopilot from './autopilot';
 import { citiesOf, matchJobs } from './jobsearch';
@@ -54,7 +54,7 @@ import * as proof from './proof';
 import * as signals from './signals';
 import { EXPORT_FIELDS, exportLeads, importFile } from './importexport';
 import { closeMaps } from './sources/gmaps';
-import { load, publicSettings, save, saveFromUi } from './settings';
+import { load, publicSettings, save, saveFromUi, runtimeSettings, isLocalWriting } from './settings';
 import { CATEGORIES } from '../shared/categories';
 
 let win: BrowserWindow | null = null;
@@ -351,7 +351,7 @@ function registerIpc() {
     return n;
   });
   handle('jobs:match', (jobs) => {
-    const s = load(); const c = cv.getCv();
+    const s = runtimeSettings(); const c = cv.getCv();
     if (!c) throw new Error('Upload your CV first.');
     if (s.ai.provider === 'none') return cv.keywordMatch(c, jobs);
     return matchJobs(s, jobs, `${c.profile.summary}\nTarget roles: ${c.profile.roles.join(', ')}\nLevel: ${c.profile.level}\nSkills: ${c.profile.skills.join(', ')}\n\n${c.text}`);
@@ -433,8 +433,8 @@ function registerIpc() {
   handle('mail:cap', () => { const list = mb.boxes().filter((b) => mb.connected(b)); return list.length ? list.reduce((a, b) => a + mb.capOf(b), 0) : mail.dailyCap(); });
   handle('mail:checkInbox', () => mail.checkInbox());
   // Free models first, so the list shows what a free OpenRouter key can actually use.
-  handle('ai:models', async () => { const ai = load().ai; const ids = await listModels(ai); const free = ai.provider === 'openrouter' ? rankFree(ids) : []; return [...free, ...ids.filter((m) => !free.includes(m))]; });
-  handle('ai:effective', () => effectiveModel(load().ai));
+  handle('ai:models', async () => { const ai = runtimeSettings().ai; if(ai.provider==='none')return []; const ids = await listModels(ai); const free = ai.provider === 'openrouter' ? rankFree(ids) : []; return [...free, ...ids.filter((m) => !free.includes(m))]; });
+  handle('ai:effective', () => effectiveModel(runtimeSettings().ai));
 
   handle('wa:open', async (leadId: number, text: string) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, false); const n = await wa.openChat(l.phone, l.country, text); db.logEvent(leadId, 'whatsapp', 'Opened WhatsApp with a drafted message'); return n; });
   handle('wa:cloud', async (leadId: number, body) => { const l = db.getLead(Number(leadId)); if (!l) throw new Error('Lead not found.'); waGuard(l, true); const id = await wa.cloudSend(l.phone, l.country, body); db.logEvent(leadId, 'whatsapp', 'Sent with the WhatsApp Cloud API'); return id; });
@@ -472,7 +472,8 @@ app.whenReady().then(() => {
   const restored = backup.applyPendingRestore();
   db.openDb();
   db.migrateData();
-  useBackups(() => load().aiKeys ?? {});
+  useBackups(() => load().allowModelFallback === true ? runtimeSettings().aiKeys : {});
+  useModelGuard(ai => { if (!isLocalWriting(ai)) budget.spend('writing'); });
   crm.migrate();
   migrateProposals(); migratePublicOpportunities(); migrateDigest();
   jobstore.migrate();

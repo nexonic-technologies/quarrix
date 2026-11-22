@@ -4,7 +4,7 @@
 import * as db from './db';
 import * as jobs from './jobs';
 import { approve, createDrafts } from './outreach';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { makeReport } from './proof';
 
 type Notify = (event: string, data?: unknown) => void;

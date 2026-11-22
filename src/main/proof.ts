@@ -5,7 +5,7 @@ import { app, BrowserWindow } from 'electron';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as db from './db';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { complete, parseJson, safe, tier } from './ai';
 import { sleep } from './util';
 

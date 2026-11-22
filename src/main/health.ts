@@ -1,6 +1,6 @@
 // Non-destructive source checks (QF-011): reachability, keys, rate limits and today's usage, with a fix for each failure.
 import * as db from './db';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { SOURCES } from './sources/catalog';
 import { BOT_UA, fetchText, UA } from './util';
 import { redact } from './safety';

@@ -1,5 +1,9 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
+Automated access to LinkedIn, Indeed, Google Jobs and Rozee is withdrawn in v2.2.0; manual links remain. No claim of new partner access.
+
+**v2.2.0 candidate — Free-First Intelligence:** optional keyed discovery, verification and remote writing are paused by default (also on upgrade), without deleting saved credentials. Explicit enablement and positive daily ceilings protect against unintended metered requests. Backup writing providers require a separate opt-in. Existing mail and configured connections retain their independent authorization; provider charges are not guaranteed by Quarrix. Release verification pending; 17 external blockers unchanged.
+
 **v2.1.0 candidate:** accessible onboarding progress and modal isolation, evidence review and scoped duplicate counts, responsive discovery styling, on-demand provider reachability with bounded concurrency and caching. No new external access claims; the 17 external blockers remain. Installer verification is pending the release gate.
 
 **v2.0.1 released:** bounded Overpass resilience, 162/162 installer checks and 23/24 live sources; one temporary Overpass outage remains. Commercial code signing remains credential-blocked. [Release](https://github.com/nexonic-technologies/quarrix/releases/tag/v2.0.1).

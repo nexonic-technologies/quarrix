@@ -3,7 +3,7 @@ import * as db from './db';
 import { complete, draftFor } from './ai';
 import { altSubject } from './rules';
 import { pick } from './mailboxes';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 
 export async function createDrafts(ids: number[], onDraft: () => void = () => undefined) {
   const s = load();

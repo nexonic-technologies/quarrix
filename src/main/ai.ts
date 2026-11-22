@@ -79,6 +79,8 @@ export async function effectiveModel(ai: Ai) { return (await modelsToTry(ai))[0]
 let backupKeys: () => Record<string, string> = () => ({});
 /** Set by the main process so complete() can reach the backup keys without importing settings here. */
 export const useBackups = (f: () => Record<string, string>) => { backupKeys = f; };
+let modelGuard: (ai: Ai) => void = () => {};
+export const useModelGuard = (f: (ai: Ai) => void) => { modelGuard = f; };
 
 export async function complete(ai: Ai, system: string, prompt: string, maxTokens = 1500): Promise<string> {
   if (ai.provider === 'none') throw new Error('No writing model is set. Choose one in Settings → Writing.');
@@ -87,6 +89,7 @@ export async function complete(ai: Ai, system: string, prompt: string, maxTokens
     const models = await modelsToTry(one);
     for (const model of models) {
       tried++;
+      modelGuard(one);
       try { return await completeWith(one, model, system, prompt, maxTokens); } catch (e) {
         last = e;
         if (!isQuotaError(e)) { if (one === ai) throw e; break; }

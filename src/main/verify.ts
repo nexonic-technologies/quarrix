@@ -3,7 +3,7 @@
 import * as db from './db';
 import { receivesMail } from './enrich';
 import { validSyntax } from './intel';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { fetchText } from './util';
 
 const CACHE_DAYS = 30;

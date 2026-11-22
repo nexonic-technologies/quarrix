@@ -17,6 +17,8 @@ export type Mailbox = {
 export const BOX_SECRETS = ['smtpPass', 'imapPass', 'oauthRefresh', 'sendgridKey'] as const;
 
 export type Settings = {
+  allowKeyedServices: boolean;
+  allowModelFallback: boolean;
   theme: 'system' | 'light' | 'dark';
   profile: { skills: string; company: string; name: string; title: string; website: string; phone: string; address: string; services: string; tone: string; language: string };
   ai: { provider: Provider; model: string; baseUrl: string; apiKey: string };
@@ -78,6 +80,8 @@ export type Settings = {
 export const SECRET_PATHS = ['ai.apiKey', 'sources.placesKey', 'sources.pagespeedKey', 'email.smtpPass', 'email.imapPass', 'whatsapp.cloudToken', 'sources.adzunaKey', 'sources.joobleKey', 'sources.tomtomKey', 'sources.foursquareKey', 'verify.hunterKey', 'verify.zerobounceKey', 'email.oauthRefresh', 'email.oauthClientSecret', 'email.googleClientSecret', 'api.token', 'api.captureToken', 'hubspot.token', 'notion.token', 'sheets.refresh', 'exports.postgres.url', 'exports.s3.secretKey'] as const;
 
 export const defaults: Settings = {
+  allowKeyedServices: false,
+  allowModelFallback: false,
   theme: 'light',
   profile: { skills: '', company: '', name: '', title: '', website: '', phone: '', address: '', services: '', tone: 'friendly and professional', language: 'English' },
   ai: { provider: 'none', model: '', baseUrl: '', apiKey: '' },
@@ -92,7 +96,7 @@ export const defaults: Settings = {
   },
   whatsapp: { mode: 'assisted', cloudToken: '', phoneNumberId: '', defaultCountry: 'US', authorizedAt: '', dailyLimit: 50 },
   signals: { on: true, everyDays: 7, perRun: 30 },
-  budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0, hunter: 25, zerobounce: 50 },
+  budgets: { places: 200, tomtom: 2000, foursquare: 500, gmaps: 0, osm: 0, web: 0, dir: 0, npi: 0, wikidata: 0, opendata: 0, posts: 0, hunter: 25, zerobounce: 50, adzuna: 20, jooble: 20, writing: 50 },
   openFeeds: [],
   npiIndividuals: false,
   findWebsites: true,
@@ -200,6 +204,17 @@ export function publicSettings() {
   s.secretsSessionOnly = !secureStore();
   return s as Settings;
 }
+
+/** Runtime view only: keep saved credentials and choices intact while optional services are paused. */
+export const isLocalWriting = (ai:Settings['ai']) => ['ollama','lmstudio'].includes(ai.provider) && !ai.apiKey && (!ai.baseUrl || /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?(?:\/[^?#]*)?$/.test(ai.baseUrl));
+export function effectiveSettings(s: Settings): Settings {
+  if (s.allowKeyedServices === true) return s;
+  const local = isLocalWriting(s.ai);
+  return { ...s, ai: local ? s.ai : { ...defaults.ai }, aiKeys: {}, sdkKeys: {},
+    sources: { ...s.sources, places: false, placesKey: '', pagespeedKey: '', adzunaId: '', adzunaKey: '', joobleKey: '', tomtomKey: '', foursquareKey: '' },
+    verify: { ...s.verify, provider: 'none', hunterKey: '', zerobounceKey: '', auto: false, findWithHunter: false } };
+}
+export const runtimeSettings = () => effectiveSettings(load());
 
 /** Save from the interface: a masked secret means "keep the stored one". */
 export function saveFromUi(patch: Record<string, any>) {

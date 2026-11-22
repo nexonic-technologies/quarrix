@@ -30,7 +30,7 @@ const OPT = {
   workplace: [['remote', 'Remote'], ['hybrid', 'Hybrid'], ['onsite', 'On-site']],
   level: [['Internship', 'Internship'], ['Entry level', 'Entry level'], ['Mid level', 'Mid level'], ['Senior', 'Senior'], ['Director', 'Director']],
   type: [['Full-time', 'Full-time'], ['Part-time', 'Part-time'], ['Contract', 'Contract'], ['Internship', 'Internship']],
-  sources: [['employers', 'Followed employers (direct)'], ['hn', 'Hacker News: Who is hiring'], ['linkedin', 'LinkedIn'], ['indeed', 'Indeed'], ['google', 'Google Jobs'], ['rozee', 'Rozee.pk'], ['remotive', 'Remotive'], ['remoteok', 'RemoteOK'], ['weworkremotely', 'We Work Remotely'], ['workingnomads', 'Working Nomads'], ['jobicy', 'Jobicy'], ['himalayas', 'Himalayas'], ['arbeitnow', 'Arbeitnow'], ['reddit', 'Reddit'], ['adzuna', 'Adzuna (free key)'], ['jooble', 'Jooble (free key)']],
+  sources: [['employers', 'Followed employers (direct)'], ['hn', 'Hacker News: Who is hiring'], ['remotive', 'Remotive'], ['remoteok', 'RemoteOK'], ['weworkremotely', 'We Work Remotely'], ['workingnomads', 'Working Nomads'], ['jobicy', 'Jobicy'], ['himalayas', 'Himalayas'], ['arbeitnow', 'Arbeitnow'], ['reddit', 'Reddit'], ['adzuna', 'Adzuna (free key)'], ['jooble', 'Jooble (free key)']],
 } as const;
 
 function Pill({ label, options, value, multi, onChange }: { label: string; options: readonly (readonly [string, string])[]; value: string[]; multi?: boolean; onChange: (v: string[]) => void }) {
@@ -194,6 +194,7 @@ export function Jobs() {
         <Pill label="Experience level" options={OPT.level} value={level} multi onChange={setLevel} />
         <Pill label="Employment type" options={OPT.type} value={type} multi onChange={setType} />
         <Pill label="Job boards" options={OPT.sources} value={sources} multi onChange={setSources} />
+        <details className="pill-btn"><summary>Manual job boards</summary><div className="row"><a href="https://www.linkedin.com/jobs/" target="_blank" rel="noreferrer">LinkedIn</a><a href="https://www.indeed.com/" target="_blank" rel="noreferrer">Indeed</a><a href="https://www.google.com/search?q=jobs" target="_blank" rel="noreferrer">Google Jobs</a><a href="https://www.rozee.pk/" target="_blank" rel="noreferrer">Rozee.pk</a></div></details>
         <Pill label="Salary" options={OPT.salary} value={salary} onChange={setSalary} />
         {city && <Pill label="Distance" options={OPT.radius} value={radius} onChange={setRadius} />}
         <Pill label="More filters" options={OPT.extra} value={extra} multi onChange={setExtra} />

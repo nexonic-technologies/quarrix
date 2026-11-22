@@ -6,7 +6,7 @@ import { searchWeb } from './sources/web';
 import { searchDirectories } from './sources/directories';
 import { searchPosts } from './sources/posts';
 import { searchFoursquare, searchTomTom } from './sources/keyed';
-import { load } from './settings';
+import { runtimeSettings as load } from './settings';
 import { cityAt, geocode, searchOsm, subAreas, type Place } from './sources/osm';
 import { findWebsite } from './sources/lookup';
 import { companyFacts } from './sources/companyfacts';
@@ -117,6 +117,7 @@ async function fetchFrom(src: string, area: string, left: number, c: Ctx): Promi
   if (src.startsWith('sdk:')) {
     const def = loadSources(app.getPath('userData')).ok.find((x) => `sdk:${x.id}` === src);
     if (!def) throw new Error(`The source file for ${src.slice(4)} is missing or has an error (Settings → Sources → Your own sources).`);
+    if ((def.keyHeader || def.keyQuery) && !settings.sdkKeys?.[def.id]) throw new Error('Optional source paused or missing its key. See Settings → Sources.');
     return runSdk(def, { category: c.category, city, country: c.where?.country ?? '', lat: c.where?.lat, lon: c.where?.lon }, settings.sdkKeys?.[def.id] ?? '', left, c.progress);
   }
   throw new Error(`Unknown source ${src}`);
