@@ -20,7 +20,7 @@ Compare the result with the matching line in `SHA256SUMS.txt` on the release pag
 
 ## Code signing (optional)
 
-The repository's workflow secrets turn signing on, per platform: macOS signs and notarizes only when `CSC_LINK`, `APPLE_ID` and `APPLE_TEAM_ID` are all set; Windows signs when `WIN_CSC_LINK` is set. With no secrets set, the installers are unsigned and the release notes say so. macOS then warns on first open: right-click the app and choose Open (or run `xattr -dr com.apple.quarantine /Applications/Quarrix.app`). Windows SmartScreen shows "More info → Run anyway".
+The repository's workflow secrets turn signing on, per platform: macOS signs and notarizes only when `CSC_LINK`, `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_SPECIFIC_PASSWORD` are all set; Windows signs when `WIN_CSC_LINK` is set. Obtain a valid Developer ID Application certificate from Apple and a publicly trusted Windows signing certificate from an authorized issuer. Store certificates and passwords only in GitHub Actions secrets, never in source files or chat. Without credentials, releases are explicitly unsigned or ad-hoc signed; checksums verify download integrity, not publisher identity.
 
 | Secret | What it is |
 |---|---|

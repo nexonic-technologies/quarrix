@@ -1,6 +1,6 @@
 // OpenStreetMap: free, open data (ODbL). Nominatim finds the area, Overpass lists the businesses in it.
 import { categoryByName } from '../../shared/categories';
-import { BOT_UA, fetchText, sleep } from '../util';
+import { BOT_UA, fetchText, sleep, fetchScope, CancelledError } from '../util';
 import type { Candidate } from './types';
 import { osmDetails } from '../intel';
 
@@ -12,6 +12,8 @@ export async function geocode(q: string): Promise<Place | null> {
   if (placeCache.has(key)) return placeCache.get(key)!;
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&accept-language=en&q=${encodeURIComponent(q)}`;
   const r = await fetchText(url, { ua: BOT_UA, timeout: 20000 });
+  await sleep(1100); // Nominatim usage policy: max 1 request per second
+  if(!r.ok) throw new Error(`OpenStreetMap geocoding returned HTTP ${r.status}. Try again later.`);
   let out: Place | null = null;
   try {
     const list = JSON.parse(r.text) as any[];
@@ -25,9 +27,8 @@ export async function geocode(q: string): Promise<Place | null> {
         bbox: pick.boundingbox?.map(Number),
       };
     }
-  } catch { /* not JSON */ }
+  } catch { throw new Error('OpenStreetMap geocoding returned an unreadable response. Try again later.'); }
   placeCache.set(key, out);
-  await sleep(1100); // Nominatim usage policy: max 1 request per second
   return out;
 }
 
@@ -43,8 +44,9 @@ export async function searchOsm(category: string, place: string, limit: number, 
     const word = category.replace(/["\\]/g, '').replace(/s$/i, '');
     filter = ['shop', 'office', 'craft', 'amenity', 'healthcare', 'tourism', 'leisure'].map((k) => `nwr["${k}"]["name"~"${word}",i]${scope};`).join('');
   }
-  const q = `[out:json][timeout:180];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center${Number.isFinite(limit) ? ' ' + limit * 2 : ''};`;
-  const r = await overpass(q, 190000);
+  const seconds=where.area?180:60;
+  const q = `[out:json][timeout:${seconds}];${where.area ? `area(${where.area})->.a;` : ''}(${filter});out tags center${Number.isFinite(limit) ? ' ' + limit * 2 : ''};`;
+  const r = await overpass(q, (seconds+10)*1000);
   if (!r.ok) throw new Error(`OpenStreetMap could not complete the search (${r.why || (r.status ? `HTTP ${r.status}` : 'no answer')}). Try again later.`);
   const els = (JSON.parse(r.text).elements ?? []) as any[];
   const out: Candidate[] = [];
@@ -87,27 +89,30 @@ export async function subAreas(place: string | Place | null, max = 40): Promise<
 }
 
 /** Public Overpass servers, tried in order when one is busy, blocked or down. */
-export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 /** Overpass with a retry on the other public servers; the last problem is kept so the message says what happened. */
-async function overpass(q: string, timeout: number) {
-  const send = (url: string) => fetchText(url, { method: 'POST', ua: BOT_UA, timeout, maxBytes: 20_000_000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+export async function overpass(q: string, timeout: number, request=fetchText, wait=sleep) {
+  const send = (url: string) => request(url, { method: 'POST', ua: BOT_UA, timeout, maxBytes: 20_000_000, body: 'data=' + encodeURIComponent(q), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
   let r = { ok: false, status: 0, text: '' } as Awaited<ReturnType<typeof fetchText>> & { why?: string };
-  // Two rounds over every server (0.25): a busy answer (429, 5xx, timeout) waits and tries again; other answers stop.
-  for (let round = 0; round < 2; round++) {
-    for (const [i, url] of (round ? OVERPASS.slice(0, 2) : OVERPASS).entries()) {
-      if (i || round) await sleep(round ? 5000 : 2000);
-      r = await send(url).catch((e: any) => ({ ok: false, status: 0, text: '', why: String(e?.message ?? e).slice(0, 120) }) as any);
+  // At most one request to each documented public provider. Never retry policy denial, budget, cancellation or oversized data.
+  for (const [i, url] of OVERPASS.entries()) {
+      if (fetchScope.getStore()?.aborted) throw new CancelledError();
+      if (i) await wait(2000);
+      if (fetchScope.getStore()?.aborted) throw new CancelledError();
+      try { r=await send(url); } catch(e:unknown) {
+        if (!(e instanceof Error) || !(/^(fetch failed|network error|socket hang up|ECONNRESET|ETIMEDOUT|EAI_AGAIN)$/i.test(e.message)||e.name==='AbortError'||e.name==='TimeoutError')) throw e;
+        r={...r,ok:false,status:0,text:'',why:e.message.slice(0,120)};
+      }
       if (r.ok) {
         try {
           const data = JSON.parse(r.text);
           if (Array.isArray(data.elements) && !data.remark) return r;
-          return { ...r, ok: false, status: 502, why: data.remark ? 'returned an incomplete result' : 'returned an unexpected response' };
-        } catch { return { ...r, ok: false, status: 502, why: 'returned an unreadable response' }; }
+          if(data.remark) return { ...r, ok: false, status: 502, why: 'returned an incomplete result; try a smaller area' };
+          return {...r,ok:false,status:502,why:'returned an unexpected response'};
+        } catch { return {...r,ok:false,status:502,why:'returned an unreadable response'}; }
       }
       // Explicit access refusals and rate limits must not be routed around via another endpoint.
-      if (r.status >= 400 && r.status < 500) return r;
-    }
-    if (r.status && r.status !== 429 && r.status < 500) break;
+      if (r.status!==0 && (r.status<500 || ![500,502,503,504].includes(r.status))) return r;
   }
   return r;
 }
