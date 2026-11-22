@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { exploreCareers, OCCUPATION_COUNT, type Occupation } from '../src/shared/career-intelligence';
+import { exploreCareers, OCCUPATION_COUNT, learningPlan,type Occupation } from '../src/shared/career-intelligence';
+test('learning plan uses only catalog exploration topics and stays bounded',()=>{
+ const m={id:'1',title:'Role',score:60,titleMatches:[],skills:[],tools:[],explore:['A skill','B skill','A skill','C skill','D skill','E skill','F skill','G skill']};
+ assert.deepEqual(learningPlan(m).map(x=>x.week),[1,1,2,2,3,3]);assert.equal(learningPlan(m)[2].skill,'C skill');
+});
 
 test('the complete official occupation catalog supports diverse careers', () => {
   assert.equal(OCCUPATION_COUNT, 1016);

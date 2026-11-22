@@ -18,7 +18,7 @@ import { previewSearch } from '../../src/main/jobs';
 import { checkSources } from '../../src/main/health';
 import { searchTed } from '../../src/main/public-opportunities';
 import { registryLookup } from '../../src/main/registry';
-import { officialWages,secLookup,nationalRegistry,nycVacancies } from '../../src/main/global-data';
+import { officialWages,secLookup,nationalRegistry,nycVacancies,recentRegistrations } from '../../src/main/global-data';
 
 type R = { check: string; qf: string; ok: boolean; detail: string; ms: number; kind?: 'outage' | 'failure' };
 /** A provider that is busy, rate-limiting or unreachable is a temporary outage, not a defect in Quarrix. */
@@ -41,6 +41,7 @@ const noop = () => undefined;
   await run('Norway public registration','Global data',async()=>{const r=await nationalRegistry('NO','974760673');if(r.cached)throw new Error('Expected live registration response');return r.data.name;});
   await run('France public registration','Global data',async()=>{const r=await nationalRegistry('FR','452316524');if(r.cached)throw new Error('Expected live registration response');return r.data.name;});
   await run('NYC public external vacancies','Global data',async()=>{const r=await nycVacancies();if(r.cached)throw new Error('Expected live vacancy response');return need(r.data.length,'external vacancies');});
+  await run('Norway recent company registrations','Opportunity intelligence',async()=>{const r=await recentRegistrations();if(r.cached)throw new Error('Expected live registration response');return need(r.data.length,'recent registrations');});
   await run('OpenStreetMap geocoding (Nominatim)', 'QF-015', async () => { const p = await geocode('Austin, Texas'); if (!p) throw new Error('not found'); return `${p.label} ${p.lat.toFixed(2)},${p.lon.toFixed(2)}`; });
   await run('OpenStreetMap businesses (Overpass)', 'QF-002', async () => need((await searchOsm('dentist', 'Austin, Texas', 10,{label:'Central Austin',city:'Austin',region:'Texas',country:'US',lat:30.275,lon:-97.745,bbox:[30.25,30.30,-97.76,-97.72]})).length, 'dentists in central Austin'));
   await run('Wikidata business source', 'QF-009', async () => need((await searchWikidata('hospital', 'London', 10, noop)).length, 'hospitals'));

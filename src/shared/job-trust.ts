@@ -7,6 +7,10 @@ export type TrustReport = {
 };
 
 /** Only absolute HTTP(S) URLs with no embedded credentials. Network checks are separate. */
+/** Boards without approved automated access stay manual in every job workflow. */
+export function manualJobBoard(value:string){
+ try{const host=new URL(value).hostname.toLowerCase().replace(/\.$/,'');return /(^|\.)(linkedin\.com|indeed\.[a-z.]+|google\.[a-z.]+|rozee\.pk|glassdoor\.[a-z.]+|ziprecruiter\.com|seek\.[a-z.]+|jobstreet\.[a-z.]+|jobsdb\.[a-z.]+|naukri\.com|bayt\.com|bdjobs\.com|hellowork\.com)$/.test(host);}catch{return false;}
+}
 export function webUrl(value: string): URL | undefined {
   try { const u = new URL(value); return ['http:', 'https:'].includes(u.protocol) && !u.username && !u.password ? u : undefined; } catch { return undefined; }
 }

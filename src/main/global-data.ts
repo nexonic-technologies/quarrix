@@ -1,5 +1,5 @@
 import { fetchText, BOT_UA } from './util';
-import { BLS_SERIES, parseBls, secCompany,parseNationalRegistry,parseNycJobs } from '../shared/global-data';
+import { BLS_SERIES, parseBls, secCompany,parseNationalRegistry,parseNycJobs,parseRecentRegistrations } from '../shared/global-data';
 import { cachedPublic } from './public-cache';
 async function publicJson(url:string){const r=await fetchText(url,{ua:BOT_UA,timeout:15000,maxBytes:2_000_000,headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`Public source HTTP ${r.status}`);return JSON.parse(r.text);}
 export async function nationalRegistry(country:string,id:string){
@@ -7,6 +7,11 @@ export async function nationalRegistry(country:string,id:string){
  return cachedPublic(`registry:${country}:${id}`,async()=>parseNationalRegistry(country,id,await publicJson(country==='NO'?`https://data.brreg.no/enhetsregisteret/api/enheter/${id}`:`https://recherche-entreprises.api.gouv.fr/search?q=${id}&per_page=1`)));
 }
 export async function nycVacancies(){return cachedPublic('nyc:external',async()=>parseNycJobs(await publicJson('https://data.cityofnewyork.us/resource/kpav-sd4t.json?$select=job_id,business_title,agency,posting_type,posting_date&$where=posting_type%3D%27External%27&$order=posting_date%20DESC&$limit=100')));}
+export async function recentRegistrations(now=new Date()){
+ const to=now.toISOString().slice(0,10),from=new Date(now.getTime()-29*864e5).toISOString().slice(0,10);
+ const q=new URLSearchParams({organisasjonsform:'AS',fraRegistreringsdatoEnhetsregisteret:from,tilRegistreringsdatoEnhetsregisteret:to,size:'50',sort:'registreringsdatoEnhetsregisteret,DESC'});
+ return cachedPublic(`no:registrations:${to}`,async()=>parseRecentRegistrations(await publicJson(`https://data.brreg.no/enhetsregisteret/api/enheter?${q}`),from,to));
+}
 export async function secLookup(id:string){
  if(!/^\d{1,10}$/.test(id)||Number(id)===0)throw new Error('Enter a valid CIK.');
  const cik=id.padStart(10,'0');const r=await fetchText(`https://data.sec.gov/submissions/CIK${cik}.json`,{ua:'Quarrix Nexonic Technologies info@nexonictechnologies.com',timeout:15000,maxBytes:5_000_000,headers:{Accept:'application/json'}});if(!r.ok)throw new Error(`SEC returned HTTP ${r.status}.`);return secCompany(JSON.parse(r.text),cik);

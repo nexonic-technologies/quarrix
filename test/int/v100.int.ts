@@ -9,7 +9,16 @@ import { migratePublicOpportunities,listPublicOpportunities,savePublicOpportunit
 import { EMPTY_PROPOSAL } from '../../src/shared/proposals';
 import { EMPTY_OPPORTUNITY } from '../../src/shared/public-opportunities';
 import * as jobstore from '../../src/main/jobstore';
-import {migrateDigest,centerOverview,setDigest,claimDigest,toggleSavedSearch} from '../../src/main/opportunity-center';
+import {migrateDigest,centerOverview,setDigest,claimDigest,toggleSavedSearch,opportunityTrends} from '../../src/main/opportunity-center';
+test('local opportunity trends scope businesses and count a vacancy once across alerts',()=>{
+ jobstore.migrate();const now=new Date('2026-11-22T12:00:00Z');
+ const [a]=db.upsertLead({name:'Trend A',source:'manual',source_ref:'trend-a',client:'Trend A'}),[b]=db.upsertLead({name:'Trend B',source:'manual',source_ref:'trend-b',client:'Trend B'});
+ db.raw().prepare('UPDATE leads SET created_at=? WHERE id IN (?,?)').run('2026-11-22T09:00:00Z',a,b);
+ const x=Number(jobstore.saveAlert({name:'Trend A',query:{keywords:'test'}}).lastInsertRowid),y=Number(jobstore.saveAlert({name:'Trend B',query:{keywords:'test'}}).lastInsertRowid);
+ const ins=db.raw().prepare('INSERT INTO job_alert_hits(alert_id,job_id,at,data,seen) VALUES(?,?,?,?,1)');ins.run(x,'trend-id','2026-11-21T09:00:00Z','{}');ins.run(y,'trend-id','2026-11-22T09:00:00Z','{}');
+ save({currentClient:'Trend A'});const r=opportunityTrends(now);assert.equal(r.length,7);assert.equal(r[6].businesses,1);assert.equal(r[5].vacancies,1);assert.equal(r[6].vacancies,0);
+ save({currentClient:''});db.deleteLeads([a,b]);jobstore.deleteAlert(x);jobstore.deleteAlert(y);
+});
 import {salesByCurrency,marketReport} from '../../src/main/market';
 import {checkSources,sourceHealthSnapshot,verdict} from '../../src/main/health';
 import {load,defaults,effectiveSettings,runtimeSettings} from '../../src/main/settings';

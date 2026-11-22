@@ -22,6 +22,7 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS job_search_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, query TEXT NOT NULL, results INTEGER NOT NULL, errors TEXT NOT NULL, ms INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS job_alerts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL, every_hours INTEGER NOT NULL DEFAULT 12, enabled INTEGER NOT NULL DEFAULT 1, last_run TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS job_alert_hits (alert_id INTEGER NOT NULL REFERENCES job_alerts(id) ON DELETE CASCADE, job_id TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (alert_id, job_id));
+    CREATE INDEX IF NOT EXISTS job_alert_hits_job_at ON job_alert_hits(job_id,at);
   `);
   // 0.22: alert scheduling, retries and per-source baselines.
   for (const c of ['next_run TEXT', 'fails INTEGER NOT NULL DEFAULT 0', "last_error TEXT NOT NULL DEFAULT ''", 'last_ok TEXT', "base_sources TEXT NOT NULL DEFAULT '[]'"]) {

@@ -115,6 +115,10 @@ export async function runSmoke(win: BrowserWindow) {
     if (!found) throw new Error('No occupation recommendation was rendered');
     return 'real occupation returned without a CV or network request';
   });
+  await check('priority and recent-registration controls render without network calls',async()=>{
+    const ok=await js<boolean>(`(async()=>{document.querySelector('nav.nav button')?.click();await new Promise(r=>setTimeout(r,900));const center=document.querySelector('[data-opportunity-center]');if(!center)return false;center.open=true;const registry=document.querySelector('[data-recent-registrations]');if(!registry)return false;registry.open=true;await new Promise(r=>setTimeout(r,400));return center.textContent.includes('Priority queue')&&!![...registry.querySelectorAll('button')].find(b=>b.textContent.trim()==='Load registrations');})()`);
+    if(!ok)throw new Error('priority or registration controls missing');return 'on-demand registry and local priority controls';
+  });
   await check('public vacancies and dashboard evidence controls render without network calls',async()=>{
     const ok=await js<boolean>(`(async()=>{const wait=ms=>new Promise(r=>setTimeout(r,ms));const nav=t=>[...document.querySelectorAll('nav.nav button')].find(b=>b.textContent.trim().startsWith(t))?.click();nav('Dashboard');await wait(900);const coverage=!!document.querySelector('.quality-overview progress[aria-label]');nav('Job search');await wait(900);const panel=[...document.querySelectorAll('main details')].find(x=>x.querySelector('.public-result'));if(panel)panel.open=true;return coverage&&!![...document.querySelectorAll('main button')].find(b=>b.textContent.trim()==='Load public vacancies');})()`);
     if(!ok)throw new Error('public vacancy or evidence visual missing');return 'local dashboard and on-demand public source controls';

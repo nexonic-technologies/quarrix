@@ -12,7 +12,7 @@ import { isBlockedHost, isPrivateAddress } from './safety';
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type FetchOpts = { signal?: AbortSignal; timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number; partial?: boolean };
+type FetchOpts = { signal?: AbortSignal; timeout?: number; ua?: string; method?: string; body?: string | Uint8Array; headers?: Record<string, string>; allowLocal?: boolean; maxBytes?: number; partial?: boolean; allowUrl?:(url:string)=>boolean };
 
 /** Thrown when a response is bigger than the caller allows. Quarrix never works on silently cut-off data. */
 export class TooLargeError extends Error {
@@ -90,6 +90,7 @@ export async function fetchText(url: string, opts: FetchOpts = {}) {
     let body = opts.body;
     let headers = { 'User-Agent': opts.ua ?? UA, Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8', ...(opts.headers ?? {}) } as Record<string, string>;
     for (let hop = 0; ; hop++) {
+      if(opts.allowUrl&&!opts.allowUrl(cur))throw new Error('Source requires manual access.');
       if (!opts.allowLocal) await assertPublicUrl(cur);
       requestHook(new URL(cur).hostname);
       // Tests replace globalThis.fetch with recorded responses; the app always uses the checked connection.

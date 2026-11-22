@@ -4,6 +4,10 @@ export type Occupation = { id: string; title: string; skills: string[]; tools: s
 export type CareerProfile = { titles: string[]; skills: string[] };
 export type CareerMatch = { id: string; title: string; score: number; titleMatches: string[]; skills: string[]; tools: string[]; explore: string[] };
 export const OCCUPATION_COUNT = catalog.length;
+export function learningPlan(match:CareerMatch){
+ const skills=[...new Set(match.explore.map(s=>s.trim()).filter(s=>s.length>1))].slice(0,6);
+ return skills.map((skill,i)=>({skill,week:Math.floor(i/2)+1}));
+}
 export function occupationTerms(title:string):string[]{
  const matches=exploreCareers({titles:[title],skills:[]},1);
  if(!matches.length||matches[0].score<45)return [];
