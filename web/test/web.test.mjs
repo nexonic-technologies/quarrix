@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { openStore } from "../server/store.mjs";
 import { createApp } from "../server/app.mjs";
 import { vault } from "../server/crypto.mjs";
@@ -369,4 +369,62 @@ test("email verification and single-use password recovery", async (t) => {
     (await post("login", { ...c, password: "a new long password" })).status,
     200,
   );
+});
+
+test("private launch invitation preserves closed registration and requires verification", async (t) => {
+  const store = await openStore({ file: ":memory:" });
+  const sent = [], code = randomBytes(32).toString("hex");
+  const keys = {
+    ALLOW_REGISTRATION: "false",
+    PRIVATE_REGISTRATION_EMAIL: "pilot@example.test",
+    PRIVATE_REGISTRATION_TOKEN_HASH: createHash("sha256").update(code).digest("hex"),
+    PRIVATE_REGISTRATION_EXPIRES_AT: new Date(Date.now() + 3600000).toISOString(),
+  };
+  const previous = Object.fromEntries(Object.keys(keys).map(k => [k, process.env[k]]));
+  Object.assign(process.env, keys);
+  const app = createApp(store, {
+    production: true,
+    dataKey: randomBytes(32),
+    origin: "https://test.local",
+    sendMail: async (email, kind, token) => sent.push({ email, kind, token }),
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise(r => server.once("listening", r));
+  t.after(async () => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    await new Promise(r => server.close(r));
+    await store.close();
+  });
+  const base = `http://127.0.0.1:${server.address().port}/api/`;
+  const post = async (path, body, cookie = "") => {
+    const response = await fetch(base + path, {
+      method: "POST",
+      headers: { Origin: "https://test.local", "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, cookie: response.headers.getSetCookie().map(x => x.split(";")[0]).join("; ") };
+  };
+  const credentials = { email: keys.PRIVATE_REGISTRATION_EMAIL, password: "private pilot strong password" };
+  assert.equal((await post("register", credentials)).status, 403);
+  assert.equal((await post("register", { ...credentials, email: "other@example.test", invitationCode: code })).status, 403);
+  assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 202);
+  assert.equal(sent[0].kind, "verify");
+  assert.equal((await post("login", credentials)).status, 403);
+  assert.equal((await post("email-complete", { kind: "verify", token: sent[0].token })).status, 200);
+  const login = await post("login", credentials);
+  assert.equal(login.status, 200);
+  assert.equal((await post("workspace/records", { kind: "business", title: "Pilot record" }, login.cookie)).status, 201);
+  assert.equal((await post("email-request", { email: credentials.email, kind: "reset" })).status, 200);
+  assert.equal(sent[1].kind, "reset");
+  assert.equal((await post("email-complete", { kind: "reset", token: sent[1].token, password: "a new private pilot password" })).status, 200);
+  const resetPassword = "a new private pilot password";
+  const resetLogin = await post("login", { ...credentials, password: resetPassword });
+  assert.equal(resetLogin.status, 200);
+  assert.equal((await post("workspace/delete-account", { password: resetPassword }, resetLogin.cookie)).status, 200);
+  assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 409);
+  process.env.PRIVATE_REGISTRATION_EXPIRES_AT = new Date(Date.now() - 1000).toISOString();
+  assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 403);
+  assert.equal((await fetch(base + "session").then(r => r.json())).registrationMode, "closed");
 });

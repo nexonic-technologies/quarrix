@@ -30,6 +30,7 @@ function App() {
     [user, setUser] = useState(null),
     [assistantAvailable, setAssistantAvailable] = useState(false),
     [maintenance, setMaintenance] = useState(false),
+    [registrationMode, setRegistrationMode] = useState("closed"),
     [page, setPage] = useState("discover"),
     [kind, setKind] = useState("jobs"),
     [query, setQuery] = useState(""),
@@ -62,6 +63,7 @@ function App() {
         setUser(x.user);
         setAssistantAvailable(x.assistantAvailable);
         setMaintenance(x.maintenance || false);
+        setRegistrationMode(x.registrationMode || "closed");
       })
       .catch(fail);
   }, []);
@@ -126,6 +128,7 @@ function App() {
         email: f.get("email"),
         password: f.get("password"),
         newsletter: f.get("newsletter") === "on",
+        invitationCode: f.get("invitationCode") || undefined,
       });
       if (x.verificationRequired) {
         setNotice(x.message);
@@ -645,6 +648,11 @@ function App() {
                     </label>
                     {mode === "register" && (
                       <>
+                        {registrationMode === "invite" && <label>
+                          Private invitation code
+                          <input name="invitationCode" type="password" autoComplete="off" required minLength={64} maxLength={64} />
+                        </label>}
+                        {registrationMode === "closed" && <p className="muted">Public registration is not open yet.</p>}
                         <p className="muted">
                           Use at least 12 characters. Your workspace is private;
                           the portal owner can see account and usage metadata.
@@ -655,7 +663,7 @@ function App() {
                         </label>
                       </>
                     )}
-                    <button className="primary" disabled={busy}>
+                    <button className="primary" disabled={busy || (mode === "register" && registrationMode === "closed")}>
                       {mode === "login" ? "Sign in" : "Create free account"}
                     </button>
                   </form>
