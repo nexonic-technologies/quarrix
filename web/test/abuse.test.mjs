@@ -52,7 +52,7 @@ async function start(t, { search, env = {}, dist, scanPdf } = {}) {
 }
 
 test("database transactions roll back coupled writes on failure", async (t) => {
-  const store = await openStore({ file: ":memory:", url: "" });
+  const store = await openStore({ file: ":memory:" });
   t.after(() => store.close());
   await assert.rejects(store.transaction(async () => {
     await store.run("INSERT INTO portal_settings(id,value) VALUES(?,?)", ["test-rollback", "1"]);

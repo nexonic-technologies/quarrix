@@ -34,6 +34,12 @@ export async function openStore({
       try { return await withTimeout(conn.execute({ sql, timeout: QUERY_TIMEOUT }, args), QUERY_TIMEOUT + 500, "Database timeout"); }
       catch (error) { if (error.timeout || error.code === "PROTOCOL_SEQUENCE_TIMEOUT") conn.destroy(); throw error; }
     }
+    // Transaction controls use the text protocol, not prepared statements.
+    // START TRANSACTION is not preparable on MySQL 8.4.
+    async function control(conn, sql) {
+      try { return await withTimeout(conn.query({ sql, timeout: QUERY_TIMEOUT }), QUERY_TIMEOUT + 500, "Database transaction timeout"); }
+      catch (error) { if (error.timeout || error.code === "PROTOCOL_SEQUENCE_TIMEOUT") conn.destroy(); throw error; }
+    }
     const exec = async (sql, args) => {
       const active = context.getStore();
       if (active) return execute(active, sql, args);
@@ -54,12 +60,12 @@ export async function openStore({
       if (context.getStore()) return fn();
       const conn = await acquire();
       try {
-        await execute(conn, "START TRANSACTION");
+        await control(conn, "START TRANSACTION");
         const result = await context.run(conn, fn);
-        await execute(conn, "COMMIT");
+        await control(conn, "COMMIT");
         return result;
       } catch (error) {
-        try { await execute(conn, "ROLLBACK"); } catch { conn.destroy(); }
+        try { await control(conn, "ROLLBACK"); } catch { conn.destroy(); }
         throw error;
       } finally { conn.release(); }
     };
