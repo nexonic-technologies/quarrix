@@ -8,9 +8,9 @@ import { Header, ProductBar, Footer, Arrow, External, Icon, SITE } from "./shell
 
 const initial = { kind: "business", title: "", notes: "", url: "", status: "" };
 const KINDS = {
-  jobs: { route: "jobs", label: "Find a job", tab: "Jobs", eyebrow: "Career", heading: "Find remote and European jobs", placeholder: "e.g. react developer", where: "Region (optional)", wherePlaceholder: "e.g. Germany or remote", coverage: "Jobicy remote jobs and Arbeitnow European vacancies. Check each listing for eligibility and location." },
-  business: { route: "customers", label: "Find customers", tab: "Customers", eyebrow: "Business", heading: "Find registered businesses", placeholder: "Company or activity", where: "City in France", wherePlaceholder: "e.g. Paris", coverage: "The French public business registry. More regions will be added where data use is permitted." },
-  grants: { route: "grants", label: "Find grants", tab: "Grants", eyebrow: "Funding", heading: "Find US public grants", placeholder: "e.g. education", where: "", wherePlaceholder: "", coverage: "Posted Grants.gov opportunities. Always check official eligibility and deadlines." },
+  jobs: { route: "jobs", label: "Find a job", tab: "Jobs", eyebrow: "Career", heading: "Find remote and European jobs", placeholder: "e.g. react developer", where: "Region (optional)", wherePlaceholder: "e.g. Germany or remote", coverage: "Jobicy remote jobs and Arbeitnow European vacancies. Check each listing for eligibility and location.", sources: [["Jobicy", "https://jobicy.com/"], ["Arbeitnow", "https://www.arbeitnow.com/"]] },
+  business: { route: "customers", label: "Find customers", tab: "Customers", eyebrow: "Business", heading: "Find registered businesses", placeholder: "Company or activity", where: "City in France", wherePlaceholder: "e.g. Paris", coverage: "The French public business registry. More regions will be added where data use is permitted.", sources: [["Annuaire des Entreprises (data.gouv.fr)", "https://annuaire-entreprises.data.gouv.fr/"]] },
+  grants: { route: "grants", label: "Find grants", tab: "Grants", eyebrow: "Funding", heading: "Find US public grants", placeholder: "e.g. education", where: "", wherePlaceholder: "", coverage: "Posted Grants.gov opportunities. Always check official eligibility and deadlines.", sources: [["Grants.gov", "https://www.grants.gov/"]] },
 };
 const ROUTE_KIND = { jobs: "jobs", customers: "business", grants: "grants" };
 const ROUTES = new Set(["discover", "jobs", "customers", "grants", "workspace", "sign-in", "create-account", "forgot-password", "desktop", "privacy"]);
@@ -128,6 +128,7 @@ function App() {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState(null);
   const [assistantAvailable, setAssistantAvailable] = useState(false);
+  const [documentsAvailable, setDocumentsAvailable] = useState(true);
   const [maintenance, setMaintenance] = useState(false);
   const [registrationMode, setRegistrationMode] = useState("closed");
   const [turnstileSiteKey, setTurnstileSiteKey] = useState("");
@@ -197,6 +198,7 @@ function App() {
         setMaintenance(x.maintenance || false);
         setRegistrationMode(x.registrationMode || "closed");
         setTurnstileSiteKey(x.turnstileSiteKey || "");
+        setDocumentsAvailable(x.documentsAvailable !== false);
       })
       .catch(fail)
       .finally(() => setReady(true));
@@ -426,6 +428,12 @@ function App() {
               </button>
             </form>
             <p className="qx-note">{k.coverage} Results are reported by the source and are not independently verified.</p>
+            <p className="qx-note qx-credit">
+              Sources:{" "}
+              {k.sources.map(([name, url], i) => (
+                <React.Fragment key={name}>{i > 0 && " · "}<a href={url} target="_blank" rel="noopener noreferrer">{name}</a></React.Fragment>
+              ))}
+            </p>
             <p className="qx-note"><span className="nx-chip">{user ? "Free account · 50 searches a day" : "Guest · 5 searches and 10 results a day"}</span></p>
           </div>
         </div>
@@ -472,7 +480,7 @@ function App() {
               <div className="qx-callout">
                 <div>
                   <h3 className="nx-h3">Keep your discoveries in one place.</h3>
-                  <p>A free account gives you 50 searches a day, private saved opportunities and encrypted CV storage.</p>
+                  <p>A free account gives you 50 searches a day, private saved opportunities and notes that follow you between devices.</p>
                 </div>
                 <a className="nx-btn nx-btn--light" href="#/create-account" onClick={(e) => { e.preventDefault(); go("create-account"); }}><span>Create free account</span><Arrow /></a>
               </div>
@@ -523,7 +531,7 @@ function App() {
         <div className="nx-container qx-benefits">
           {[
             ["Source transparency", "See where every result comes from and when it was last checked."],
-            ["Private workspace", "Keep CVs, customer notes and applications together across devices, encrypted by the service."],
+            ["Private workspace", "Keep saved opportunities, customer notes and applications together across devices, encrypted by the service."],
             ["Free first", "Core search and organisation need no API key, card or subscription."],
           ].map(([t, d], i) => (
             <div key={t}>
@@ -582,7 +590,7 @@ function App() {
             <>
               <p className="nx-eyebrow">Your Quarrix workspace</p>
               <h1 className="nx-h2">{route === "sign-in" ? <>Welcome <em>back.</em></> : <>Create a free <em>account.</em></>}</h1>
-              <p>{route === "sign-in" ? "Sign in to open your saved opportunities, notes and documents." : "Fifty searches a day, saved opportunities and private CV storage. Free."}</p>
+              <p>{route === "sign-in" ? "Sign in to open your saved opportunities, notes and documents." : "Fifty searches a day, saved opportunities and private notes. Free."}</p>
               <form onSubmit={auth} className="qx-form">
                 <div className="nx-field">
                   <label htmlFor="qx-email">Email</label>
@@ -682,11 +690,17 @@ function App() {
           </div>
           <div className="nx-card">
             <h2 className="nx-h3">CVs and documents</h2>
-            <p className="qx-muted">Encrypted PDF storage · 2 MB each · 10 MB per account.</p>
-            <div className="nx-field"><label htmlFor="qx-up">Upload a PDF</label><input id="qx-up" type="file" accept="application/pdf,.pdf" onChange={upload} disabled={busy} /></div>
+            {documentsAvailable ? (
+              <>
+                <p className="qx-muted">Encrypted PDF storage · 2 MB each · 10 MB per account. Every file is virus-scanned.</p>
+                <div className="nx-field"><label htmlFor="qx-up">Upload a PDF</label><input id="qx-up" type="file" accept="application/pdf,.pdf" onChange={upload} disabled={busy} /></div>
+              </>
+            ) : (
+              <p className="qx-alert">Document uploads and downloads are paused while we add virus scanning. Files you already stored are kept safely encrypted and will be available again once scanning is live.</p>
+            )}
             {workspace.documents.map((d) => (
               <div className="qx-row" key={d.id}>
-                <a href={"/api/workspace/documents/" + d.id}>{d.name}</a>
+                {documentsAvailable ? <a href={"/api/workspace/documents/" + d.id}>{d.name}</a> : <span>{d.name}</span>}
                 <button type="button" className="nx-btn nx-btn--ghost nx-btn--sm" onClick={() => remove("documents", d.id)}><span>Remove</span></button>
               </div>
             ))}

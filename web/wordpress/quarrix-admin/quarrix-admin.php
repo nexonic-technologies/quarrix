@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Quarrix Admin
  * Description: Owner-only Quarrix account and usage dashboard. No private document contents are exposed.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Nexonic Technologies
  */
 if (!defined('ABSPATH')) exit;
@@ -43,18 +43,19 @@ function quarrix_owner_page() {
     if (!is_array($data) || !isset($data['accounts']) || !is_array($data['accounts'])) { echo '<p>Unexpected response.</p></div>'; return; }
     echo '<p>Registered accounts: '.esc_html($data['total']).' | Searches today: '.esc_html($data['searchesToday']).'</p><form method="post">';
     wp_nonce_field('quarrix_control');
-    echo '<p>Portal: '.($data['maintenance']?'Maintenance':'Online').' <button class="button" name="quarrix_action" value="'.($data['maintenance']?'maintenance-off':'maintenance-on').'">'.($data['maintenance']?'Bring online':'Enable maintenance').'</button></p></form><table class="widefat striped"><thead><tr><th>Email</th><th>Newsletter consent</th><th>Searches today</th><th>Records</th><th>Documents</th><th>Storage bytes</th><th>Account</th></tr></thead><tbody>';
+    echo '<p>Portal: '.($data['maintenance']?'Maintenance':'Online').' <button class="button" name="quarrix_action" value="'.($data['maintenance']?'maintenance-off':'maintenance-on').'">'.($data['maintenance']?'Bring online':'Enable maintenance').'</button></p></form><table class="widefat striped"><thead><tr><th>Email</th><th>Joined (UTC)</th><th>Newsletter consent</th><th>Searches today</th><th>Records</th><th>Documents</th><th>Storage bytes</th><th>Account</th></tr></thead><tbody>';
     foreach ($data['accounts'] as $account) {
         echo '<tr>';
-        foreach (array($account['email'].' ('.($account['verified']?'verified':'unverified').')', $account['subscribed'] ? 'Opted in' : 'No', $account['searchesToday'], $account['records'], $account['documents'], $account['bytes']) as $value) echo '<td>'.esc_html($value).'</td>';
-        echo '<td><form method="post">';wp_nonce_field('quarrix_control');echo '<input type="hidden" name="account_id" value="'.esc_attr($account['id']).'"><button class="button" name="quarrix_action" value="'.($account['suspended']?'restore':'suspend').'">'.($account['suspended']?'Restore':'Suspend').'</button></form><a href="'.esc_url(admin_url('admin.php?page=quarrix-owner&support='.$account['id'])).'">Support view</a></td></tr>';
+        foreach (array($account['email'].' ('.($account['verified']?'verified':'unverified').')'.($account['suspended']?' — suspended':''), gmdate('Y-m-d', (int) ($account['created']/1000)), $account['subscribed'] ? 'Opted in' : 'No', $account['searchesToday'], $account['records'], $account['documents'], $account['bytes']) as $value) echo '<td>'.esc_html($value).'</td>';
+        echo '<td><form method="post">';wp_nonce_field('quarrix_control');echo '<input type="hidden" name="account_id" value="'.esc_attr($account['id']).'"><button class="button" name="quarrix_action" value="'.($account['suspended']?'restore':'suspend').'">'.($account['suspended']?'Restore':'Suspend').'</button></form><a href="'.esc_url(wp_nonce_url(admin_url('admin.php?page=quarrix-owner&support='.$account['id']), 'quarrix_support')).'">Support view</a></td></tr>';
     }
     echo '</tbody></table><p>';
     if ($offset > 0) echo '<a href="'.esc_url(admin_url('admin.php?page=quarrix-owner&offset='.max(0,$offset-100))).'">Previous</a> ';
     if ($offset+100 < $data['total']) echo '<a href="'.esc_url(admin_url('admin.php?page=quarrix-owner&offset='.($offset+100))).'">Next</a>';
     echo '</p><h2>Authorized support access</h2><p>Ask a user to enable temporary support access in their workspace. Access is logged and expires after one hour.</p>';
     $support = sanitize_text_field(wp_unslash($_GET['support'] ?? ''));
-    if (preg_match('/^[a-f0-9-]{36}$/', $support)) {
+    // Opening a support view is logged on the portal, so it needs a nonce.
+    if (preg_match('/^[a-f0-9-]{36}$/', $support) && wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'] ?? '')), 'quarrix_support')) {
         $permission = wp_safe_remote_get($url.'/api/admin/support/'.$support,array('headers'=>array('Authorization'=>'Bearer '.QUARRIX_ADMIN_TOKEN),'timeout'=>15,'redirection'=>0,'limit_response_size'=>524288));
         if (is_wp_error($permission) || wp_remote_retrieve_response_code($permission)!==200) echo '<p>No active support permission.</p>';
         else { $private = json_decode(wp_remote_retrieve_body($permission),true); foreach (($private['records'] ?? array()) as $r) echo '<p><strong>'.esc_html($r['title']).'</strong> — '.esc_html($r['kind']).'<br>'.esc_html($r['notes']).'</p>'; foreach (($private['history'] ?? array()) as $h) echo '<p>Search: '.esc_html($h['kind']).' — '.esc_html($h['query']).' · '.esc_html($h['location']).' · '.esc_html($h['count']).' results</p>'; foreach (($private['documents'] ?? array()) as $d) echo '<p><a href="'.esc_url(wp_nonce_url(admin_url('admin-post.php?action=quarrix_document&owner='.$support.'&doc='.$d['id']),'quarrix_document')).'">Download '.esc_html($d['name']).'</a></p>'; }

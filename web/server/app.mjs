@@ -14,6 +14,7 @@ import { discover, webUrl } from "./discovery.mjs";
 import { keyedLimit, keyedLock } from "./limits.mjs";
 import { vault, localKey } from "./crypto.mjs";
 import { turnstileConfig, verifyTurnstile } from "./turnstile.mjs";
+import { localPdfScanner } from "./pdf-scan.mjs";
 const scrypt = promisify(scryptCb),
   hash = (v) => createHash("sha256").update(v).digest("hex");
 const text = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
@@ -57,6 +58,7 @@ export function createApp(
     dataKey = localKey(),
     sendMail = null,
     turnstileRequest = fetch,
+    scanPdf = localPdfScanner(),
   } = {},
 ) {
   const encryption = vault(dataKey),
@@ -76,9 +78,13 @@ export function createApp(
         .toString("base64");
   const app = express();
   const challenge = turnstileConfig(process.env, origin);
+  let activeChallenges = 0;
   const challengeGate = async (req, res, action) => {
     if (!challenge.enabled) return true;
-    if (await verifyTurnstile(challenge, req.body?.["cf-turnstile-response"], action, turnstileRequest)) return true;
+    if (activeChallenges >= 32) { res.status(503).json({ error: "Security check is busy. Please retry." }); return false; }
+    activeChallenges++;
+    try { if (await verifyTurnstile(challenge, req.body?.["cf-turnstile-response"], action, turnstileRequest)) return true; }
+    finally { activeChallenges--; }
     res.status(403).json({ error: "Please complete the security check and try again." });
     return false;
   };
@@ -89,15 +95,23 @@ export function createApp(
   const hops = envInt("TRUST_PROXY_HOPS", 0, 0, 5);
   if (hops) app.set("trust proxy", hops);
   const client = (req) => "ip:" + (req.ip || req.socket?.remoteAddress || "unknown");
+  // Without a trusted proxy chain every visitor shares the ingress address, so
+  // an address-keyed limit would act as one site-wide counter. In that case
+  // skip it and rely on the security challenge plus the durable per-account,
+  // per-guest and daily limits.
+  const perClient = (limiter, req) => !hops || limiter(client(req));
   app.use((req, res, next) => {
     res.set({
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-site",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     });
-    if (production) res.set("Strict-Transport-Security", "max-age=31536000");
+    if (production) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     next();
   });
   const adminAuth = (req) => {
@@ -144,7 +158,7 @@ export function createApp(
     }
     if (
       !req.path.startsWith("/admin/") &&
-      !["/health", "/session", "/logout"].includes(req.path) &&
+      !["/health", "/ready", "/session", "/logout"].includes(req.path) &&
       (await maintenance())
     )
       return res.status(503).json({
@@ -153,7 +167,17 @@ export function createApp(
       });
     next();
   });
-  app.use("/api", express.json({ limit: "3mb" }));
+  // Keep ordinary JSON requests small; only authenticated document uploads
+  // may use the larger parser. Authenticate before buffering a full PDF.
+  const smallJson = express.json({ limit: "64kb" }), documentJson = express.json({ limit: "3mb" });
+  app.use("/api", async (req, res, next) => {
+    if (req.method === "POST" && req.path === "/workspace/documents") {
+      const user = await session(req);
+      if (!user) return res.status(401).json({ error: "Sign in to access your private workspace." });
+      return documentJson(req, res, next);
+    }
+    return smallJson(req, res, next);
+  });
   // Per-client limits. They are only consulted after the security challenge
   // has passed, so unverified junk traffic cannot use anyone's allowance.
   const authLimit = keyedLimit(20, 60000),
@@ -264,13 +288,14 @@ export function createApp(
       "INSERT INTO sessions(digest,owner,expires) VALUES(?,?,?)",
       [hash(t), id, Date.now() + 7 * DAY],
     );
-    cookie(res, t, 7 * DAY);
+    return t;
   }
   async function emailToken(user, kind) {
     if (!sendMail) return;
     if (!(await budget("transactional-mail", 100))) throw Error("Email capacity reached");
     const token = randomBytes(32).toString("hex");
-    await lock("account:" + user.id, async () => {
+    await lock("account:" + user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(user.id))) throw Error("Account unavailable");
       await store.run(
         "DELETE FROM email_tokens WHERE (owner=? AND kind=?) OR expires<?",
         [user.id, kind, Date.now()],
@@ -279,12 +304,12 @@ export function createApp(
         "INSERT INTO email_tokens(digest,owner,kind,expires) VALUES(?,?,?,?)",
         [hash(token), user.id, kind, Date.now() + 1800000],
       );
-    });
+    }));
     await sendMail(user.email, kind, token);
   }
   app.post("/api/email-request", async (req, res) => {
     if (!(await challengeGate(req, res, "recovery"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     if (!sendMail)
       return res
@@ -310,7 +335,7 @@ export function createApp(
   app.post("/api/email-complete", async (req, res) => {
     // Tokens are 256-bit random values, so guessing is not practical; the
     // per-client limit only stops one client from hammering the endpoint.
-    if (!tokenLimit(client(req)))
+    if (!perClient(tokenLimit, req))
       return res.status(429).json({ error: "Try again later." });
     const kind = req.body.kind,
       raw = req.body.token,
@@ -331,14 +356,14 @@ export function createApp(
       return res.status(400).json({ error: "Link expired or invalid." });
     // Hash the new password only for a valid link (scrypt is deliberately slow).
     const password = kind === "reset" ? await passwordHash(p) : null;
-    await lock("account:" + pending.owner, async () => {
+    const completed = await lock("account:" + pending.owner, () => store.transaction(async () => {
+      if (!(await store.lockAccount(pending.owner))) return false;
       // Single use: only the request that deletes the token may continue.
       const claimed = await store.run(
         "DELETE FROM email_tokens WHERE digest=? AND kind=? AND expires>?",
         [hash(raw), kind, Date.now()],
       );
-      if (!claimed.changes)
-        return res.status(400).json({ error: "Link expired or invalid." });
+      if (!claimed.changes) return false;
       const row = pending;
       if (
         !(await store.one("SELECT owner FROM verified_accounts WHERE owner=?", [
@@ -358,18 +383,25 @@ export function createApp(
         // Any other outstanding links for this account are now stale.
         await store.run("DELETE FROM email_tokens WHERE owner=?", [row.owner]);
       }
-      res.json({ ok: true, kind });
-    });
+      return true;
+    }));
+    if (!completed) return res.status(400).json({ error: "Link expired or invalid." });
+    res.json({ ok: true, kind });
   });
   app.get("/api/health", (req, res) =>
-    res.json({ ok: true, version: "4.1.0" }),
+    res.json({ ok: true, version: "4.1.1" }),
   );
+  app.get("/api/ready", async (req, res) => {
+    try { await store.one("SELECT 1 AS ready"); res.json({ ok: true }); }
+    catch { res.status(503).json({ ok: false }); }
+  });
   app.get("/api/session", async (req, res) =>
     res.json({
       user: (await session(req)) || null,
       maintenance: await maintenance(),
       registrationMode: registrationMode(),
       turnstileSiteKey: challenge.sitekey,
+      documentsAvailable: !production || !!scanPdf,
       assistantAvailable: !!(
         process.env.OPENROUTER_API_KEY &&
         process.env.OPENROUTER_MODEL?.endsWith(":free")
@@ -396,7 +428,7 @@ export function createApp(
         !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
       return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
     if (!(await challengeGate(req, res, "signup"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     if (production && req.body.privacyAccepted !== true)
       return res.status(400).json({ error: "Please acknowledge the Quarrix privacy notice." });
@@ -409,7 +441,8 @@ export function createApp(
       Math.min(5000, Number(process.env.MAX_ACCOUNTS) || 500),
     );
     try {
-      const created = await lock("registration", async () => {
+      const created = await lock("registration", () => store.transaction(async () => {
+        await store.lockRegistration();
         if (
           Number((await store.one("SELECT COUNT(*) AS n FROM accounts")).n) >=
           maxAccounts
@@ -441,7 +474,7 @@ export function createApp(
           }
         }
         return true;
-      });
+      }));
       if (!created)
         return res
           .status(503)
@@ -472,12 +505,12 @@ export function createApp(
       "INSERT INTO verified_accounts(owner,created) VALUES(?,?)",
       [id, Date.now()],
     );
-    await signIn(req, res, id);
+    cookie(res, await signIn(req, res, id), 7 * DAY);
     res.status(201).json({ user: { id, email } });
   });
   app.post("/api/login", async (req, res) => {
     if (!(await challengeGate(req, res, "login"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     const email = text(req.body.email, 254).toLowerCase(),
       password = req.body.password;
@@ -505,8 +538,15 @@ export function createApp(
     )
       return res
         .status(403)
-        .json({ error: "Verify your email before signing in." });
-    await signIn(req, res, user.id);
+        .json({ error: "Verify your email before signing in. Need a new link? Use “Forgot password?” and choose “Get a new verification link”." });
+    const sessionToken = await lock("account:" + user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(user.id))) return null;
+      const current = await store.one("SELECT password_hash FROM accounts WHERE id=?", [user.id]);
+      if (!current || current.password_hash !== expected || await store.one("SELECT owner FROM suspended WHERE owner=?", [user.id])) return null;
+      return signIn(req, res, user.id);
+    }));
+    if (!sessionToken) return res.status(401).json({ error: "Invalid credentials." });
+    cookie(res, sessionToken, 7 * DAY);
     res.json({ user: { id: user.id, email: decodeEmail(user).email } });
   });
   app.post("/api/logout", async (req, res) => {
@@ -527,16 +567,18 @@ export function createApp(
     const user = await session(req);
     // Guests must pass the security check before anything is counted.
     if (!user && !(await challengeGate(req, res, "guest_search"))) return;
-    if (!searchLimit(user ? "user:" + user.id : client(req)))
+    if (user ? !searchLimit("user:" + user.id) : !perClient(searchLimit, req))
       return res
         .status(429)
         .json({ error: "You are searching very quickly. Please wait a moment." });
-    let guest = (req.get("cookie") || "").match(
-      /(?:^|;\s*)quarrix_guest=([a-f0-9]{32})(?:;|$)/,
-    )?.[1];
+    const signGuest = id => createHmac("sha256", dataKey).update("guest:" + id).digest("hex");
+    const guestCookie = (req.get("cookie") || "").match(
+      /(?:^|;\s*)quarrix_guest=([a-f0-9]{32})\.([a-f0-9]{64})(?:;|$)/,
+    );
+    let guest = guestCookie && equal(Buffer.from(signGuest(guestCookie[1])), Buffer.from(guestCookie[2])) ? guestCookie[1] : null;
     if (!user && !guest) {
       guest = randomBytes(16).toString("hex");
-      res.cookie("quarrix_guest", guest, {
+      res.cookie("quarrix_guest", guest + "." + signGuest(guest), {
         httpOnly: true,
         sameSite: "lax",
         secure: production,
@@ -566,6 +608,13 @@ export function createApp(
         registrationRequired: !user,
       });
     const scope = user ? "member-search" : "guest-search";
+    // Once the trusted proxy topology is explicitly configured, apply a durable
+    // visitor allowance in addition to the browser quota. Avoid treating a
+    // shared proxy socket as a single visitor before deployment is validated.
+    if (production && !user && hops && !(await budget("guest-ip:" + hash(client(req)), 30))) {
+      await refund(personal);
+      return res.status(429).json({ error: "Daily visitor search capacity reached." });
+    }
     if (
       production &&
       !(await budget(scope, user ? envInt("MEMBER_SEARCHES_PER_DAY", 2000) : envInt("GUEST_SEARCHES_PER_DAY", 250)))
@@ -583,7 +632,10 @@ export function createApp(
     const charged = !(result.rows.length === 0 && ["busy", "unavailable"].includes(result.status));
     if (!charged) {
       await refund(personal);
-      if (production) await refund("budget:" + scope);
+      if (production) {
+        await refund("budget:" + scope);
+        if (!user && hops) await refund("budget:guest-ip:" + hash(client(req)));
+      }
     }
     const left = charged ? remaining : remaining + 1;
     if (user) {
@@ -710,7 +762,8 @@ export function createApp(
     if (typeof req.body.share !== "boolean")
       return res.status(400).json({ error: "Choose a support preference." });
     const expires = req.body.share ? Date.now() + 3600000 : 0;
-    await lock("account:" + req.user.id, async () => {
+    await lock("account:" + req.user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(req.user.id))) throw Error("Account unavailable");
       await store.run("DELETE FROM support_grants WHERE owner=?", [
         req.user.id,
       ]);
@@ -719,7 +772,7 @@ export function createApp(
           "INSERT INTO support_grants(owner,expires) VALUES(?,?)",
           [req.user.id, expires],
         );
-    });
+    }));
     res.json({ expires });
   });
   app.put("/api/workspace/newsletter", async (req, res) => {
@@ -803,7 +856,8 @@ export function createApp(
     }
     const id = randomUUID(),
       owner = req.user.id;
-    await lock("account:" + req.user.id, async () => {
+    const createdRecord = await lock("account:" + req.user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(owner))) return false;
       if (
         Number(
           (
@@ -813,15 +867,15 @@ export function createApp(
           ).n,
         ) >= 500
       )
-        return res
-          .status(409)
-          .json({ error: "Workspace record limit reached." });
+        return false;
       await store.run(
         "INSERT INTO records(id,owner,kind,body,updated) VALUES(?,?,?,?,?)",
         [id, owner, body.kind, sealRecord(body, owner, id), Date.now()],
       );
-      res.status(201).json({ id, ...body });
-    });
+      return true;
+    }));
+    if (!createdRecord) return res.status(409).json({ error: "Workspace record limit reached." });
+    res.status(201).json({ id, ...body });
   });
   app.put("/api/workspace/records/:id", async (req, res) => {
     let body;
@@ -865,7 +919,13 @@ export function createApp(
     const bytes = Buffer.from(raw, "base64");
     if (bytes.length > 2_000_000 || bytes.subarray(0, 5).toString() !== "%PDF-")
       return res.status(400).json({ error: "Invalid PDF or exceeds 2 MB." });
-    await lock("account:" + req.user.id, async () => {
+    if (production && !scanPdf) return res.status(503).json({ error: "Secure document uploads are temporarily unavailable." });
+    if (scanPdf) {
+      try { if (!(await scanPdf(bytes))) return res.status(422).json({ error: "Document rejected by security screening." }); }
+      catch { return res.status(503).json({ error: "Document security screening is temporarily unavailable." }); }
+    }
+    const createdDocument = await lock("account:" + req.user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(req.user.id))) return null;
       const owner = req.user.id,
         used = await store.one(
           "SELECT COUNT(*) AS n,COALESCE(SUM(bytes),0) AS total FROM documents WHERE owner=?",
@@ -875,9 +935,7 @@ export function createApp(
         Number(used.n) >= 10 ||
         Number(used.total) + bytes.length > 10_000_000
       )
-        return res
-          .status(409)
-          .json({ error: "10 MB workspace document limit reached." });
+        return null;
       const id = randomUUID();
       await store.run(
         "INSERT INTO documents(id,owner,name,mime,bytes,content) VALUES(?,?,?,?,?,?)",
@@ -890,8 +948,10 @@ export function createApp(
           encryption.seal(bytes, owner + ":" + id),
         ],
       );
-      res.status(201).json({ id, name, mime, bytes: bytes.length });
-    });
+      return { id, name, mime, bytes: bytes.length };
+    }));
+    if (!createdDocument) return res.status(409).json({ error: "10 MB workspace document limit reached." });
+    res.status(201).json(createdDocument);
   });
   app.get("/api/workspace/documents/:id", async (req, res) => {
     const doc = await store.one(
@@ -899,6 +959,8 @@ export function createApp(
       [req.params.id, req.user.id],
     );
     if (!doc) return res.status(404).json({ error: "Document not found." });
+    const bytes = encryption.open(doc.content, req.user.id + ":" + req.params.id);
+    if (!(await screenDownload(bytes, res))) return;
     res
       .attachment(
         encryption
@@ -909,8 +971,26 @@ export function createApp(
           .toString(),
       )
       .type("application/octet-stream")
-      .send(encryption.open(doc.content, req.user.id + ":" + req.params.id));
+      .send(bytes);
   });
+  async function screenDownload(bytes, res) {
+    // Legacy attachments have no scan evidence. Retain them encrypted, but
+    // never deliver their contents in production until screening succeeds.
+    if (production && !scanPdf) {
+      res.status(503).json({ error: "Secure document downloads are temporarily unavailable." });
+      return false;
+    }
+    if (scanPdf) {
+      try {
+        if (await scanPdf(bytes)) return true;
+        res.status(422).json({ error: "Document quarantined by security screening." });
+      } catch {
+        res.status(503).json({ error: "Document security screening is temporarily unavailable." });
+      }
+      return false;
+    }
+    return true;
+  }
   app.delete("/api/workspace/documents/:id", async (req, res) => {
     const r = await store.run("DELETE FROM documents WHERE id=? AND owner=?", [
       req.params.id,
@@ -933,7 +1013,14 @@ export function createApp(
       )
     )
       return res.status(401).json({ error: "Invalid credentials." });
-    await store.run("DELETE FROM accounts WHERE id=?", [req.user.id]);
+    const deleted = await lock("account:" + req.user.id, () => store.transaction(async () => {
+      if (!(await store.lockAccount(req.user.id))) return false;
+      const current = await store.one("SELECT password_hash FROM accounts WHERE id=?", [req.user.id]);
+      if (!current || current.password_hash !== u.password_hash) return false;
+      await store.run("DELETE FROM accounts WHERE id=?", [req.user.id]);
+      return true;
+    }));
+    if (!deleted) return res.status(401).json({ error: "Invalid credentials." });
     cookie(res, "", 0);
     res.json({ ok: true });
   });
@@ -950,15 +1037,14 @@ export function createApp(
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
     if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const owner = req.params.id;
-    if (
+    const data = await store.transaction(async () => {
+    if (!(await store.lockAccount(owner)) ||
       !(await store.one(
         "SELECT owner FROM support_grants WHERE owner=? AND expires>?",
         [owner, Date.now()],
       ))
     )
-      return res
-        .status(403)
-        .json({ error: "User has not authorized support access." });
+      return null;
     const records = (
       await store.all("SELECT id,body FROM records WHERE owner=?", [owner])
     ).map((r) =>
@@ -982,31 +1068,48 @@ export function createApp(
       "INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)",
       [randomUUID(), "support-view", owner, Date.now()],
     );
-    res.json({ records, documents, history: await history(owner) });
+    return { records, documents, history: await history(owner) };
+    });
+    if (!data) return res.status(403).json({ error: "User has not authorized support access." });
+    res.json(data);
   });
   app.get("/api/admin/support/:id/document/:doc", async (req, res) => {
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
     if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const owner = req.params.id,
       doc = req.params.doc;
-    if (
+    const access = await store.transaction(async () => {
+    if (!(await store.lockAccount(owner)) ||
       !(await store.one(
         "SELECT owner FROM support_grants WHERE owner=? AND expires>?",
         [owner, Date.now()],
       ))
     )
-      return res
-        .status(403)
-        .json({ error: "User has not authorized support access." });
+      return { status: 403 };
     const item = await store.one(
       "SELECT name,content FROM documents WHERE owner=? AND id=?",
       [owner, doc],
     );
-    if (!item) return res.status(404).json({ error: "Document not found." });
+    if (!item) return { status: 404 };
     await store.run(
       "INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)",
-      [randomUUID(), "support-download", doc, Date.now()],
+      [randomUUID(), "support-download-attempt", doc, Date.now()],
     );
+    return { status: 200, item };
+    });
+    if (access.status !== 200) return res.status(access.status).json({ error: access.status === 403 ? "User has not authorized support access." : "Document not found." });
+    const item = access.item;
+    const bytes = encryption.open(item.content, owner + ":" + doc);
+    if (!(await screenDownload(bytes, res))) return;
+    // Screening is potentially slow. Recheck authorization after it completes.
+    const stillAuthorized = await store.transaction(async () => {
+      if (!(await store.lockAccount(owner)) || !(await store.one(
+        "SELECT owner FROM support_grants WHERE owner=? AND expires>?", [owner, Date.now()]
+      )) || !(await store.one("SELECT id FROM documents WHERE owner=? AND id=?", [owner, doc]))) return false;
+      await store.run("INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)", [randomUUID(), "support-download", doc, Date.now()]);
+      return true;
+    });
+    if (!stillAuthorized) return res.status(403).json({ error: "User has not authorized support access." });
     res
       .attachment(
         encryption
@@ -1014,7 +1117,7 @@ export function createApp(
           .toString(),
       )
       .type("application/octet-stream")
-      .send(encryption.open(item.content, owner + ":" + doc));
+      .send(bytes);
   });
   app.get("/api/admin/overview", async (req, res) => {
     const secret = process.env.ADMIN_TOKEN;
@@ -1067,7 +1170,7 @@ export function createApp(
       )
     )
       return res.status(400).json({ error: "Invalid action." });
-    await lock("admin", async () => {
+    const changed = await lock("admin", () => store.transaction(async () => {
       if (action.startsWith("maintenance")) {
         if (action === "maintenance-on") {
           if (!(await maintenance(true)))
@@ -1076,10 +1179,8 @@ export function createApp(
             );
         } else
           await store.run("DELETE FROM portal_settings WHERE id='maintenance'");
-        maintenanceCache.at = 0;
       } else {
-        if (!(await store.one("SELECT id FROM accounts WHERE id=?", [id])))
-          return res.status(404).json({ error: "Account not found." });
+        if (!(await store.lockAccount(id))) return false;
         if (action === "suspend") {
           if (
             !(await store.one("SELECT owner FROM suspended WHERE owner=?", [
@@ -1098,8 +1199,11 @@ export function createApp(
         "INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)",
         [randomUUID(), action, id || "portal", Date.now()],
       );
-      res.json({ ok: true });
-    });
+      return true;
+    }));
+    maintenanceCache.at = 0;
+    if (!changed) return res.status(404).json({ error: "Account not found." });
+    res.json({ ok: true });
   });
   app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));
   // Hashed build assets never change, so browsers may keep them for a year;
@@ -1141,6 +1245,7 @@ export function createApp(
   });
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
+    if (production && (!err.status || err.status >= 500)) console.error(JSON.stringify({ event: "request_failed", type: err.timeout ? "timeout" : "internal", method: req.method }));
     res.status(err.status === 413 ? 413 : err.status === 400 ? 400 : 500).json({
       error:
         err.status === 413

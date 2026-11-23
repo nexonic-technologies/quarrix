@@ -3,8 +3,22 @@ const cache = new Map(),
   last = new Map();
 const UA =
   "Quarrix Web/4.0 (https://nexonictechnologies.com; info@nexonictechnologies.com)";
+// Providers send HTML-escaped text (for example "R&amp;D" or "&#8217;").
+// Decode the entities and drop any tags; React escapes the result on output.
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—", hellip: "…", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“" };
+const decode = (v) =>
+  v
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+      if (e[0] === "#") {
+        const code = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
+      }
+      return ENTITIES[e.toLowerCase()] ?? m;
+    })
+    .replace(/\s+/g, " ");
 const clean = (v, n = 200) =>
-  typeof v === "string" ? v.trim().slice(0, n) : "";
+  typeof v === "string" ? decode(v).trim().slice(0, n) : "";
 export function webUrl(v) {
   try {
     const u = new URL(v);
@@ -47,7 +61,7 @@ async function json(url, options = {}) {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > 3_000_000) throw Error("Provider response too large");
+      if (size > 6_000_000) throw Error("Provider response too large");
       chunks.push(value);
     }
   } finally {
@@ -154,6 +168,11 @@ const fold = (v) =>
     .toLowerCase();
 const words = (v) => fold(v).split(/[^\p{L}\p{N}+#.]+/u).map((w) => w.replace(/^\.+|\.+$/g, "")).filter(Boolean);
 const STOP = new Set(["and", "or", "the", "a", "an", "of", "in", "for", "to", "with", "job", "jobs", "role", "roles"]);
+const GENERIC = new Set(["developer", "engineer", "manager", "senior", "junior", "lead", "remote", "specialist", "assistant", "associate", "head", "principal", "staff", "intern", "officer", "consultant", "analyst", "executive", "director", "coordinator", "full", "time", "part"]);
+export function keyword(query) {
+  const terms = words(query).filter((w) => !STOP.has(w) && w.length >= 2);
+  return terms.find((w) => !GENERIC.has(w)) || [...terms].sort((a, b) => b.length - a.length)[0] || "";
+}
 // Every meaningful query word must appear (as a word or word prefix)
 // somewhere in the listing; title matches rank first.
 export function match(query, row) {
@@ -208,7 +227,9 @@ export async function discover(kind, query, location = "") {
         ),
       );
     };
-    const tag = words(q).filter((w) => !STOP.has(w)).join(" ");
+    // Jobicy's tag search takes a single keyword (a phrase returns nothing),
+    // so send the most specific word and match the full query locally.
+    const tag = keyword(q);
     const feeds = await Promise.all([
       // Jobicy's latest listings plus its own keyword search for this query.
       cached("Jobicy", "feed", async () =>

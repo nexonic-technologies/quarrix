@@ -7,7 +7,7 @@ const dir = process.env.QUARRIX_TEST_DIR || mkdtempSync(join(tmpdir(), 'quarrix-
 process.env.QUARRIX_TEST_DIR = dir;
 export const app = { getPath: (_: string) => dir, getVersion: () => '0.0.0-test', isPackaged: false, getAppPath: () => process.cwd(), getLocale: () => 'en-US', on: () => undefined, relaunch: () => undefined, exit: () => undefined };
 // Reversible stand-in for the OS keychain, so encrypted settings round-trip like in the app.
-export const safeStorage = { isEncryptionAvailable: () => true, encryptString: (s: string) => Buffer.from(`k:${s}`), decryptString: (b: Buffer) => b.toString().slice(2) };
+export const safeStorage = { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: (s: string) => Buffer.from(`k:${s}`), decryptString: (b: Buffer) => b.toString().slice(2) };
 export class BrowserWindow { constructor() { throw new Error('No windows in tests'); } }
 export class Notification { constructor(_: unknown) {} show() {} }
 export const shell = { openExternal: async () => undefined, showItemInFolder: () => undefined };

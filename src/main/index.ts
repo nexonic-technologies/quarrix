@@ -44,6 +44,7 @@ import { geocode } from './sources/osm';
 import type { Geo } from './geo';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { autoUpdater } from 'electron-updater';
 import * as db from './db';
 import * as jobs from './jobs';
@@ -63,6 +64,13 @@ import { CATEGORIES } from '../shared/categories';
 
 let win: BrowserWindow | null = null;
 const send = (event: string, data?: unknown) => win?.webContents.send('event', event, data);
+const trustedRenderer = (value: string) => {
+  try {
+    const url = new URL(value); url.hash = ''; url.search = '';
+    if (devOrigin()) return url.origin === devOrigin() && url.pathname === '/';
+    return url.href === pathToFileURL(join(__dirname, '../renderer/index.html')).href;
+  } catch { return false; }
+};
 
 function createWindow() {
   const s = load();
@@ -76,7 +84,7 @@ function createWindow() {
   });
   win.once('ready-to-show', () => win?.show());
   win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternalUrl(url)) void shell.openExternal(url); return { action: 'deny' }; });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:') && !(devOrigin() && url.startsWith(devOrigin() + '/'))) { e.preventDefault(); if (isSafeExternalUrl(url)) void shell.openExternal(url); } });
+  win.webContents.on('will-navigate', (e, url) => { if (!trustedRenderer(url)) { e.preventDefault(); if (isSafeExternalUrl(url)) void shell.openExternal(url); } });
   if (process.env.QUARRIX_DEV_URL) void win.loadURL(process.env.QUARRIX_DEV_URL);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
@@ -116,7 +124,7 @@ const handle = (ch: string, fn: (...a: any[]) => unknown) =>
   ipcMain.handle(ch, async (e, ...args) => {
     // Only the app's own page may call the main process.
     const from = e.senderFrame?.url ?? '';
-    if (!from.startsWith('file:') && !(devOrigin() && from.startsWith(devOrigin() + '/'))) return { ok: false, error: 'Blocked a call from an unknown page.' };
+    if (!win || e.sender !== win.webContents || e.senderFrame !== win.webContents.mainFrame || !trustedRenderer(from)) return { ok: false, error: 'Blocked a call from an unknown page.' };
     try { if (JSON.stringify(args ?? []).length > 5_000_000) return { ok: false, error: 'Request too large.' }; } catch { return { ok: false, error: 'Request not readable.' }; }
     // Client workspace isolation: record IDs are checked and lists are limited to the selected workspace.
     try { const s = scope.current(); return { ok: true, data: scope.guardResult(ch, await fn(...scope.guardArgs(ch, validate.check(ch, args), s)), s) }; } catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }

@@ -11,7 +11,7 @@ import { match, inRegion } from "../server/discovery.mjs";
 const HOST = "quarrix.example.test";
 const ORIGIN = "https://" + HOST;
 
-async function start(t, { search, env = {}, dist } = {}) {
+async function start(t, { search, env = {}, dist, scanPdf } = {}) {
   const keys = { TURNSTILE_SITE_KEY: "site", TURNSTILE_SECRET: "secret", TURNSTILE_HOSTNAMES: HOST, ALLOW_REGISTRATION: "true", ...env };
   const previous = Object.fromEntries(Object.keys(keys).map((k) => [k, process.env[k]]));
   Object.assign(process.env, keys);
@@ -22,6 +22,7 @@ async function start(t, { search, env = {}, dist } = {}) {
     origin: ORIGIN,
     dataKey: randomBytes(32),
     dist,
+    scanPdf,
     sendMail: async (email, kind, token) => sent.push({ email, kind, token }),
     search: search || (async () => ({ rows: [], status: "live", checkedAt: Date.now() })),
     // A token is valid when it equals "ok:<action>".
@@ -49,6 +50,66 @@ async function start(t, { search, env = {}, dist } = {}) {
   };
   return { base, post, store, sent };
 }
+
+test("database transactions roll back coupled writes on failure", async (t) => {
+  const store = await openStore({ file: ":memory:" });
+  t.after(() => store.close());
+  await assert.rejects(store.transaction(async () => {
+    await store.run("INSERT INTO portal_settings(id,value) VALUES(?,?)", ["test-rollback", "1"]);
+    throw Error("simulated failure");
+  }), /simulated failure/);
+  assert.equal(await store.one("SELECT id FROM portal_settings WHERE id=?", ["test-rollback"]), undefined);
+});
+
+test("password reset rolls back when session revocation fails", async t => {
+  const { post, sent, store } = await start(t);
+  const account = { email: "rollback@example.test", password: "a perfectly fine password", privacyAccepted: true };
+  assert.equal((await post("register", { ...account, "cf-turnstile-response": "ok:signup" })).status, 202);
+  assert.equal((await post("email-complete", { kind: "verify", token: sent[0].token })).status, 200);
+  await post("email-request", { email: account.email, kind: "reset", "cf-turnstile-response": "ok:recovery" });
+  const reset = { kind: "reset", token: sent.at(-1).token, password: "a totally new password" };
+  const run = store.run;
+  store.run = async (sql, args) => { if (sql === "DELETE FROM sessions WHERE owner=?") throw Error("simulated database failure"); return run(sql, args); };
+  assert.equal((await post("email-complete", reset)).status, 500);
+  store.run = run;
+  assert.equal((await post("login", { ...account, "cf-turnstile-response": "ok:login" })).status, 200);
+  assert.equal((await post("email-complete", reset)).status, 200);
+  assert.equal((await post("login", { ...account, password: reset.password, "cf-turnstile-response": "ok:login" })).status, 200);
+});
+
+test("production document uploads and downloads fail closed without a clean screening result", async t => {
+  let verdict = false;
+  const adminToken = randomBytes(32).toString("hex");
+  const { base, post, sent, store } = await start(t, { env: { ADMIN_TOKEN: adminToken }, scanPdf: async () => { if (verdict === null) throw Error("scanner offline"); return verdict; } });
+  const account = { email: "upload@example.test", password: "a perfectly fine password", privacyAccepted: true };
+  await post("register", { ...account, "cf-turnstile-response": "ok:signup" });
+  await post("email-complete", { kind: "verify", token: sent[0].token });
+  const login = await post("login", { ...account, "cf-turnstile-response": "ok:login" });
+  const body = { name: "document.pdf", content: Buffer.from("%PDF-1.7\nfixture").toString("base64") };
+  assert.equal((await post("workspace/documents", body, login.cookie)).status, 422);
+  verdict = null;
+  assert.equal((await post("workspace/documents", body, login.cookie)).status, 503);
+  assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM documents")).n), 0);
+  verdict = true;
+  const uploaded = await post("workspace/documents", body, login.cookie);
+  assert.equal(uploaded.status, 201);
+  const id = uploaded.data.id;
+  const owner = login.data.user.id;
+  const download = () => fetch(base + "/api/workspace/documents/" + id, { headers: { Cookie: login.cookie } });
+  const support = () => fetch(base + "/api/admin/support/" + owner + "/document/" + id, { headers: { Authorization: "Bearer " + adminToken } });
+  assert.equal((await support()).status, 403);
+  await store.run("INSERT INTO support_grants(owner,expires) VALUES(?,?)", [owner, Date.now() + 60000]);
+  verdict = false;
+  assert.equal((await download()).status, 422);
+  assert.equal((await support()).status, 422);
+  verdict = null;
+  assert.equal((await download()).status, 503);
+  assert.equal((await support()).status, 503);
+  assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM documents")).n), 1);
+  verdict = true;
+  assert.equal((await download()).status, 200);
+  assert.equal((await support()).status, 200);
+});
 
 test("unverified junk traffic cannot lock other people out", async (t) => {
   const { post, sent } = await start(t);
@@ -135,4 +196,51 @@ test("job matching uses every word in any order, ignoring case and accents", () 
   assert.equal(inRegion("germany", row), true);
   assert.equal(inRegion("canada", row), false);
   assert.equal(inRegion("", row), true);
+});
+
+test("provider text is decoded and Jobicy gets a single keyword", async () => {
+  const { keyword } = await import("../server/discovery.mjs");
+  assert.equal(keyword("react developer"), "react");
+  assert.equal(keyword("Senior Engineer"), "engineer");
+  assert.equal(keyword("the"), "");
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes("jobicy"))
+      return new Response(JSON.stringify({ jobs: [{ jobTitle: "R&amp;D Engineer &#8211; React", companyName: "A&amp;B", jobGeo: "EU", url: "https://jobicy.com/x" + calls.length, jobExcerpt: "<p>Build &quot;things&quot;</p>", pubDate: "2026-11-23T18:35:14+00:00" }] }));
+    return new Response(JSON.stringify({ data: [], links: {} }));
+  };
+  try {
+    const { discover } = await import("../server/discovery.mjs?decode");
+    const r = await discover("jobs", "react engineer", "");
+    assert.ok(calls.some((u) => u.includes("tag=react") && !u.includes("%20")));
+    assert.equal(r.rows[0].title, "R&D Engineer – React");
+    assert.match(r.rows[0].subtitle, /^A&B/);
+    assert.match(r.rows[0].detail, /Build "things"/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("security headers", async (t) => {
+  const { base } = await start(t);
+  const r = await fetch(base + "/api/health");
+  assert.match(r.headers.get("permissions-policy"), /camera=\(\)/);
+  assert.equal(r.headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.match(r.headers.get("strict-transport-security"), /includeSubDomains/);
+  const body = await r.json();
+  assert.equal(body.ok, true);
+  assert.equal(JSON.stringify(body).includes("127.0.0.1"), false);
+});
+
+test("without trusted proxies, verified visitors behind one ingress are not capped together", async (t) => {
+  const { post } = await start(t);
+  // Every request arrives from the same socket address, as behind a CDN.
+  let limited = 0;
+  for (let i = 0; i < 40; i++) {
+    const r = await post("email-request", { email: `user${i}@example.test`, kind: "reset", "cf-turnstile-response": "ok:recovery" });
+    if (r.status === 429) limited++;
+  }
+  assert.equal(limited, 0);
 });
