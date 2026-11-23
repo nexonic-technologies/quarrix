@@ -94,10 +94,13 @@ export function createApp(
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-site",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     });
-    if (production) res.set("Strict-Transport-Security", "max-age=31536000");
+    if (production) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     next();
   });
   const adminAuth = (req) => {
@@ -361,9 +364,28 @@ export function createApp(
       res.json({ ok: true, kind });
     });
   });
-  app.get("/api/health", (req, res) =>
-    res.json({ ok: true, version: "4.1.0" }),
-  );
+  // Shape of the proxy chain (counts and address classes only, no addresses),
+  // used to choose TRUST_PROXY_HOPS for the deployment.
+  const addressClass = (a = "") => {
+    a = a.replace(/^::ffff:/, "");
+    if (a === "127.0.0.1" || a === "::1") return "loopback";
+    if (/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|fc|fd|169\.254\.)/i.test(a)) return "private";
+    return a ? "public" : "none";
+  };
+  app.get("/api/health", (req, res) => {
+    const chain = (req.get("x-forwarded-for") || "").split(",").map((x) => x.trim()).filter(Boolean);
+    res.json({
+      ok: true,
+      version: "4.1.1",
+      proxy: {
+        trustedHops: hops,
+        socket: addressClass(req.socket?.remoteAddress),
+        forwardedFor: chain.map(addressClass),
+        headers: ["x-real-ip", "cf-connecting-ip", "true-client-ip", "x-client-ip"].filter((h) => req.get(h)),
+        resolved: addressClass(req.ip),
+      },
+    });
+  });
   app.get("/api/session", async (req, res) =>
     res.json({
       user: (await session(req)) || null,
@@ -505,7 +527,7 @@ export function createApp(
     )
       return res
         .status(403)
-        .json({ error: "Verify your email before signing in." });
+        .json({ error: "Verify your email before signing in. Need a new link? Use “Forgot password?” and choose “Get a new verification link”." });
     await signIn(req, res, user.id);
     res.json({ user: { id: user.id, email: decodeEmail(user).email } });
   });

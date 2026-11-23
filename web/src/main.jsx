@@ -8,9 +8,9 @@ import { Header, ProductBar, Footer, Arrow, External, Icon, SITE } from "./shell
 
 const initial = { kind: "business", title: "", notes: "", url: "", status: "" };
 const KINDS = {
-  jobs: { route: "jobs", label: "Find a job", tab: "Jobs", eyebrow: "Career", heading: "Find remote and European jobs", placeholder: "e.g. react developer", where: "Region (optional)", wherePlaceholder: "e.g. Germany or remote", coverage: "Jobicy remote jobs and Arbeitnow European vacancies. Check each listing for eligibility and location." },
-  business: { route: "customers", label: "Find customers", tab: "Customers", eyebrow: "Business", heading: "Find registered businesses", placeholder: "Company or activity", where: "City in France", wherePlaceholder: "e.g. Paris", coverage: "The French public business registry. More regions will be added where data use is permitted." },
-  grants: { route: "grants", label: "Find grants", tab: "Grants", eyebrow: "Funding", heading: "Find US public grants", placeholder: "e.g. education", where: "", wherePlaceholder: "", coverage: "Posted Grants.gov opportunities. Always check official eligibility and deadlines." },
+  jobs: { route: "jobs", label: "Find a job", tab: "Jobs", eyebrow: "Career", heading: "Find remote and European jobs", placeholder: "e.g. react developer", where: "Region (optional)", wherePlaceholder: "e.g. Germany or remote", coverage: "Jobicy remote jobs and Arbeitnow European vacancies. Check each listing for eligibility and location.", sources: [["Jobicy", "https://jobicy.com/"], ["Arbeitnow", "https://www.arbeitnow.com/"]] },
+  business: { route: "customers", label: "Find customers", tab: "Customers", eyebrow: "Business", heading: "Find registered businesses", placeholder: "Company or activity", where: "City in France", wherePlaceholder: "e.g. Paris", coverage: "The French public business registry. More regions will be added where data use is permitted.", sources: [["Annuaire des Entreprises (data.gouv.fr)", "https://annuaire-entreprises.data.gouv.fr/"]] },
+  grants: { route: "grants", label: "Find grants", tab: "Grants", eyebrow: "Funding", heading: "Find US public grants", placeholder: "e.g. education", where: "", wherePlaceholder: "", coverage: "Posted Grants.gov opportunities. Always check official eligibility and deadlines.", sources: [["Grants.gov", "https://www.grants.gov/"]] },
 };
 const ROUTE_KIND = { jobs: "jobs", customers: "business", grants: "grants" };
 const ROUTES = new Set(["discover", "jobs", "customers", "grants", "workspace", "sign-in", "create-account", "forgot-password", "desktop", "privacy"]);
@@ -426,6 +426,12 @@ function App() {
               </button>
             </form>
             <p className="qx-note">{k.coverage} Results are reported by the source and are not independently verified.</p>
+            <p className="qx-note qx-credit">
+              Sources:{" "}
+              {k.sources.map(([name, url], i) => (
+                <React.Fragment key={name}>{i > 0 && " · "}<a href={url} target="_blank" rel="noopener noreferrer">{name}</a></React.Fragment>
+              ))}
+            </p>
             <p className="qx-note"><span className="nx-chip">{user ? "Free account · 50 searches a day" : "Guest · 5 searches and 10 results a day"}</span></p>
           </div>
         </div>

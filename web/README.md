@@ -1,4 +1,4 @@
-# Quarrix Web 4.1.0
+# Quarrix Web 4.1.1
 
 A React/Vite and Express portal, live at https://quarrix.nexonictechnologies.com. It uses the same header, footer, tokens and typography (Fraunces + Inter) as the nexonic WordPress theme on nexonictechnologies.com; the theme layer is the first section of `src/styles.css` and the shared header/footer markup is in `src/shell.jsx`. When the main theme's menu or footer changes, update `shell.jsx` to match. The existing Electron desktop package remains 3.9.0 and uses its own local database.
 
@@ -36,8 +36,8 @@ Deployed as a Hostinger Node.js app (Express, Node 24, root `web/`, entry `serve
 | `SMTP_URL`, `MAIL_FROM` | Transactional verification and recovery delivery |
 | `ALLOW_REGISTRATION=false` | Keep closed until all production gates pass; enable later |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`, `TURNSTILE_HOSTNAMES` | Cloudflare Managed widget. Set all three together; production hostname must exactly match `quarrix.nexonictechnologies.com`. Public registration requires a complete configuration; signup, login, recovery and guest discovery require server-verified challenge tokens once configured. Never commit the secret. |
-| `PRIVATE_REGISTRATION_EMAIL`, `PRIVATE_REGISTRATION_TOKEN_HASH`, `PRIVATE_REGISTRATION_EXPIRES_AT` | Optional private launch invitation: exact tester email, SHA-256 hex digest of a random 32-byte hex code, and ISO UTC expiry within 24 hours. Keep public registration off. The code is entered on the registration form and never stored as plaintext on the server. A successful claim is durable and single-use. Remove these variables after the test (they are still set on the live app as of 23 Nov 2026). SMTP and standard email verification remain mandatory. |
-| `TRUST_PROXY_HOPS` | Optional. Number of trusted reverse proxies in front of the app, so per-client limits use the real visitor address. Leave unset unless confirmed. |
+| `PRIVATE_REGISTRATION_EMAIL`, `PRIVATE_REGISTRATION_TOKEN_HASH`, `PRIVATE_REGISTRATION_EXPIRES_AT` | Optional private launch invitation: exact tester email, SHA-256 hex digest of a random 32-byte hex code, and ISO UTC expiry within 24 hours. Keep public registration off. The code is entered on the registration form and never stored as plaintext on the server. A successful claim is durable and single-use. Remove these variables after the test. SMTP and standard email verification remain mandatory. |
+| `TRUST_PROXY_HOPS` | Number of trusted reverse proxies in front of the app, so per-client limits use the real visitor address. `GET /api/health` reports the proxy chain shape (address classes only) to choose the value: with a private/loopback socket and N forwarded entries from an unspoofed request, set N. |
 | `GUEST_SEARCHES_PER_DAY`, `MEMBER_SEARCHES_PER_DAY`, `LOGIN_ATTEMPTS_PER_15_MIN` | Optional shared daily/15-minute ceilings (defaults 250, 2000, 1000). |
 | `MAX_ACCOUNTS=500` | Initial registration cap, increase only after measuring shared hosting capacity |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Optional free model ending in `:free`; not set by default |

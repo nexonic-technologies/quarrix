@@ -136,3 +136,40 @@ test("job matching uses every word in any order, ignoring case and accents", () 
   assert.equal(inRegion("canada", row), false);
   assert.equal(inRegion("", row), true);
 });
+
+test("provider text is decoded and Jobicy gets a single keyword", async () => {
+  const { keyword } = await import("../server/discovery.mjs");
+  assert.equal(keyword("react developer"), "react");
+  assert.equal(keyword("Senior Engineer"), "engineer");
+  assert.equal(keyword("the"), "");
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    if (String(url).includes("jobicy"))
+      return new Response(JSON.stringify({ jobs: [{ jobTitle: "R&amp;D Engineer &#8211; React", companyName: "A&amp;B", jobGeo: "EU", url: "https://jobicy.com/x" + calls.length, jobExcerpt: "<p>Build &quot;things&quot;</p>", pubDate: "2026-11-23T18:35:14+00:00" }] }));
+    return new Response(JSON.stringify({ data: [], links: {} }));
+  };
+  try {
+    const { discover } = await import("../server/discovery.mjs?decode");
+    const r = await discover("jobs", "react engineer", "");
+    assert.ok(calls.some((u) => u.includes("tag=react") && !u.includes("%20")));
+    assert.equal(r.rows[0].title, "R&D Engineer – React");
+    assert.match(r.rows[0].subtitle, /^A&B/);
+    assert.match(r.rows[0].detail, /Build "things"/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("security headers and proxy diagnostics", async (t) => {
+  const { base } = await start(t);
+  const r = await fetch(base + "/api/health");
+  assert.match(r.headers.get("permissions-policy"), /camera=\(\)/);
+  assert.equal(r.headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.match(r.headers.get("strict-transport-security"), /includeSubDomains/);
+  const body = await r.json();
+  assert.equal(body.proxy.socket, "loopback");
+  assert.deepEqual(body.proxy.forwardedFor, []);
+  assert.equal(JSON.stringify(body).includes("127.0.0.1"), false);
+});
