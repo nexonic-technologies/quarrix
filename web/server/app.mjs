@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { discover, webUrl } from "./discovery.mjs";
 import { vault, localKey } from "./crypto.mjs";
+import { turnstileConfig, verifyTurnstile } from "./turnstile.mjs";
 const scrypt = promisify(scryptCb),
   hash = (v) => createHash("sha256").update(v).digest("hex");
 const text = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
@@ -60,6 +61,7 @@ export function createApp(
     dist = resolve("dist"),
     dataKey = localKey(),
     sendMail = null,
+    turnstileRequest = fetch,
   } = {},
 ) {
   const encryption = vault(dataKey),
@@ -78,6 +80,13 @@ export function createApp(
         .seal(JSON.stringify(body), owner + ":" + id)
         .toString("base64");
   const app = express();
+  const challenge = turnstileConfig(process.env, origin);
+  const challengeGate = async (req, res, action) => {
+    if (!challenge.enabled) return true;
+    if (await verifyTurnstile(challenge, req.body?.["cf-turnstile-response"], action, turnstileRequest)) return true;
+    res.status(403).json({ error: "Please complete the security check and try again." });
+    return false;
+  };
   app.disable("x-powered-by");
   app.use((req, res, next) => {
     res.set({
@@ -85,7 +94,7 @@ export function createApp(
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
       "Content-Security-Policy":
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+        "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     });
     if (production) res.set("Strict-Transport-Security", "max-age=31536000");
     next();
@@ -110,7 +119,7 @@ export function createApp(
         expires <= Date.now() || expires > Date.now() + DAY) return null;
     return { email, digest, expires };
   };
-  const registrationMode = () => !production || (process.env.ALLOW_REGISTRATION === "true" && sendMail)
+  const registrationMode = () => !production || (process.env.ALLOW_REGISTRATION === "true" && sendMail && challenge.ready)
     ? "public" : privateRegistration() ? "invite" : "closed";
   const maintenance = async () =>
     !!(await store.one(
@@ -248,6 +257,7 @@ export function createApp(
   app.post("/api/email-request", async (req, res) => {
     if (!authLimit())
       return res.status(429).json({ error: "Try again later." });
+    if (!(await challengeGate(req, res, "recovery"))) return;
     if (!sendMail)
       return res
         .status(503)
@@ -319,6 +329,7 @@ export function createApp(
       user: (await session(req)) || null,
       maintenance: await maintenance(),
       registrationMode: registrationMode(),
+      turnstileSiteKey: challenge.sitekey,
       assistantAvailable: !!(
         process.env.OPENROUTER_API_KEY &&
         process.env.OPENROUTER_MODEL?.endsWith(":free")
@@ -346,6 +357,7 @@ export function createApp(
         typeof code !== "string" || !/^[a-f0-9]{64}$/.test(code) ||
         !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
       return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
+    if (!(await challengeGate(req, res, "signup"))) return;
     if (production && req.body.privacyAccepted !== true)
       return res.status(400).json({ error: "Please acknowledge the Quarrix privacy notice." });
     if (production && !(await budget("registration", 25)))
@@ -426,6 +438,7 @@ export function createApp(
   app.post("/api/login", async (req, res) => {
     if (!authLimit())
       return res.status(429).json({ error: "Try again later." });
+    if (!(await challengeGate(req, res, "login"))) return;
     const email = text(req.body.email, 254).toLowerCase(),
       password = req.body.password;
     if (typeof password !== "string" || password.length > 128)
@@ -473,6 +486,7 @@ export function createApp(
     if (!q || !["jobs", "grants", "business"].includes(kind))
       return res.status(400).json({ error: "Enter a valid query." });
     const user = await session(req);
+    if (!user && !(await challengeGate(req, res, "guest_search"))) return;
     if (production && !(await budget(user ? "member-search" : "guest-search", user ? 2000 : 250)))
       return res.status(429).json({ error: "Daily search capacity reached. Please try tomorrow." });
     let guest = (req.get("cookie") || "").match(

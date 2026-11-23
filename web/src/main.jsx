@@ -5,13 +5,42 @@ import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/wght-italic.css";
 import "./styles.css";
 const initial = { kind: "business", title: "", notes: "", url: "", status: "" };
+let turnstileLoader;
+function loadTurnstile() {
+  if (window.turnstile) return Promise.resolve(window.turnstile);
+  if (!turnstileLoader) turnstileLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.onload = () => window.turnstile ? resolve(window.turnstile) : reject(Error("Security check unavailable"));
+    script.onerror = () => reject(Error("Security check unavailable"));
+    document.head.appendChild(script);
+  });
+  return turnstileLoader;
+}
+function Turnstile({ sitekey, action }) {
+  const container = useRef(null);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    if (!sitekey) return;
+    let cancelled = false, widget;
+    loadTurnstile().then(api => {
+      if (!cancelled && container.current) widget = api.render(container.current, {
+        sitekey, action, "response-field": true, "response-field-name": "cf-turnstile-response",
+        "error-callback": () => setUnavailable(true), callback: () => setUnavailable(false),
+      });
+    }).catch(() => { if (!cancelled) setUnavailable(true); });
+    return () => { cancelled = true; if (widget !== undefined) window.turnstile?.remove(widget); };
+  }, [sitekey, action]);
+  return sitekey ? <div><div ref={container} />{unavailable && <p role="status">Security check unavailable. Refresh or try again.</p>}</div> : null;
+}
 function PrivacyNotice() {
   return <details className="privacy-notice">
     <summary>Quarrix privacy notice · 23 November 2026</summary>
     <p>Nexonic Technologies operates Quarrix. We use your email for account access, verification and recovery; newsletters are optional and can be disabled. Passwords are hashed. Private records, document contents and search history are encrypted by the service, but this is not end-to-end encryption.</p>
     <p>Search terms and regions may be sent to external discovery providers. Google Workspace handles transactional email. The optional assistant sends only your submitted question to its configured provider when you explicitly agree. Do not include sensitive personal information in assistant questions.</p>
     <p>The owner can see account and usage metadata. Private records, documents and recent searches are available to support only when you grant temporary access, which expires after one hour and can be revoked. Support access is logged. Search history displays the last 30 days; older entries are removed during search and history processing. You can clear history, export records, download documents, and delete your account in Workspace. Backups may retain deleted information until their retention period expires.</p>
-    <p>Essential cookies maintain sessions and guest search allowances. Abuse prevention uses limited account and usage metadata. For privacy questions or deletion support, contact <a href="mailto:quarrix@nexonictechnologies.com">quarrix@nexonictechnologies.com</a>.</p>
+    <p>Essential cookies maintain sessions and guest search allowances. Abuse prevention uses limited account and usage metadata and Cloudflare Turnstile security checks. For privacy questions or deletion support, contact <a href="mailto:quarrix@nexonictechnologies.com">quarrix@nexonictechnologies.com</a>.</p>
   </details>;
 }
 async function api(path, method = "GET", body) {
@@ -40,6 +69,10 @@ function App() {
     [assistantAvailable, setAssistantAvailable] = useState(false),
     [maintenance, setMaintenance] = useState(false),
     [registrationMode, setRegistrationMode] = useState("closed"),
+    [turnstileSiteKey, setTurnstileSiteKey] = useState(""),
+    [searchCheck, setSearchCheck] = useState(0),
+    [authCheck, setAuthCheck] = useState(0),
+    [recoveryCheck, setRecoveryCheck] = useState(0),
     [page, setPage] = useState("discover"),
     [kind, setKind] = useState("jobs"),
     [query, setQuery] = useState(""),
@@ -73,6 +106,7 @@ function App() {
         setAssistantAvailable(x.assistantAvailable);
         setMaintenance(x.maintenance || false);
         setRegistrationMode(x.registrationMode || "closed");
+        setTurnstileSiteKey(x.turnstileSiteKey || "");
       })
       .catch(fail);
   }, []);
@@ -116,14 +150,16 @@ function App() {
   }
   async function search(e) {
     e.preventDefault();
+    const token = new FormData(e.currentTarget).get("cf-turnstile-response");
     setBusy(true);
     setNotice("");
     setResult(null);
     try {
-      setResult(await api("discover", "POST", { kind, q: query, location }));
+      setResult(await api("discover", "POST", { kind, q: query, location, "cf-turnstile-response": token }));
     } catch (e) {
       fail(e);
     } finally {
+      setSearchCheck(n => n + 1);
       setBusy(false);
     }
   }
@@ -139,6 +175,7 @@ function App() {
         newsletter: f.get("newsletter") === "on",
         invitationCode: f.get("invitationCode") || undefined,
         privacyAccepted: f.get("privacyAccepted") === "on",
+        "cf-turnstile-response": f.get("cf-turnstile-response"),
       });
       if (x.verificationRequired) {
         setNotice(x.message);
@@ -150,6 +187,7 @@ function App() {
     } catch (e) {
       fail(e);
     } finally {
+      setAuthCheck(n => n + 1);
       setBusy(false);
     }
   }
@@ -424,6 +462,7 @@ function App() {
                       />
                     </label>
                   )}
+                  {!user && <Turnstile key={searchCheck} sitekey={turnstileSiteKey} action="guest_search" />}
                   <button className="primary" disabled={busy}>
                     {busy ? "Searching…" : "Search opportunities →"}
                   </button>
@@ -675,6 +714,7 @@ function App() {
                         </label>
                       </>
                     )}
+                    {(mode !== "register" || registrationMode !== "closed") && <Turnstile key={`${mode}:${authCheck}`} sitekey={turnstileSiteKey} action={mode === "register" ? "signup" : "login"} />}
                     <button className="primary" disabled={busy || (mode === "register" && registrationMode === "closed")}>
                       {mode === "login" ? "Sign in" : "Create free account"}
                     </button>
@@ -697,10 +737,13 @@ function App() {
                           r = await api("email-request", "POST", {
                             email: f.get("email"),
                             kind: f.get("kind"),
+                            "cf-turnstile-response": f.get("cf-turnstile-response"),
                           });
                         setNotice(r.message);
                       } catch (e) {
                         fail(e);
+                      } finally {
+                        setRecoveryCheck(n => n + 1);
                       }
                     }}
                   >
@@ -715,6 +758,7 @@ function App() {
                         <option value="verify">Resend verification</option>
                       </select>
                     </label>
+                    <Turnstile key={recoveryCheck} sitekey={turnstileSiteKey} action="recovery" />
                     <button>Send recovery email</button>
                   </form>
                 </>

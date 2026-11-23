@@ -35,6 +35,7 @@ Create a distinct Node.js web app for `quarrix.nexonictechnologies.com` using ex
 | `ADMIN_TOKEN` | Independent, high-entropy access token (32+ characters) |
 | `SMTP_URL`, `MAIL_FROM` | Transactional verification and recovery delivery |
 | `ALLOW_REGISTRATION=false` | Keep closed until all production gates pass; enable later |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`, `TURNSTILE_HOSTNAMES` | Cloudflare Managed widget. Set all three together; production hostname must exactly match `quarrix.nexonictechnologies.com`. Public registration requires a complete configuration; signup, login, recovery and guest discovery require server-verified challenge tokens once configured. Never commit the secret. |
 | `PRIVATE_REGISTRATION_EMAIL`, `PRIVATE_REGISTRATION_TOKEN_HASH`, `PRIVATE_REGISTRATION_EXPIRES_AT` | Optional private launch invitation: exact tester email, SHA-256 hex digest of a random 32-byte hex code, and ISO UTC expiry within 24 hours. Keep public registration off. The code is entered on the registration form and never stored as plaintext on the server. A successful claim is durable and single-use. Remove these variables after the test. SMTP and standard email verification remain mandatory. |
 | `MAX_ACCOUNTS=500` | Initial registration cap, increase only after measuring shared hosting capacity |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Optional free model ending in `:free`; not set by default |
