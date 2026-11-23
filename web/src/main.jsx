@@ -5,6 +5,15 @@ import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/wght-italic.css";
 import "./styles.css";
 const initial = { kind: "business", title: "", notes: "", url: "", status: "" };
+function PrivacyNotice() {
+  return <details className="privacy-notice">
+    <summary>Quarrix privacy notice · 23 November 2026</summary>
+    <p>Nexonic Technologies operates Quarrix. We use your email for account access, verification and recovery; newsletters are optional and can be disabled. Passwords are hashed. Private records, document contents and search history are encrypted by the service, but this is not end-to-end encryption.</p>
+    <p>Search terms and regions may be sent to external discovery providers. Google Workspace handles transactional email. The optional assistant sends only your submitted question to its configured provider when you explicitly agree. Do not include sensitive personal information in assistant questions.</p>
+    <p>The owner can see account and usage metadata. Private records, documents and recent searches are available to support only when you grant temporary access, which expires after one hour and can be revoked. Support access is logged. Search history displays the last 30 days; older entries are removed during search and history processing. You can clear history, export records, download documents, and delete your account in Workspace. Backups may retain deleted information until their retention period expires.</p>
+    <p>Essential cookies maintain sessions and guest search allowances. Abuse prevention uses limited account and usage metadata. For privacy questions or deletion support, contact <a href="mailto:quarrix@nexonictechnologies.com">quarrix@nexonictechnologies.com</a>.</p>
+  </details>;
+}
 async function api(path, method = "GET", body) {
   const response = await fetch("/api/" + path, {
     method,
@@ -129,6 +138,7 @@ function App() {
         password: f.get("password"),
         newsletter: f.get("newsletter") === "on",
         invitationCode: f.get("invitationCode") || undefined,
+        privacyAccepted: f.get("privacyAccepted") === "on",
       });
       if (x.verificationRequired) {
         setNotice(x.message);
@@ -657,6 +667,8 @@ function App() {
                           Use at least 12 characters. Your workspace is private;
                           the portal owner can see account and usage metadata.
                         </p>
+                        <PrivacyNotice />
+                        <label className="check"><input name="privacyAccepted" type="checkbox" required /> I have read the Quarrix privacy notice.</label>
                         <label className="check">
                           <input name="newsletter" type="checkbox" /> Send me
                           optional Quarrix news and updates
@@ -1025,6 +1037,7 @@ function App() {
         <a href="https://nexonictechnologies.com/privacy-policy/">
           Privacy & contact
         </a>
+        <PrivacyNotice />
         <a href="https://nexonictechnologies.com">Nexonic Technologies ↗</a>
       </footer>
     </>

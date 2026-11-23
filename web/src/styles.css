@@ -387,6 +387,9 @@ form {
   font-size: 14px;
   font-weight: 400;
 }
+.privacy-notice { max-width: 720px; text-align: left; line-height: 1.6; }
+.privacy-notice summary { cursor: pointer; font-weight: 600; }
+.privacy-notice p { margin: .65rem 0; }
 .check input {
   width: auto;
   accent-color: var(--purple);

@@ -18,6 +18,8 @@ Node 24 or newer. Inside `web/`, run `npm ci`, `npm test`, `npm run build`, and 
 
 ## Security boundaries
 
+Production-wide persisted ceilings apply across restarts and workers: 25 registrations/day, 100 transactional emails/day, 250 guest discovery requests/day, 2,000 member discovery requests/day, and 300 login attempts per 15-minute window (10 per account digest). These are conservative shared-host launch limits; global exhaustion may temporarily limit legitimate users. Per-browser and per-account limits still apply. The portal never trusts arbitrary forwarded IP headers. A verified edge/bot challenge and load validation are separate launch gates, not implied by these caps. The versioned privacy notice is acknowledged at new registration; existing accounts are not retroactively marked as having acknowledged it. Newsletter consent remains independent and optional.
+
 Passwords use salted scrypt hashes, session and email token digests are stored rather than raw tokens, production cookies are HTTPS-only and HttpOnly, browser writes require same origin. Email addresses, document names/contents, private records and search history are encrypted with AES-256-GCM and owner-bound associated data. Account IDs, timestamps, usage counts, record types, and document sizes are metadata, not encrypted. The server must be trusted: this is application-level encryption, not end-to-end encryption. Back up the key securely outside the database; losing it makes records unreadable. Admin audit records are append-only through the application, not tamper-proof against the database owner. Never expose the owner token or keys to browsers. Use strong WordPress 2FA, least privilege and restricted access to hPanel.
 
 ## Hostinger deployment — not performed

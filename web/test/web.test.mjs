@@ -406,10 +406,12 @@ test("private launch invitation preserves closed registration and requires verif
     });
     return { status: response.status, cookie: response.headers.getSetCookie().map(x => x.split(";")[0]).join("; ") };
   };
-  const credentials = { email: keys.PRIVATE_REGISTRATION_EMAIL, password: "private pilot strong password" };
+  const credentials = { email: keys.PRIVATE_REGISTRATION_EMAIL, password: "private pilot strong password", privacyAccepted: true };
   assert.equal((await post("register", credentials)).status, 403);
   assert.equal((await post("register", { ...credentials, email: "other@example.test", invitationCode: code })).status, 403);
+  assert.equal((await post("register", { ...credentials, privacyAccepted: false, invitationCode: code })).status, 400);
   assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 202);
+  assert.equal((await store.one("SELECT version FROM privacy_acknowledgements WHERE owner=(SELECT id FROM accounts WHERE email_digest IS NOT NULL ORDER BY created DESC LIMIT 1)")).version, "2026-11-23");
   assert.equal(sent[0].kind, "verify");
   assert.equal((await post("login", credentials)).status, 403);
   assert.equal((await post("email-complete", { kind: "verify", token: sent[0].token })).status, 200);
@@ -423,8 +425,13 @@ test("private launch invitation preserves closed registration and requires verif
   const resetLogin = await post("login", { ...credentials, password: resetPassword });
   assert.equal(resetLogin.status, 200);
   assert.equal((await post("workspace/delete-account", { password: resetPassword }, resetLogin.cookie)).status, 200);
+  assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM privacy_acknowledgements")).n), 0);
   assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 409);
   process.env.PRIVATE_REGISTRATION_EXPIRES_AT = new Date(Date.now() - 1000).toISOString();
   assert.equal((await post("register", { ...credentials, invitationCode: code })).status, 403);
   assert.equal((await fetch(base + "session").then(r => r.json())).registrationMode, "closed");
+  const day = Math.floor(Date.now() / 86400000);
+  await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [`budget:guest-search:${day}`, 250, (day + 1) * 86400000]);
+  assert.equal((await post("discover", { kind: "jobs", q: "test" })).status, 429);
+  assert.equal(Number((await store.one("SELECT n FROM `usage` WHERE id=?", [`budget:guest-search:${day}`])).n), 250);
 });

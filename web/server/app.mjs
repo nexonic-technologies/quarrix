@@ -15,6 +15,7 @@ const scrypt = promisify(scryptCb),
   hash = (v) => createHash("sha256").update(v).digest("hex");
 const text = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
 const DAY = 86400000;
+const PRIVACY_VERSION = "2026-11-23";
 async function passwordHash(password, salt = randomBytes(16).toString("hex")) {
   return salt + ":" + (await scrypt(password, salt, 64)).toString("hex");
 }
@@ -147,6 +148,22 @@ export function createApp(
     queue = p.catch(() => {});
     return p;
   };
+  // Durable fixed-window ceilings; database uniqueness and conditional writes
+  // enforce the limits across workers and application restarts.
+  async function budget(scope, max, window = DAY) {
+    const now = Date.now(), bucket = Math.floor(now / window);
+    const key = `budget:${scope}:${bucket}`;
+    await store.run("DELETE FROM `usage` WHERE expires<?", [now]);
+    const update = () => store.run("UPDATE `usage` SET n=n+1 WHERE id=? AND n<?", [key, max]);
+    if ((await update()).changes) return true;
+    try {
+      await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [key, 1, (bucket + 1) * window]);
+      return true;
+    } catch (error) {
+      if (!/unique|duplicate/i.test(error.message)) throw error;
+      return !!(await update()).changes;
+    }
+  }
   async function quota(id, max, units = 1) {
     return serial(async () => {
       const now = Date.now(),
@@ -214,6 +231,7 @@ export function createApp(
   }
   async function emailToken(user, kind) {
     if (!sendMail) return;
+    if (!(await budget("transactional-mail", 100))) throw Error("Email capacity reached");
     const token = randomBytes(32).toString("hex");
     await serial(async () => {
       await store.run(
@@ -236,7 +254,7 @@ export function createApp(
         .json({ error: "Email delivery is not configured." });
     const kind = req.body.kind === "verify" ? "verify" : "reset",
       email = text(req.body.email, 254).toLowerCase();
-    if ((await quota("mail:" + emailDigest(email), 3)) < 0)
+    if (!(await budget("mail:" + emailDigest(email), 3)))
       return res.status(429).json({ error: "Try again later." });
     const user = await store.one(
       "SELECT id,email FROM accounts WHERE email_digest=?",
@@ -328,6 +346,10 @@ export function createApp(
         typeof code !== "string" || !/^[a-f0-9]{64}$/.test(code) ||
         !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
       return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
+    if (production && req.body.privacyAccepted !== true)
+      return res.status(400).json({ error: "Please acknowledge the Quarrix privacy notice." });
+    if (production && !(await budget("registration", 25)))
+      return res.status(429).json({ error: "Daily registration capacity reached. Please try tomorrow." });
     const id = randomUUID(),
       encoded = await passwordHash(password);
     const maxAccounts = Math.max(
@@ -357,6 +379,15 @@ export function createApp(
             Date.now(),
           ],
         );
+        if (req.body.privacyAccepted === true) {
+          try {
+            await store.run("INSERT INTO privacy_acknowledgements(owner,version,created) VALUES(?,?,?)", [id, PRIVACY_VERSION, Date.now()]);
+          } catch (error) {
+            // No verification email or session has been issued at this point.
+            await store.run("DELETE FROM accounts WHERE id=?", [id]);
+            throw error;
+          }
+        }
         return true;
       });
       if (!created)
@@ -399,6 +430,9 @@ export function createApp(
       password = req.body.password;
     if (typeof password !== "string" || password.length > 128)
       return res.status(400).json({ error: "Invalid credentials." });
+    if (production && (!(await budget("login-global", 300, 900000)) ||
+        !(await budget("login:" + emailDigest(email), 10, 900000))))
+      return res.status(429).json({ error: "Too many sign-in attempts. Try again later." });
     const user = await store.one(
         "SELECT id,email,password_hash FROM accounts WHERE email_digest=?",
         [emailDigest(email)],
@@ -439,6 +473,8 @@ export function createApp(
     if (!q || !["jobs", "grants", "business"].includes(kind))
       return res.status(400).json({ error: "Enter a valid query." });
     const user = await session(req);
+    if (production && !(await budget(user ? "member-search" : "guest-search", user ? 2000 : 250)))
+      return res.status(429).json({ error: "Daily search capacity reached. Please try tomorrow." });
     let guest = (req.get("cookie") || "").match(
       /(?:^|;\s*)quarrix_guest=([a-f0-9]{32})(?:;|$)/,
     )?.[1];
