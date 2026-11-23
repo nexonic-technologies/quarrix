@@ -11,7 +11,7 @@ import { match, inRegion } from "../server/discovery.mjs";
 const HOST = "quarrix.example.test";
 const ORIGIN = "https://" + HOST;
 
-async function start(t, { search, env = {}, dist } = {}) {
+async function start(t, { search, env = {}, dist, scanPdf } = {}) {
   const keys = { TURNSTILE_SITE_KEY: "site", TURNSTILE_SECRET: "secret", TURNSTILE_HOSTNAMES: HOST, ALLOW_REGISTRATION: "true", ...env };
   const previous = Object.fromEntries(Object.keys(keys).map((k) => [k, process.env[k]]));
   Object.assign(process.env, keys);
@@ -22,6 +22,7 @@ async function start(t, { search, env = {}, dist } = {}) {
     origin: ORIGIN,
     dataKey: randomBytes(32),
     dist,
+    scanPdf,
     sendMail: async (email, kind, token) => sent.push({ email, kind, token }),
     search: search || (async () => ({ rows: [], status: "live", checkedAt: Date.now() })),
     // A token is valid when it equals "ok:<action>".
@@ -49,6 +50,48 @@ async function start(t, { search, env = {}, dist } = {}) {
   };
   return { base, post, store, sent };
 }
+
+test("database transactions roll back coupled writes on failure", async (t) => {
+  const store = await openStore({ file: ":memory:", url: "" });
+  t.after(() => store.close());
+  await assert.rejects(store.transaction(async () => {
+    await store.run("INSERT INTO portal_settings(id,value) VALUES(?,?)", ["test-rollback", "1"]);
+    throw Error("simulated failure");
+  }), /simulated failure/);
+  assert.equal(await store.one("SELECT id FROM portal_settings WHERE id=?", ["test-rollback"]), undefined);
+});
+
+test("password reset rolls back when session revocation fails", async t => {
+  const { post, sent, store } = await start(t);
+  const account = { email: "rollback@example.test", password: "a perfectly fine password", privacyAccepted: true };
+  assert.equal((await post("register", { ...account, "cf-turnstile-response": "ok:signup" })).status, 202);
+  assert.equal((await post("email-complete", { kind: "verify", token: sent[0].token })).status, 200);
+  await post("email-request", { email: account.email, kind: "reset", "cf-turnstile-response": "ok:recovery" });
+  const reset = { kind: "reset", token: sent.at(-1).token, password: "a totally new password" };
+  const run = store.run;
+  store.run = async (sql, args) => { if (sql === "DELETE FROM sessions WHERE owner=?") throw Error("simulated database failure"); return run(sql, args); };
+  assert.equal((await post("email-complete", reset)).status, 500);
+  store.run = run;
+  assert.equal((await post("login", { ...account, "cf-turnstile-response": "ok:login" })).status, 200);
+  assert.equal((await post("email-complete", reset)).status, 200);
+  assert.equal((await post("login", { ...account, password: reset.password, "cf-turnstile-response": "ok:login" })).status, 200);
+});
+
+test("production uploads are not stored when screening rejects or fails", async t => {
+  let verdict = false;
+  const { post, sent, store } = await start(t, { scanPdf: async () => { if (verdict === null) throw Error("scanner offline"); return verdict; } });
+  const account = { email: "upload@example.test", password: "a perfectly fine password", privacyAccepted: true };
+  await post("register", { ...account, "cf-turnstile-response": "ok:signup" });
+  await post("email-complete", { kind: "verify", token: sent[0].token });
+  const login = await post("login", { ...account, "cf-turnstile-response": "ok:login" });
+  const body = { name: "document.pdf", content: Buffer.from("%PDF-1.7\nfixture").toString("base64") };
+  assert.equal((await post("workspace/documents", body, login.cookie)).status, 422);
+  verdict = null;
+  assert.equal((await post("workspace/documents", body, login.cookie)).status, 503);
+  assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM documents")).n), 0);
+  verdict = true;
+  assert.equal((await post("workspace/documents", body, login.cookie)).status, 201);
+});
 
 test("unverified junk traffic cannot lock other people out", async (t) => {
   const { post, sent } = await start(t);

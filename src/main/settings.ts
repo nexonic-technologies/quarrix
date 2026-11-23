@@ -2,7 +2,7 @@
 import { DEFAULT_ICP, type Icp } from './intel';
 import type { OpenFeed } from './sources/opendata';
 import { app, safeStorage } from 'electron';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, renameSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 
 export type Provider = 'none' | 'anthropic' | 'openai' | 'gemini' | 'openrouter' | 'groq' | 'ollama' | 'lmstudio' | 'custom';
@@ -130,6 +130,7 @@ function deepMerge<T>(base: T, over: unknown): T {
   if (!over || typeof over !== 'object' || Array.isArray(over)) return (over === undefined ? base : (over as T));
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [k, v] of Object.entries(over as Record<string, unknown>)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     const b = (base as Record<string, unknown>)[k];
     out[k] = b && typeof b === 'object' && !Array.isArray(b) ? deepMerge(b, v) : v;
   }
@@ -144,10 +145,11 @@ const set = (o: Record<string, any>, p: string, v: unknown) => {
 };
 
 /** True when the OS keychain can protect secrets. Without it, secrets stay in memory for this session only and are never written in plain text. */
-export const secureStore = () => { try { return safeStorage.isEncryptionAvailable(); } catch { return false; } };
+export const secureStore = () => { try { return safeStorage.isEncryptionAvailable() && (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text'); } catch { return false; } };
 const enc = (s: string) => (s && secureStore() ? 'enc:' + safeStorage.encryptString(s).toString('base64') : '');
 const dec = (s: string) => {
   if (!s?.startsWith('enc:')) return s || '';
+  if (!secureStore()) return '';
   try { return safeStorage.decryptString(Buffer.from(s.slice(4), 'base64')); } catch { return ''; }
 };
 
@@ -190,7 +192,10 @@ export function save(patch: unknown): Settings {
   out.mailboxes = (out.mailboxes ?? []).map((b: Mailbox) => ({ ...b, ...Object.fromEntries(BOX_SECRETS.map((k) => [k, enc(b[k])])) }));
   out.sdkKeys = Object.fromEntries(Object.entries(out.sdkKeys ?? {}).map(([k, v]) => [k, enc(String(v))]));
   out.aiKeys = Object.fromEntries(Object.entries(out.aiKeys ?? {}).map(([k, v]) => [k, enc(String(v))]));
-  writeFileSync(file(), JSON.stringify(out, null, 2));
+  const temp = file() + '.tmp';
+  writeFileSync(temp, JSON.stringify(out, null, 2), { mode: 0o600 });
+  if (process.platform !== 'win32') chmodSync(temp, 0o600);
+  renameSync(temp, file());
   return s;
 }
 
