@@ -1,6 +1,6 @@
-# Quarrix Web 4.0.0 — local preview
+# Quarrix Web 4.1.0
 
-An independent React/Vite and Express portal, designed to match Nexonic's live site (Inter, Fraunces, navy, purple, warm orange). The existing Electron desktop package remains 3.9.0 and uses its own local database.
+A React/Vite and Express portal, live at https://quarrix.nexonictechnologies.com. It uses the same header, footer, tokens and typography (Fraunces + Inter) as the nexonic WordPress theme on nexonictechnologies.com; the theme layer is the first section of `src/styles.css` and the shared header/footer markup is in `src/shell.jsx`. When the main theme's menu or footer changes, update `shell.jsx` to match. The existing Electron desktop package remains 3.9.0 and uses its own local database.
 
 ## Local run
 
@@ -18,13 +18,13 @@ Node 24 or newer. Inside `web/`, run `npm ci`, `npm test`, `npm run build`, and 
 
 ## Security boundaries
 
-Production-wide persisted ceilings apply across restarts and workers: 25 registrations/day, 100 transactional emails/day, 250 guest discovery requests/day, 2,000 member discovery requests/day, and 300 login attempts per 15-minute window (10 per account digest). These are conservative shared-host launch limits; global exhaustion may temporarily limit legitimate users. Per-browser and per-account limits still apply. The portal never trusts arbitrary forwarded IP headers. A verified edge/bot challenge and load validation are separate launch gates, not implied by these caps. The versioned privacy notice is acknowledged at new registration; existing accounts are not retroactively marked as having acknowledged it. Newsletter consent remains independent and optional.
+Abuse limits are ordered so that unverified traffic cannot use anyone else's allowance: sign-in, registration, recovery and guest search verify the Turnstile challenge first, and only then count against limits. In-memory limits are per client address or per account (never one site-wide counter). Persisted ceilings apply across restarts and workers: 25 registrations/day, 100 transactional emails/day, 3 recovery emails per address/day, 10 sign-in attempts per account per 15 minutes, and configurable shared ceilings (`GUEST_SEARCHES_PER_DAY`, default 250; `MEMBER_SEARCHES_PER_DAY`, default 2,000; `LOGIN_ATTEMPTS_PER_15_MIN`, default 1,000). Personal allowances are checked before shared ones, and a search that could not reach its source is refunded. Forwarded client addresses are only trusted when `TRUST_PROXY_HOPS` is set to the number of proxies in front of the app; otherwise the socket address is used. Database queries time out after 10 seconds, and per-account work is serialized per account rather than through one global queue. The versioned privacy notice is acknowledged at new registration; existing accounts are not retroactively marked as having acknowledged it. Newsletter consent remains independent and optional.
 
 Passwords use salted scrypt hashes, session and email token digests are stored rather than raw tokens, production cookies are HTTPS-only and HttpOnly, browser writes require same origin. Email addresses, document names/contents, private records and search history are encrypted with AES-256-GCM and owner-bound associated data. Account IDs, timestamps, usage counts, record types, and document sizes are metadata, not encrypted. The server must be trusted: this is application-level encryption, not end-to-end encryption. Back up the key securely outside the database; losing it makes records unreadable. Admin audit records are append-only through the application, not tamper-proof against the database owner. Never expose the owner token or keys to browsers. Use strong WordPress 2FA, least privilege and restricted access to hPanel.
 
-## Hostinger deployment — not performed
+## Hostinger deployment
 
-Create a distinct Node.js web app for `quarrix.nexonictechnologies.com` using existing Unlimited plan (2 CPU, 3 GB RAM, 50 GB disk shared with other sites). Do not overwrite WordPress or modify existing mail DNS records. Use Node 24, `web/` project root, `npm ci`, `npm run build`, entry file `server/index.mjs`. Use a dedicated MySQL DB/user and environment settings in hPanel:
+Deployed as a Hostinger Node.js app (Express, Node 24, root `web/`, entry `server/index.mjs`) with Git auto-deploy from `main`: every push to `main` rebuilds and restarts the live site, so merge only reviewed changes. The original setup was: create a distinct Node.js web app for `quarrix.nexonictechnologies.com` using existing Unlimited plan (2 CPU, 3 GB RAM, 50 GB disk shared with other sites). Do not overwrite WordPress or modify existing mail DNS records. Use Node 24, `web/` project root, `npm ci`, `npm run build`, entry file `server/index.mjs`. Use a dedicated MySQL DB/user and environment settings in hPanel:
 
 | Variable | Purpose |
 | --- | --- |
@@ -36,7 +36,9 @@ Create a distinct Node.js web app for `quarrix.nexonictechnologies.com` using ex
 | `SMTP_URL`, `MAIL_FROM` | Transactional verification and recovery delivery |
 | `ALLOW_REGISTRATION=false` | Keep closed until all production gates pass; enable later |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET`, `TURNSTILE_HOSTNAMES` | Cloudflare Managed widget. Set all three together; production hostname must exactly match `quarrix.nexonictechnologies.com`. Public registration requires a complete configuration; signup, login, recovery and guest discovery require server-verified challenge tokens once configured. Never commit the secret. |
-| `PRIVATE_REGISTRATION_EMAIL`, `PRIVATE_REGISTRATION_TOKEN_HASH`, `PRIVATE_REGISTRATION_EXPIRES_AT` | Optional private launch invitation: exact tester email, SHA-256 hex digest of a random 32-byte hex code, and ISO UTC expiry within 24 hours. Keep public registration off. The code is entered on the registration form and never stored as plaintext on the server. A successful claim is durable and single-use. Remove these variables after the test. SMTP and standard email verification remain mandatory. |
+| `PRIVATE_REGISTRATION_EMAIL`, `PRIVATE_REGISTRATION_TOKEN_HASH`, `PRIVATE_REGISTRATION_EXPIRES_AT` | Optional private launch invitation: exact tester email, SHA-256 hex digest of a random 32-byte hex code, and ISO UTC expiry within 24 hours. Keep public registration off. The code is entered on the registration form and never stored as plaintext on the server. A successful claim is durable and single-use. Remove these variables after the test (they are still set on the live app as of 23 Nov 2026). SMTP and standard email verification remain mandatory. |
+| `TRUST_PROXY_HOPS` | Optional. Number of trusted reverse proxies in front of the app, so per-client limits use the real visitor address. Leave unset unless confirmed. |
+| `GUEST_SEARCHES_PER_DAY`, `MEMBER_SEARCHES_PER_DAY`, `LOGIN_ATTEMPTS_PER_15_MIN` | Optional shared daily/15-minute ceilings (defaults 250, 2000, 1000). |
 | `MAX_ACCOUNTS=500` | Initial registration cap, increase only after measuring shared hosting capacity |
 | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Optional free model ending in `:free`; not set by default |
 
