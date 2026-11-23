@@ -243,3 +243,7 @@ QF-039 Hunter, QF-042 Hunter/ZeroBounce, QF-059 Google OAuth, QF-060 Microsoft O
 - Blocked: 17
 - Partial: 0
 - Not done: 1
+
+### Web edition local verification (2026-11-23)
+
+Separate `web/` package, no desktop version bump and no deployment. Local web suites and build passed; desktop typecheck and 200 tests passed; npm production audit reported no known vulnerabilities. Browser preview and live discovery checked against actual public sources. The WordPress plugin is not installed. MySQL and WordPress validation, transactional SMTP, backup restoration, anti-abuse production controls, private staging and live OpenRouter configuration remain release gates. See `web/README.md` for details. Existing external desktop blockers remain classified separately.
