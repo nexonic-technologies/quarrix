@@ -100,6 +100,17 @@ export function createApp(
       )
     );
   };
+  const privateRegistration = () => {
+    const email = text(process.env.PRIVATE_REGISTRATION_EMAIL, 254).toLowerCase();
+    const digest = process.env.PRIVATE_REGISTRATION_TOKEN_HASH || "";
+    const expires = Date.parse(process.env.PRIVATE_REGISTRATION_EXPIRES_AT || "");
+    if (!sendMail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+        !/^[a-f0-9]{64}$/.test(digest) || !Number.isFinite(expires) ||
+        expires <= Date.now() || expires > Date.now() + DAY) return null;
+    return { email, digest, expires };
+  };
+  const registrationMode = () => !production || (process.env.ALLOW_REGISTRATION === "true" && sendMail)
+    ? "public" : privateRegistration() ? "invite" : "closed";
   const maintenance = async () =>
     !!(await store.one(
       "SELECT id FROM portal_settings WHERE id='maintenance'",
@@ -289,6 +300,7 @@ export function createApp(
     res.json({
       user: (await session(req)) || null,
       maintenance: await maintenance(),
+      registrationMode: registrationMode(),
       assistantAvailable: !!(
         process.env.OPENROUTER_API_KEY &&
         process.env.OPENROUTER_MODEL?.endsWith(":free")
@@ -309,8 +321,13 @@ export function createApp(
       return res
         .status(400)
         .json({ error: "Use a valid email and 12–128 character password." });
-    if (production && (process.env.ALLOW_REGISTRATION !== "true" || !sendMail))
-      return res.status(403).json({ error: "Registration is not open yet." });
+    const mode = registrationMode();
+    const invite = mode === "invite" ? privateRegistration() : null;
+    const code = req.body.invitationCode;
+    if (mode !== "public" && (!invite || email !== invite.email ||
+        typeof code !== "string" || !/^[a-f0-9]{64}$/.test(code) ||
+        !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
+      return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
     const id = randomUUID(),
       encoded = await passwordHash(password);
     const maxAccounts = Math.max(
@@ -324,6 +341,12 @@ export function createApp(
           maxAccounts
         )
           return false;
+        if (invite) {
+          if (invite.expires <= Date.now()) return false;
+          // A unique, durable claim prevents invitation replay across processes.
+          // Fail closed if account creation later fails; issue a new invitation.
+          await store.run("INSERT INTO registration_invite_uses(digest,created) VALUES(?,?)", [invite.digest, Date.now()]);
+        }
         await store.run(
           "INSERT INTO accounts(id,email,email_digest,password_hash,created) VALUES(?,?,?,?,?)",
           [
