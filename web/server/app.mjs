@@ -381,7 +381,7 @@ export function createApp(
     res.json({ ok: true, kind });
   });
   app.get("/api/health", (req, res) =>
-    res.json({ ok: true, version: "4.1.0" }),
+    res.json({ ok: true, version: "4.1.1" }),
   );
   app.get("/api/ready", async (req, res) => {
     try { await store.one("SELECT 1 AS ready"); res.json({ ok: true }); }
