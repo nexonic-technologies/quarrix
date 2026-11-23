@@ -950,6 +950,8 @@ export function createApp(
       [req.params.id, req.user.id],
     );
     if (!doc) return res.status(404).json({ error: "Document not found." });
+    const bytes = encryption.open(doc.content, req.user.id + ":" + req.params.id);
+    if (!(await screenDownload(bytes, res))) return;
     res
       .attachment(
         encryption
@@ -960,8 +962,26 @@ export function createApp(
           .toString(),
       )
       .type("application/octet-stream")
-      .send(encryption.open(doc.content, req.user.id + ":" + req.params.id));
+      .send(bytes);
   });
+  async function screenDownload(bytes, res) {
+    // Legacy attachments have no scan evidence. Retain them encrypted, but
+    // never deliver their contents in production until screening succeeds.
+    if (production && !scanPdf) {
+      res.status(503).json({ error: "Secure document downloads are temporarily unavailable." });
+      return false;
+    }
+    if (scanPdf) {
+      try {
+        if (await scanPdf(bytes)) return true;
+        res.status(422).json({ error: "Document quarantined by security screening." });
+      } catch {
+        res.status(503).json({ error: "Document security screening is temporarily unavailable." });
+      }
+      return false;
+    }
+    return true;
+  }
   app.delete("/api/workspace/documents/:id", async (req, res) => {
     const r = await store.run("DELETE FROM documents WHERE id=? AND owner=?", [
       req.params.id,
@@ -1064,12 +1084,23 @@ export function createApp(
     if (!item) return { status: 404 };
     await store.run(
       "INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)",
-      [randomUUID(), "support-download", doc, Date.now()],
+      [randomUUID(), "support-download-attempt", doc, Date.now()],
     );
     return { status: 200, item };
     });
     if (access.status !== 200) return res.status(access.status).json({ error: access.status === 403 ? "User has not authorized support access." : "Document not found." });
     const item = access.item;
+    const bytes = encryption.open(item.content, owner + ":" + doc);
+    if (!(await screenDownload(bytes, res))) return;
+    // Screening is potentially slow. Recheck authorization after it completes.
+    const stillAuthorized = await store.transaction(async () => {
+      if (!(await store.lockAccount(owner)) || !(await store.one(
+        "SELECT owner FROM support_grants WHERE owner=? AND expires>?", [owner, Date.now()]
+      )) || !(await store.one("SELECT id FROM documents WHERE owner=? AND id=?", [owner, doc]))) return false;
+      await store.run("INSERT INTO admin_audit(id,action,target,created) VALUES(?,?,?,?)", [randomUUID(), "support-download", doc, Date.now()]);
+      return true;
+    });
+    if (!stillAuthorized) return res.status(403).json({ error: "User has not authorized support access." });
     res
       .attachment(
         encryption
@@ -1077,7 +1108,7 @@ export function createApp(
           .toString(),
       )
       .type("application/octet-stream")
-      .send(encryption.open(item.content, owner + ":" + doc));
+      .send(bytes);
   });
   app.get("/api/admin/overview", async (req, res) => {
     const secret = process.env.ADMIN_TOKEN;

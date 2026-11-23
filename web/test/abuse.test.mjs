@@ -77,9 +77,10 @@ test("password reset rolls back when session revocation fails", async t => {
   assert.equal((await post("login", { ...account, password: reset.password, "cf-turnstile-response": "ok:login" })).status, 200);
 });
 
-test("production uploads are not stored when screening rejects or fails", async t => {
+test("production document uploads and downloads fail closed without a clean screening result", async t => {
   let verdict = false;
-  const { post, sent, store } = await start(t, { scanPdf: async () => { if (verdict === null) throw Error("scanner offline"); return verdict; } });
+  const adminToken = randomBytes(32).toString("hex");
+  const { base, post, sent, store } = await start(t, { env: { ADMIN_TOKEN: adminToken }, scanPdf: async () => { if (verdict === null) throw Error("scanner offline"); return verdict; } });
   const account = { email: "upload@example.test", password: "a perfectly fine password", privacyAccepted: true };
   await post("register", { ...account, "cf-turnstile-response": "ok:signup" });
   await post("email-complete", { kind: "verify", token: sent[0].token });
@@ -90,7 +91,24 @@ test("production uploads are not stored when screening rejects or fails", async 
   assert.equal((await post("workspace/documents", body, login.cookie)).status, 503);
   assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM documents")).n), 0);
   verdict = true;
-  assert.equal((await post("workspace/documents", body, login.cookie)).status, 201);
+  const uploaded = await post("workspace/documents", body, login.cookie);
+  assert.equal(uploaded.status, 201);
+  const id = uploaded.data.id;
+  const owner = login.data.user.id;
+  const download = () => fetch(base + "/api/workspace/documents/" + id, { headers: { Cookie: login.cookie } });
+  const support = () => fetch(base + "/api/admin/support/" + owner + "/document/" + id, { headers: { Authorization: "Bearer " + adminToken } });
+  assert.equal((await support()).status, 403);
+  await store.run("INSERT INTO support_grants(owner,expires) VALUES(?,?)", [owner, Date.now() + 60000]);
+  verdict = false;
+  assert.equal((await download()).status, 422);
+  assert.equal((await support()).status, 422);
+  verdict = null;
+  assert.equal((await download()).status, 503);
+  assert.equal((await support()).status, 503);
+  assert.equal(Number((await store.one("SELECT COUNT(*) AS n FROM documents")).n), 1);
+  verdict = true;
+  assert.equal((await download()).status, 200);
+  assert.equal((await support()).status, 200);
 });
 
 test("unverified junk traffic cannot lock other people out", async (t) => {
