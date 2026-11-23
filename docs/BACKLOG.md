@@ -201,3 +201,12 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 10 | IPC sender check, external URL allow-list, blocked navigation | Done | index.ts | test/safety.test.ts (URL rules) |
 | 11 | Regression tests | Done for new logic | 7 test files, 44 tests; CI and the release workflow both run typecheck and tests | CI |
 | 12 | Theme forced light | Kept on purpose | the owner asked for light only | — |
+
+### Web edition — local milestone
+
+| Work | Status | Evidence / pending gate |
+| --- | --- | --- |
+| v4.0.0 portal, accounts, encrypted private workspace, guest allowance and owner plugin | Local implementation | `web/` build and tests; production MySQL, PHP/WordPress and SMTP gates pending |
+| Global data and desktop feature parity | Partial | Four authorized live sources; more regional coverage, salary and career intelligence to port |
+| Desktop-to-web sync and Google login | Pending | Explicit opt-in, OAuth configuration and conflict resolution required |
+| Production deployment and newsletter delivery | Pending | Hostinger staging, verified consent/email delivery, load and security review before launch |

@@ -51,3 +51,7 @@ Releases are built by GitHub Actions for macOS, Windows and Linux whenever the v
 ## Licence
 
 MIT. Made by [Nexonic Technologies](https://nexonictechnologies.com).
+
+## Quarrix Web preview
+
+The separate local web preview is documented in [web/README.md](web/README.md). It does not change the desktop version or deploy automatically.

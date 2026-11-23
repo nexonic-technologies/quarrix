@@ -1,0 +1,45 @@
+# Quarrix Web 4.0.0 — local preview
+
+An independent React/Vite and Express portal, designed to match Nexonic's live site (Inter, Fraunces, navy, purple, warm orange). The existing Electron desktop package remains 3.9.0 and uses its own local database.
+
+## Local run
+
+Node 24 or newer. Inside `web/`, run `npm ci`, `npm test`, `npm run build`, and `npm start`. Open http://127.0.0.1:4322. Local mode uses SQLite under `data/`; the encryption key is created locally with restrictive permissions. Do not reuse the development database or key for production. For Vite development, run the backend with `PUBLIC_ORIGIN=http://127.0.0.1:5173` and start `npm run dev` in a second terminal.
+
+## What is built
+
+- Guest discovery: up to ten returned results and five searches per browser per UTC day. An account unlocks 50 searches/day with up to 50 results each. A cookie-based guest allowance is a convenience gate, not a resilient anti-abuse identity mechanism. Add verified reverse-proxy limits and a bot challenge before public registration.
+- Live Jobicy remote jobs, Arbeitnow European vacancies, French government business registry and posted Grants.gov opportunities; actual source links, capped results, timestamps, shared in-memory cache, bounded concurrency and explicit partial/unavailable/stale status. Coverage is not worldwide business parity; provider permission checks precede every added source. Sources are self-reported, not verified as guaranteed legitimate.
+- Account email/password, transactional-email verification and password reset when SMTP is configured, account deletion, records and PDF uploads. Login on a second device loads the same workspace. Google login and desktop synchronization are not implemented yet.
+- Workspace for profiles, business records, customers, applications, saved opportunities, resume notes, and 30-day encrypted search history (last 50 shown). Documents are downloadable only by their owner or authorized support, PDF only, 2 MB/file and 10 MB/account, served as attachments; no automatic parsing or malware scanner yet.
+- Newsletter consent is optional and separate from account registration. Only verified, opted-in addresses are marked subscribed; users can unsubscribe. Campaign sending is not implemented.
+- Optional server-side OpenRouter assistant: three prompts/account/day, thirty total/day, explicit consent per question, limits persisted, free model only. No documents or account data sent automatically; user must avoid personal information. No paid fallback. Core search needs no API key. Configure and verify an OpenRouter key and free model independently; provider availability and quotas are external.
+- Owner dashboard plugin in `wordpress/quarrix-admin`: accounts, verification, subscription consent, search counts, record/document counts, suspend/restore, portal maintenance mode, audited support access. Suspended users lose sessions; restoring requires a new login. Support access requires explicit user permission, expires after one hour, and can be revoked. Owner may then view private records, recent searches and download documents; accesses are logged. Never use support access for marketing.
+
+## Security boundaries
+
+Passwords use salted scrypt hashes, session and email token digests are stored rather than raw tokens, production cookies are HTTPS-only and HttpOnly, browser writes require same origin. Email addresses, document names/contents, private records and search history are encrypted with AES-256-GCM and owner-bound associated data. Account IDs, timestamps, usage counts, record types, and document sizes are metadata, not encrypted. The server must be trusted: this is application-level encryption, not end-to-end encryption. Back up the key securely outside the database; losing it makes records unreadable. Admin audit records are append-only through the application, not tamper-proof against the database owner. Never expose the owner token or keys to browsers. Use strong WordPress 2FA, least privilege and restricted access to hPanel.
+
+## Hostinger deployment — not performed
+
+Create a distinct Node.js web app for `quarrix.nexonictechnologies.com` using existing Unlimited plan (2 CPU, 3 GB RAM, 50 GB disk shared with other sites). Do not overwrite WordPress or modify existing mail DNS records. Use Node 24, `web/` project root, `npm ci`, `npm run build`, entry file `server/index.mjs`. Use a dedicated MySQL DB/user and environment settings in hPanel:
+
+| Variable | Purpose |
+| --- | --- |
+| `NODE_ENV=production` | Production defaults |
+| `PUBLIC_ORIGIN=https://quarrix.nexonictechnologies.com` | Exact HTTPS origin |
+| `DATABASE_URL` | Dedicated MySQL connection URL |
+| `DATA_KEY` | Base64-encoded 32 random bytes, backed up securely |
+| `ADMIN_TOKEN` | Independent, high-entropy access token (32+ characters) |
+| `SMTP_URL`, `MAIL_FROM` | Transactional verification and recovery delivery |
+| `ALLOW_REGISTRATION=false` | Keep closed until all production gates pass; enable later |
+| `MAX_ACCOUNTS=500` | Initial registration cap, increase only after measuring shared hosting capacity |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | Optional free model ending in `:free`; not set by default |
+
+The WordPress plugin must be installed only after the portal is staged and verified. Put `QUARRIX_OWNER_ID`, `QUARRIX_API_ORIGIN` (exact HTTPS origin, no trailing slash), `QUARRIX_ADMIN_TOKEN` (same independent server secret) in server-side `wp-config.php`. Never put secrets in Git, plugin source, public paths or a chat. The owner ID is the exact WordPress administrator account, not every administrator role. Plugin actions require WordPress nonces, explicit owner access and server bearer authentication. Add a separate menu/product link on the existing site only after verifying the portal, WordPress controls and a private staging account.
+
+## Verification and outstanding gates
+
+Local automated suites cover account isolation, login on another device, encrypted records/PDFs, guest and registered access, newsletter preference, authorized support and revocation, suspension, maintenance, CSRF origin enforcement, account deletion, email verification and reset using a test delivery function. Live checks returned real data on Nov 23, 2026; no live OpenRouter or SMTP credentials used. Desktop typecheck and existing desktop tests passed. Built UI verified in browser; initial Jobicy live search returned three results, expanding to Jobicy and Arbeitnow returned thirteen results.
+
+Before deployment: verify MySQL integration (Web CI includes a disposable MySQL service), PHP lint and real WordPress test install, actual SMTP delivery/verification/reset, secret rotation and backup restore, protection against guest cookie resets and distributed abuse, privacy and consent notices, provider terms and cache TTLs, load test shared host, confirm SSL and isolated application deployment, accessibility/mobile and production security review, malware scanning policy. Full desktop feature parity, more authorized data sources, Google login and desktop sync remain future work. Do not enable public registrations until production gates pass.
