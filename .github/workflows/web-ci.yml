@@ -8,6 +8,7 @@ permissions:
 jobs:
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       mysql:
         image: mysql:8.4
@@ -30,7 +31,9 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm test
+        timeout-minutes: 2
       - run: npm test
+        timeout-minutes: 2
         env:
           DATABASE_URL: mysql://quarrix_test:local-ci-only@127.0.0.1:3306/quarrix_test
       - run: npm run build

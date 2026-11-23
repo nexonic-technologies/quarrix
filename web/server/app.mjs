@@ -141,14 +141,15 @@ export function createApp(
       const now = Date.now(),
         day = Math.floor(now / DAY),
         key = `${id}:${day}`;
-      await store.run("DELETE FROM usage WHERE expires<?", [now]);
-      const r = await store.one("SELECT n FROM usage WHERE id=?", [key]),
+      await store.run("DELETE FROM `usage` WHERE expires<?", [now]);
+      const r = await store.one("SELECT n FROM `usage` WHERE id=?", [key]),
         n = Number(r?.n || 0);
       if (n >= max) return -1;
       const used = Math.min(units, max - n);
-      if (r) await store.run("UPDATE usage SET n=n+? WHERE id=?", [used, key]);
+      if (r)
+        await store.run("UPDATE `usage` SET n=n+? WHERE id=?", [used, key]);
       else
-        await store.run("INSERT INTO usage(id,n,expires) VALUES(?,?,?)", [
+        await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [
           key,
           used,
           (day + 1) * DAY,
@@ -440,7 +441,7 @@ export function createApp(
         registrationRequired: !user,
       });
     if (!user) {
-      const used = await store.one("SELECT n FROM usage WHERE id=?", [
+      const used = await store.one("SELECT n FROM `usage` WHERE id=?", [
         `guest-results:${hash(guest)}:${Math.floor(Date.now() / DAY)}`,
       ]);
       if (Number(used?.n || 0) >= 10)
@@ -484,12 +485,12 @@ export function createApp(
     }
     const allowance = await serial(async () => {
       const id = `guest-results:${hash(guest)}:${Math.floor(Date.now() / DAY)}`,
-        r = await store.one("SELECT n FROM usage WHERE id=?", [id]),
+        r = await store.one("SELECT n FROM `usage` WHERE id=?", [id]),
         left = Math.max(0, 10 - Number(r?.n || 0)),
         used = Math.min(left, result.rows.length);
-      if (r) await store.run("UPDATE usage SET n=n+? WHERE id=?", [used, id]);
+      if (r) await store.run("UPDATE `usage` SET n=n+? WHERE id=?", [used, id]);
       else
-        await store.run("INSERT INTO usage(id,n,expires) VALUES(?,?,?)", [
+        await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [
           id,
           used,
           (Math.floor(Date.now() / DAY) + 1) * DAY,
@@ -919,13 +920,13 @@ export function createApp(
         Math.min(100000, Math.floor(Number(req.query.offset) || 0)),
       ),
       rows = await store.all(
-        "SELECT a.id,a.email,a.created,(SELECT COUNT(*) FROM suspended b WHERE b.owner=a.id) AS suspended,(SELECT COUNT(*) FROM verified_accounts v WHERE v.owner=a.id) AS verified,(SELECT COUNT(*) FROM records r WHERE r.owner=a.id) AS records,(SELECT COUNT(*) FROM documents d WHERE d.owner=a.id) AS documents,(SELECT COALESCE(SUM(bytes),0) FROM documents d WHERE d.owner=a.id) AS bytes,(SELECT COUNT(*) FROM newsletter n JOIN verified_accounts v ON v.owner=n.owner WHERE n.owner=a.id) AS subscribed FROM accounts a ORDER BY a.created DESC LIMIT 100 OFFSET ?",
-        [offset],
+        "SELECT a.id,a.email,a.created,(SELECT COUNT(*) FROM suspended b WHERE b.owner=a.id) AS suspended,(SELECT COUNT(*) FROM verified_accounts v WHERE v.owner=a.id) AS verified,(SELECT COUNT(*) FROM records r WHERE r.owner=a.id) AS records,(SELECT COUNT(*) FROM documents d WHERE d.owner=a.id) AS documents,(SELECT COALESCE(SUM(bytes),0) FROM documents d WHERE d.owner=a.id) AS bytes,(SELECT COUNT(*) FROM newsletter n JOIN verified_accounts v ON v.owner=n.owner WHERE n.owner=a.id) AS subscribed FROM accounts a ORDER BY a.created DESC LIMIT 100 OFFSET " +
+          offset,
       );
     const day = Math.floor(Date.now() / DAY);
     const total = await store.one("SELECT COUNT(*) AS n FROM accounts");
     const searches = await store.one(
-      "SELECT COALESCE(SUM(n),0) AS n FROM usage WHERE id LIKE ? OR id LIKE ?",
+      "SELECT COALESCE(SUM(n),0) AS n FROM `usage` WHERE id LIKE ? OR id LIKE ?",
       [`search:%:${day}`, `guest:%:${day}`],
     );
     res.json({
@@ -934,7 +935,7 @@ export function createApp(
       searchesToday: Number(searches.n),
       accounts: await Promise.all(
         rows.map(async (x) => {
-          const usage = await store.one("SELECT n FROM usage WHERE id=?", [
+          const usage = await store.one("SELECT n FROM `usage` WHERE id=?", [
             `search:${x.id}:${day}`,
           ]);
           return { ...decodeEmail(x), searchesToday: Number(usage?.n || 0) };
