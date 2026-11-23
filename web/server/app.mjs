@@ -8,8 +8,10 @@ import {
   createHmac,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { resolve } from "node:path";
+import { resolve, extname } from "node:path";
+import { readFileSync } from "node:fs";
 import { discover, webUrl } from "./discovery.mjs";
+import { keyedLimit, keyedLock } from "./limits.mjs";
 import { vault, localKey } from "./crypto.mjs";
 import { turnstileConfig, verifyTurnstile } from "./turnstile.mjs";
 const scrypt = promisify(scryptCb),
@@ -22,17 +24,10 @@ async function passwordHash(password, salt = randomBytes(16).toString("hex")) {
 }
 const fakeHash = "0".repeat(32) + ":" + "0".repeat(128);
 const equal = (a, b) => a.length === b.length && timingSafeEqual(a, b);
-function limit(max, window) {
-  let start = Date.now(),
-    count = 0;
-  return () => {
-    if (Date.now() - start >= window) {
-      start = Date.now();
-      count = 0;
-    }
-    return ++count <= max;
-  };
-}
+const envInt = (name, fallback, min = 1, max = 1_000_000) => {
+  const n = Math.floor(Number(process.env[name]));
+  return Number.isFinite(n) && n >= min ? Math.min(n, max) : fallback;
+};
 const kinds = new Set([
   "profile",
   "business",
@@ -88,6 +83,12 @@ export function createApp(
     return false;
   };
   app.disable("x-powered-by");
+  // Only trust forwarded client addresses when the deployment says how many
+  // proxies sit in front of the app (TRUST_PROXY_HOPS). Otherwise the socket
+  // address is used and spoofed X-Forwarded-For headers are ignored.
+  const hops = envInt("TRUST_PROXY_HOPS", 0, 0, 5);
+  if (hops) app.set("trust proxy", hops);
+  const client = (req) => "ip:" + (req.ip || req.socket?.remoteAddress || "unknown");
   app.use((req, res, next) => {
     res.set({
       "X-Content-Type-Options": "nosniff",
@@ -121,10 +122,15 @@ export function createApp(
   };
   const registrationMode = () => !production || (process.env.ALLOW_REGISTRATION === "true" && sendMail && challenge.ready)
     ? "public" : privateRegistration() ? "invite" : "closed";
-  const maintenance = async () =>
-    !!(await store.one(
+  let maintenanceCache = { at: 0, value: false };
+  const maintenance = async (fresh = false) => {
+    if (!fresh && Date.now() - maintenanceCache.at < 5000) return maintenanceCache.value;
+    const value = !!(await store.one(
       "SELECT id FROM portal_settings WHERE id='maintenance'",
     ));
+    maintenanceCache = { at: Date.now(), value };
+    return value;
+  };
   app.use("/api", async (req, res, next) => {
     res.set("Cache-Control", "no-store");
     if (!["GET", "HEAD"].includes(req.method)) {
@@ -148,21 +154,28 @@ export function createApp(
     next();
   });
   app.use("/api", express.json({ limit: "3mb" }));
-  const authLimit = limit(30, 60000),
-    searchLimit = limit(90, 60000),
-    writeLimit = limit(180, 60000);
-  let queue = Promise.resolve();
-  const serial = (fn) => {
-    const p = queue.then(fn);
-    queue = p.catch(() => {});
-    return p;
+  // Per-client limits. They are only consulted after the security challenge
+  // has passed, so unverified junk traffic cannot use anyone's allowance.
+  const authLimit = keyedLimit(20, 60000),
+    tokenLimit = keyedLimit(20, 60000),
+    searchLimit = keyedLimit(30, 60000),
+    writeLimit = keyedLimit(120, 60000),
+    adminLimit = keyedLimit(60, 60000);
+  const lock = keyedLock();
+  let swept = 0;
+  const sweep = async () => {
+    if (Date.now() - swept < 60000) return;
+    swept = Date.now();
+    await store.run("DELETE FROM `usage` WHERE expires<?", [swept]);
+    await store.run("DELETE FROM search_history WHERE created<?", [swept - 30 * DAY]);
+    await store.run("DELETE FROM sessions WHERE expires<?", [swept]);
   };
   // Durable fixed-window ceilings; database uniqueness and conditional writes
   // enforce the limits across workers and application restarts.
   async function budget(scope, max, window = DAY) {
     const now = Date.now(), bucket = Math.floor(now / window);
     const key = `budget:${scope}:${bucket}`;
-    await store.run("DELETE FROM `usage` WHERE expires<?", [now]);
+    await sweep();
     const update = () => store.run("UPDATE `usage` SET n=n+1 WHERE id=? AND n<?", [key, max]);
     if ((await update()).changes) return true;
     try {
@@ -173,26 +186,41 @@ export function createApp(
       return !!(await update()).changes;
     }
   }
-  async function quota(id, max, units = 1) {
-    return serial(async () => {
-      const now = Date.now(),
-        day = Math.floor(now / DAY),
-        key = `${id}:${day}`;
-      await store.run("DELETE FROM `usage` WHERE expires<?", [now]);
+  // Atomic daily allowance: claims up to `units` from a per-key counter with a
+  // compare-and-set update, so it is correct across processes without a lock.
+  // Returns the units left after the claim and how many were claimed, or
+  // left=-1 when the allowance is already used up.
+  async function claim(id, max, units = 1) {
+    const day = Math.floor(Date.now() / DAY),
+      key = `${id}:${day}`;
+    await sweep();
+    for (let attempt = 0; attempt < 8; attempt++) {
       const r = await store.one("SELECT n FROM `usage` WHERE id=?", [key]),
         n = Number(r?.n || 0);
-      if (n >= max) return -1;
+      if (n >= max) return { left: -1, used: 0 };
+      if (units <= 0) return { left: max - n, used: 0 };
       const used = Math.min(units, max - n);
-      if (r)
-        await store.run("UPDATE `usage` SET n=n+? WHERE id=?", [used, key]);
-      else
-        await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [
-          key,
-          used,
-          (day + 1) * DAY,
-        ]);
-      return max - n - used;
-    });
+      if (r) {
+        if ((await store.run("UPDATE `usage` SET n=n+? WHERE id=? AND n=?", [used, key, n])).changes)
+          return { left: max - n - used, used };
+      } else {
+        try {
+          await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [key, used, (day + 1) * DAY]);
+          return { left: max - used, used };
+        } catch (error) {
+          if (!/unique|duplicate/i.test(error.message)) throw error;
+        }
+      }
+    }
+    return { left: -1, used: 0 };
+  }
+  async function quota(id, max, units = 1) {
+    return (await claim(id, max, units)).left;
+  }
+  async function refund(id, units = 1, window = DAY) {
+    if (units <= 0) return;
+    const key = `${id}:${Math.floor(Date.now() / window)}`;
+    await store.run("UPDATE `usage` SET n=CASE WHEN n>? THEN n-? ELSE 0 END WHERE id=?", [units, units, key]);
   }
   const token = (req) => {
     const m = (req.get("cookie") || "").match(
@@ -242,7 +270,7 @@ export function createApp(
     if (!sendMail) return;
     if (!(await budget("transactional-mail", 100))) throw Error("Email capacity reached");
     const token = randomBytes(32).toString("hex");
-    await serial(async () => {
+    await lock("account:" + user.id, async () => {
       await store.run(
         "DELETE FROM email_tokens WHERE (owner=? AND kind=?) OR expires<?",
         [user.id, kind, Date.now()],
@@ -255,9 +283,9 @@ export function createApp(
     await sendMail(user.email, kind, token);
   }
   app.post("/api/email-request", async (req, res) => {
-    if (!authLimit())
-      return res.status(429).json({ error: "Try again later." });
     if (!(await challengeGate(req, res, "recovery"))) return;
+    if (!authLimit(client(req)))
+      return res.status(429).json({ error: "Try again later." });
     if (!sendMail)
       return res
         .status(503)
@@ -280,7 +308,9 @@ export function createApp(
     });
   });
   app.post("/api/email-complete", async (req, res) => {
-    if (!authLimit())
+    // Tokens are 256-bit random values, so guessing is not practical; the
+    // per-client limit only stops one client from hammering the endpoint.
+    if (!tokenLimit(client(req)))
       return res.status(429).json({ error: "Try again later." });
     const kind = req.body.kind,
       raw = req.body.token,
@@ -293,15 +323,23 @@ export function createApp(
         (typeof p !== "string" || p.length < 12 || p.length > 128))
     )
       return res.status(400).json({ error: "Invalid request." });
+    const pending = await store.one(
+      "SELECT owner FROM email_tokens WHERE digest=? AND kind=? AND expires>?",
+      [hash(raw), kind, Date.now()],
+    );
+    if (!pending)
+      return res.status(400).json({ error: "Link expired or invalid." });
+    // Hash the new password only for a valid link (scrypt is deliberately slow).
     const password = kind === "reset" ? await passwordHash(p) : null;
-    await serial(async () => {
-      const row = await store.one(
-        "SELECT owner FROM email_tokens WHERE digest=? AND kind=? AND expires>?",
+    await lock("account:" + pending.owner, async () => {
+      // Single use: only the request that deletes the token may continue.
+      const claimed = await store.run(
+        "DELETE FROM email_tokens WHERE digest=? AND kind=? AND expires>?",
         [hash(raw), kind, Date.now()],
       );
-      if (!row)
+      if (!claimed.changes)
         return res.status(400).json({ error: "Link expired or invalid." });
-      await store.run("DELETE FROM email_tokens WHERE digest=?", [hash(raw)]);
+      const row = pending;
       if (
         !(await store.one("SELECT owner FROM verified_accounts WHERE owner=?", [
           row.owner,
@@ -317,12 +355,14 @@ export function createApp(
           row.owner,
         ]);
         await store.run("DELETE FROM sessions WHERE owner=?", [row.owner]);
+        // Any other outstanding links for this account are now stale.
+        await store.run("DELETE FROM email_tokens WHERE owner=?", [row.owner]);
       }
-      res.json({ ok: true });
+      res.json({ ok: true, kind });
     });
   });
   app.get("/api/health", (req, res) =>
-    res.json({ ok: true, version: "4.0.0" }),
+    res.json({ ok: true, version: "4.1.0" }),
   );
   app.get("/api/session", async (req, res) =>
     res.json({
@@ -337,8 +377,6 @@ export function createApp(
     }),
   );
   app.post("/api/register", async (req, res) => {
-    if (!authLimit())
-      return res.status(429).json({ error: "Try again later." });
     const email = text(req.body.email, 254).toLowerCase(),
       password = req.body.password;
     if (
@@ -358,6 +396,8 @@ export function createApp(
         !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
       return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
     if (!(await challengeGate(req, res, "signup"))) return;
+    if (!authLimit(client(req)))
+      return res.status(429).json({ error: "Try again later." });
     if (production && req.body.privacyAccepted !== true)
       return res.status(400).json({ error: "Please acknowledge the Quarrix privacy notice." });
     if (production && !(await budget("registration", 25)))
@@ -369,7 +409,7 @@ export function createApp(
       Math.min(5000, Number(process.env.MAX_ACCOUNTS) || 500),
     );
     try {
-      const created = await serial(async () => {
+      const created = await lock("registration", async () => {
         if (
           Number((await store.one("SELECT COUNT(*) AS n FROM accounts")).n) >=
           maxAccounts
@@ -436,14 +476,14 @@ export function createApp(
     res.status(201).json({ user: { id, email } });
   });
   app.post("/api/login", async (req, res) => {
-    if (!authLimit())
-      return res.status(429).json({ error: "Try again later." });
     if (!(await challengeGate(req, res, "login"))) return;
+    if (!authLimit(client(req)))
+      return res.status(429).json({ error: "Try again later." });
     const email = text(req.body.email, 254).toLowerCase(),
       password = req.body.password;
     if (typeof password !== "string" || password.length > 128)
       return res.status(400).json({ error: "Invalid credentials." });
-    if (production && (!(await budget("login-global", 300, 900000)) ||
+    if (production && (!(await budget("login-global", envInt("LOGIN_ATTEMPTS_PER_15_MIN", 1000), 900000)) ||
         !(await budget("login:" + emailDigest(email), 10, 900000))))
       return res.status(429).json({ error: "Too many sign-in attempts. Try again later." });
     const user = await store.one(
@@ -475,24 +515,26 @@ export function createApp(
     cookie(res, "", 0);
     res.json({ ok: true });
   });
+  const GUEST_SEARCHES = 5,
+    GUEST_RESULTS = 10,
+    MEMBER_SEARCHES = 50;
   app.post("/api/discover", async (req, res) => {
-    if (!searchLimit())
-      return res
-        .status(429)
-        .json({ error: "Search capacity reached; try again shortly." });
     const kind = text(req.body.kind, 20),
       q = text(req.body.q, 100),
       location = text(req.body.location, 100);
     if (!q || !["jobs", "grants", "business"].includes(kind))
       return res.status(400).json({ error: "Enter a valid query." });
     const user = await session(req);
+    // Guests must pass the security check before anything is counted.
     if (!user && !(await challengeGate(req, res, "guest_search"))) return;
-    if (production && !(await budget(user ? "member-search" : "guest-search", user ? 2000 : 250)))
-      return res.status(429).json({ error: "Daily search capacity reached. Please try tomorrow." });
+    if (!searchLimit(user ? "user:" + user.id : client(req)))
+      return res
+        .status(429)
+        .json({ error: "You are searching very quickly. Please wait a moment." });
     let guest = (req.get("cookie") || "").match(
       /(?:^|;\s*)quarrix_guest=([a-f0-9]{32})(?:;|$)/,
     )?.[1];
-    if (!guest) {
+    if (!user && !guest) {
       guest = randomBytes(16).toString("hex");
       res.cookie("quarrix_guest", guest, {
         httpOnly: true,
@@ -502,10 +544,20 @@ export function createApp(
         path: "/",
       });
     }
-    const remaining = await quota(
-      user ? "search:" + user.id : "guest:" + hash(guest),
-      user ? 50 : 5,
-    );
+    const day = Math.floor(Date.now() / DAY),
+      personal = user ? "search:" + user.id : "guest:" + hash(guest),
+      resultsKey = `guest-results:${hash(guest || "")}`;
+    if (!user) {
+      const used = await store.one("SELECT n FROM `usage` WHERE id=?", [`${resultsKey}:${day}`]);
+      if (Number(used?.n || 0) >= GUEST_RESULTS)
+        return res.status(429).json({
+          error: "Your ten free guest results are used. Create a free account to continue.",
+          registrationRequired: true,
+        });
+    }
+    // Personal allowance first, so a client that is already out of searches
+    // never touches the shared daily capacity.
+    const remaining = await quota(personal, user ? MEMBER_SEARCHES : GUEST_SEARCHES);
     if (remaining < 0)
       return res.status(429).json({
         error: user
@@ -513,23 +565,29 @@ export function createApp(
           : "Your five guest searches are used. Create a free account to continue.",
         registrationRequired: !user,
       });
-    if (!user) {
-      const used = await store.one("SELECT n FROM `usage` WHERE id=?", [
-        `guest-results:${hash(guest)}:${Math.floor(Date.now() / DAY)}`,
-      ]);
-      if (Number(used?.n || 0) >= 10)
-        return res.status(429).json({
-          error:
-            "Your ten free guest results are used. Create a free account to continue.",
-          registrationRequired: true,
-        });
+    const scope = user ? "member-search" : "guest-search";
+    if (
+      production &&
+      !(await budget(scope, user ? envInt("MEMBER_SEARCHES_PER_DAY", 2000) : envInt("GUEST_SEARCHES_PER_DAY", 250)))
+    ) {
+      await refund(personal);
+      return res.status(429).json({ error: "Daily search capacity reached. Please try tomorrow." });
     }
-    const result = await search(kind, q, location);
+    let result;
+    try {
+      result = await search(kind, q, location);
+    } catch {
+      result = { rows: [], status: "unavailable" };
+    }
+    // A search that could not reach its source is not charged.
+    const charged = !(result.rows.length === 0 && ["busy", "unavailable"].includes(result.status));
+    if (!charged) {
+      await refund(personal);
+      if (production) await refund("budget:" + scope);
+    }
+    const left = charged ? remaining : remaining + 1;
     if (user) {
       const id = randomUUID();
-      await store.run("DELETE FROM search_history WHERE created<?", [
-        Date.now() - 30 * DAY,
-      ]);
       await store.run(
         "INSERT INTO search_history(id,owner,body,created) VALUES(?,?,?,?)",
         [
@@ -551,41 +609,28 @@ export function createApp(
       );
       return res.json({
         ...result,
-        remaining,
+        remaining: left,
         rows: result.rows.slice(0, 50),
         limited: false,
       });
     }
-    const allowance = await serial(async () => {
-      const id = `guest-results:${hash(guest)}:${Math.floor(Date.now() / DAY)}`,
-        r = await store.one("SELECT n FROM `usage` WHERE id=?", [id]),
-        left = Math.max(0, 10 - Number(r?.n || 0)),
-        used = Math.min(left, result.rows.length);
-      if (r) await store.run("UPDATE `usage` SET n=n+? WHERE id=?", [used, id]);
-      else
-        await store.run("INSERT INTO `usage`(id,n,expires) VALUES(?,?,?)", [
-          id,
-          used,
-          (Math.floor(Date.now() / DAY) + 1) * DAY,
-        ]);
-      return { used, left: left - used };
-    });
-    if (!allowance.used && result.rows.length)
+    const allowance = await claim(resultsKey, GUEST_RESULTS, result.rows.length);
+    const shown = Math.max(0, allowance.used);
+    if (!shown && result.rows.length)
       return res.status(429).json({
-        error:
-          "Your ten free guest results are used. Create a free account to continue.",
+        error: "Your ten free guest results are used. Create a free account to continue.",
         registrationRequired: true,
       });
     res.json({
       ...result,
-      remaining,
-      guestResultsLeft: allowance.left,
-      rows: result.rows.slice(0, allowance.used),
-      limited: result.rows.length > allowance.used,
+      remaining: left,
+      guestResultsLeft: Math.max(0, allowance.left),
+      rows: result.rows.slice(0, shown),
+      limited: result.rows.length > shown,
     });
   });
   app.use("/api/workspace", requireUser, (req, res, next) => {
-    if (!["GET", "HEAD"].includes(req.method) && !writeLimit())
+    if (!["GET", "HEAD"].includes(req.method) && !writeLimit(req.user.id))
       return res.status(429).json({ error: "Try again shortly." });
     next();
   });
@@ -619,15 +664,11 @@ export function createApp(
       })),
     });
   });
-  // Serialize quota checks and writes in the single managed Node process.
   const history = async (owner) => {
-    await store.run("DELETE FROM search_history WHERE created<?", [
-      Date.now() - 30 * DAY,
-    ]);
     return (
       await store.all(
-        "SELECT id,body,created FROM search_history WHERE owner=? ORDER BY created DESC LIMIT 50",
-        [owner],
+        "SELECT id,body,created FROM search_history WHERE owner=? AND created>? ORDER BY created DESC LIMIT 50",
+        [owner, Date.now() - 30 * DAY],
       )
     ).map((r) => ({
       ...JSON.parse(
@@ -669,7 +710,7 @@ export function createApp(
     if (typeof req.body.share !== "boolean")
       return res.status(400).json({ error: "Choose a support preference." });
     const expires = req.body.share ? Date.now() + 3600000 : 0;
-    await serial(async () => {
+    await lock("account:" + req.user.id, async () => {
       await store.run("DELETE FROM support_grants WHERE owner=?", [
         req.user.id,
       ]);
@@ -684,7 +725,7 @@ export function createApp(
   app.put("/api/workspace/newsletter", async (req, res) => {
     if (typeof req.body.subscribed !== "boolean")
       return res.status(400).json({ error: "Choose a newsletter preference." });
-    await serial(async () => {
+    await lock("account:" + req.user.id, async () => {
       await store.run("DELETE FROM newsletter WHERE owner=?", [req.user.id]);
       if (req.body.subscribed)
         await store.run(
@@ -762,7 +803,7 @@ export function createApp(
     }
     const id = randomUUID(),
       owner = req.user.id;
-    await serial(async () => {
+    await lock("account:" + req.user.id, async () => {
       if (
         Number(
           (
@@ -824,7 +865,7 @@ export function createApp(
     const bytes = Buffer.from(raw, "base64");
     if (bytes.length > 2_000_000 || bytes.subarray(0, 5).toString() !== "%PDF-")
       return res.status(400).json({ error: "Invalid PDF or exceeds 2 MB." });
-    await serial(async () => {
+    await lock("account:" + req.user.id, async () => {
       const owner = req.user.id,
         used = await store.one(
           "SELECT COUNT(*) AS n,COALESCE(SUM(bytes),0) AS total FROM documents WHERE owner=?",
@@ -896,10 +937,9 @@ export function createApp(
     cookie(res, "", 0);
     res.json({ ok: true });
   });
-  const adminLimit = limit(30, 60000);
   app.get("/api/admin/audit", async (req, res) => {
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
-    if (!adminLimit()) return res.status(429).json({ error: "Try later." });
+    if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     res.json({
       events: await store.all(
         "SELECT action,target,created FROM admin_audit ORDER BY created DESC LIMIT 100",
@@ -908,7 +948,7 @@ export function createApp(
   });
   app.get("/api/admin/support/:id", async (req, res) => {
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
-    if (!adminLimit()) return res.status(429).json({ error: "Try later." });
+    if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const owner = req.params.id;
     if (
       !(await store.one(
@@ -946,7 +986,7 @@ export function createApp(
   });
   app.get("/api/admin/support/:id/document/:doc", async (req, res) => {
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
-    if (!adminLimit()) return res.status(429).json({ error: "Try later." });
+    if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const owner = req.params.id,
       doc = req.params.doc;
     if (
@@ -987,7 +1027,7 @@ export function createApp(
       )
     )
       return res.status(403).json({ error: "Forbidden." });
-    if (!adminLimit()) return res.status(429).json({ error: "Try later." });
+    if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const offset = Math.max(
         0,
         Math.min(100000, Math.floor(Number(req.query.offset) || 0)),
@@ -1018,7 +1058,7 @@ export function createApp(
   });
   app.post("/api/admin/control", async (req, res) => {
     if (!adminAuth(req)) return res.status(403).json({ error: "Forbidden." });
-    if (!adminLimit()) return res.status(429).json({ error: "Try later." });
+    if (!adminLimit("admin")) return res.status(429).json({ error: "Try later." });
     const action = req.body.action,
       id = text(req.body.id, 36);
     if (
@@ -1027,15 +1067,16 @@ export function createApp(
       )
     )
       return res.status(400).json({ error: "Invalid action." });
-    await serial(async () => {
+    await lock("admin", async () => {
       if (action.startsWith("maintenance")) {
         if (action === "maintenance-on") {
-          if (!(await maintenance()))
+          if (!(await maintenance(true)))
             await store.run(
               "INSERT INTO portal_settings(id,value) VALUES('maintenance','on')",
             );
         } else
           await store.run("DELETE FROM portal_settings WHERE id='maintenance'");
+        maintenanceCache.at = 0;
       } else {
         if (!(await store.one("SELECT id FROM accounts WHERE id=?", [id])))
           return res.status(404).json({ error: "Account not found." });
@@ -1061,7 +1102,43 @@ export function createApp(
     });
   });
   app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));
-  app.use(express.static(dist, { index: "index.html", dotfiles: "deny" }));
+  // Hashed build assets never change, so browsers may keep them for a year;
+  // everything else is revalidated so a deploy is visible immediately.
+  app.use(
+    express.static(dist, {
+      index: false,
+      dotfiles: "deny",
+      setHeaders(res, file) {
+        res.set(
+          "Cache-Control",
+          /[\\/]assets[\\/]/.test(file)
+            ? "public, max-age=31536000, immutable"
+            : "public, max-age=3600",
+        );
+      },
+    }),
+  );
+  let shell = null;
+  const page = () => {
+    if (shell === null) {
+      try {
+        shell = readFileSync(resolve(dist, "index.html"), "utf8");
+      } catch {
+        shell = "";
+      }
+    }
+    return shell;
+  };
+  // The app routes inside the page. "/" is the app; any other page address
+  // gets the same branded shell with a real 404 status, which shows a
+  // "page not found" view. Missing files (an extension) get a plain 404.
+  app.get(/.*/, (req, res, next) => {
+    if (!page()) return next();
+    res.set("Cache-Control", "no-cache");
+    if (extname(req.path) && req.path !== "/index.html")
+      return res.status(404).type("text/plain").send("Not found");
+    res.status(req.path === "/" || req.path === "/index.html" ? 200 : 404).type("html").send(page());
+  });
   app.use((err, req, res, next) => {
     if (res.headersSent) return next(err);
     res.status(err.status === 413 ? 413 : err.status === 400 ? 400 : 500).json({
