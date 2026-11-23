@@ -377,3 +377,4 @@ a.nx-card:hover { transform: translateY(-3px); border-color: rgba(22, 23, 28, 0.
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+.qx-credit a { color: var(--nx-navy); text-decoration: underline; text-underline-offset: 3px; }

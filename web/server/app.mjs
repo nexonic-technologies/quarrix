@@ -95,15 +95,23 @@ export function createApp(
   const hops = envInt("TRUST_PROXY_HOPS", 0, 0, 5);
   if (hops) app.set("trust proxy", hops);
   const client = (req) => "ip:" + (req.ip || req.socket?.remoteAddress || "unknown");
+  // Without a trusted proxy chain every visitor shares the ingress address, so
+  // an address-keyed limit would act as one site-wide counter. In that case
+  // skip it and rely on the security challenge plus the durable per-account,
+  // per-guest and daily limits.
+  const perClient = (limiter, req) => !hops || limiter(client(req));
   app.use((req, res, next) => {
     res.set({
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
       "Referrer-Policy": "no-referrer",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-site",
       "Content-Security-Policy":
         "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; frame-src https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
     });
-    if (production) res.set("Strict-Transport-Security", "max-age=31536000");
+    if (production) res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     next();
   });
   const adminAuth = (req) => {
@@ -301,7 +309,7 @@ export function createApp(
   }
   app.post("/api/email-request", async (req, res) => {
     if (!(await challengeGate(req, res, "recovery"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     if (!sendMail)
       return res
@@ -327,7 +335,7 @@ export function createApp(
   app.post("/api/email-complete", async (req, res) => {
     // Tokens are 256-bit random values, so guessing is not practical; the
     // per-client limit only stops one client from hammering the endpoint.
-    if (!tokenLimit(client(req)))
+    if (!perClient(tokenLimit, req))
       return res.status(429).json({ error: "Try again later." });
     const kind = req.body.kind,
       raw = req.body.token,
@@ -393,6 +401,7 @@ export function createApp(
       maintenance: await maintenance(),
       registrationMode: registrationMode(),
       turnstileSiteKey: challenge.sitekey,
+      documentsAvailable: !production || !!scanPdf,
       assistantAvailable: !!(
         process.env.OPENROUTER_API_KEY &&
         process.env.OPENROUTER_MODEL?.endsWith(":free")
@@ -419,7 +428,7 @@ export function createApp(
         !equal(Buffer.from(hash(code)), Buffer.from(invite.digest))))
       return res.status(403).json({ error: "Registration is not open yet. A valid private invitation is required." });
     if (!(await challengeGate(req, res, "signup"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     if (production && req.body.privacyAccepted !== true)
       return res.status(400).json({ error: "Please acknowledge the Quarrix privacy notice." });
@@ -501,7 +510,7 @@ export function createApp(
   });
   app.post("/api/login", async (req, res) => {
     if (!(await challengeGate(req, res, "login"))) return;
-    if (!authLimit(client(req)))
+    if (!perClient(authLimit, req))
       return res.status(429).json({ error: "Try again later." });
     const email = text(req.body.email, 254).toLowerCase(),
       password = req.body.password;
@@ -529,7 +538,7 @@ export function createApp(
     )
       return res
         .status(403)
-        .json({ error: "Verify your email before signing in." });
+        .json({ error: "Verify your email before signing in. Need a new link? Use “Forgot password?” and choose “Get a new verification link”." });
     const sessionToken = await lock("account:" + user.id, () => store.transaction(async () => {
       if (!(await store.lockAccount(user.id))) return null;
       const current = await store.one("SELECT password_hash FROM accounts WHERE id=?", [user.id]);
@@ -558,7 +567,7 @@ export function createApp(
     const user = await session(req);
     // Guests must pass the security check before anything is counted.
     if (!user && !(await challengeGate(req, res, "guest_search"))) return;
-    if (!searchLimit(user ? "user:" + user.id : client(req)))
+    if (user ? !searchLimit("user:" + user.id) : !perClient(searchLimit, req))
       return res
         .status(429)
         .json({ error: "You are searching very quickly. Please wait a moment." });
