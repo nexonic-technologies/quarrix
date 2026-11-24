@@ -55,3 +55,7 @@ MIT. Made by [Nexonic Technologies](https://nexonictechnologies.com).
 ## Desktop 4.0 — Performance & Verified Intelligence
 
 International job locations and work arrangements stay distinct during deduplication. Job-board failures are reported rather than treated as empty successes, and completed provider deadlines release their timers. Original source evidence remains essential; a result is not a guarantee of legitimacy.
+
+## Android 1.0.0
+
+The [native Android edition](android/README.md) is a separate mobile application with local opportunity storage, source-linked searches and skill matching. CI validation and production signing are required before public distribution.

@@ -202,6 +202,6 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 11 | Regression tests | Done for new logic | 7 test files, 44 tests; CI and the release workflow both run typecheck and tests | CI |
 | 12 | Theme forced light | Kept on purpose | the owner asked for light only | — |
 
-### Android exploration — future milestone
+### Android 1.0.0 — validation candidate
 
-Proposed separate native application: search authorized public sources, save opportunities locally, and track applications and leads. Validate offline persistence, provider limits, device compatibility and privacy before expanding. Not implemented or released.
+Native application with public job feeds and an official French registry, local saved opportunities, tracking and skill matching. Full Gradle CI, device validation and persistent release signing remain gates; not yet released. Further countries, independent employer checks and optional providers remain future work.
