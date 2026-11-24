@@ -1,6 +1,6 @@
 # Quarrix backlog status (QF-001 to QF-124)
 
-**v3.9.0 candidate:** public scholarships, traineeships, apprenticeships and Grants.gov notices; scoped 90-day repeat-win and observation comparisons; related occupation maps and level/currency salary samples; offline snapshot freshness, bounded storage and expired-data removal. Web edition is a separate future architecture decision. Existing external blockers unchanged; installer/live verification pending.
+**v4.0.0 desktop candidate:** international job deduplication, provider failure reporting and deadline cleanup. Existing external blockers unchanged; installer/live verification pending.
 
 **v3.5.0 candidate:** combined regional discovery, local career portfolio, quotation-only PDF, currency-separated forecast and lifecycle, universal search and favorites, dashboard preferences and backup verification/cancellation. The 17 external blockers remain unchanged. Live and installer verification pending.
 
@@ -202,11 +202,6 @@ Source: Quarrix_Missing_Features_Backlog.md. **Done** = built and covered by an 
 | 11 | Regression tests | Done for new logic | 7 test files, 44 tests; CI and the release workflow both run typecheck and tests | CI |
 | 12 | Theme forced light | Kept on purpose | the owner asked for light only | — |
 
-### Web edition — local milestone
+### Android exploration — future milestone
 
-| Work | Status | Evidence / pending gate |
-| --- | --- | --- |
-| v4.0.0 portal, accounts, encrypted private workspace, guest allowance and owner plugin | Local implementation | `web/` build and tests; production MySQL, PHP/WordPress and SMTP gates pending |
-| Global data and desktop feature parity | Partial | Four authorized live sources; more regional coverage, salary and career intelligence to port |
-| Desktop-to-web sync and Google login | Pending | Explicit opt-in, OAuth configuration and conflict resolution required |
-| Production deployment and newsletter delivery | Pending | Hostinger staging, verified consent/email delivery, load and security review before launch |
+Proposed separate native application: search authorized public sources, save opportunities locally, and track applications and leads. Validate offline persistence, provider limits, device compatibility and privacy before expanding. Not implemented or released.

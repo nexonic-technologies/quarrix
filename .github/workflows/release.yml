@@ -273,7 +273,13 @@ jobs:
         env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', TAG: '${{ needs.version.outputs.tag }}', REPO: '${{ github.repository }}' }
         run: |
           {
-            if [ "$TAG" = v3.9.0 ]; then
+            if [ "$TAG" = v4.0.0 ]; then
+              echo "## Quarrix Desktop 4.0 — Performance & Verified Intelligence"
+              echo
+              echo "- Desktop-only distribution; international job deduplication, accurate provider errors and prompt timer cleanup."
+              echo "- Existing free-first, local-first workspaces and source evidence remain intact."
+              echo
+            elif [ "$TAG" = v3.9.0 ]; then
               echo "## Quarrix 3.9 — Global Opportunities and Intelligence"
               echo
               echo "- Official education and apprenticeship directories, posted grant opportunities, repeat-win analytics, related career paths and salary samples."

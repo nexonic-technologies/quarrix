@@ -101,6 +101,7 @@ const SOURCES: Record<string, (q: JobQuery) => Promise<Job[]>> = {
 Object.assign(SOURCES, {
   async weworkremotely(q: JobQuery) {
     const r = await fetchText('https://weworkremotely.com/remote-jobs.rss', { ua: BOT_UA, timeout: 20000 });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const $ = cheerio.load(r.text, { xmlMode: true });
     const kw = q.keywords.toLowerCase().split(/\s+/).filter(Boolean);
     return $('item').map((_, it) => {
@@ -148,7 +149,12 @@ const DEFAULT_SOURCES = JOB_SOURCES.filter((x) => !['adzuna', 'jooble', 'hn'].in
 
 const SLOW = new Set(['employers']);
 const MANUAL_BOARDS = new Set(['google','indeed','rozee','linkedin']);
-const withTimeout = <T>(p: Promise<T>, ms: number, name: string) => Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`no answer after ${Math.round(ms / 1000)} s`)), ms))]);
+export async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<T>((_, rej) => { timer = setTimeout(() => rej(new Error(`no answer after ${Math.round(ms / 1000)} s`)), ms); })]);
+  } finally { clearTimeout(timer); }
+}
 
 /**
  * Runs the chosen boards in parallel, each with a time limit, and reports each board's jobs as soon as it answers
@@ -156,13 +162,13 @@ const withTimeout = <T>(p: Promise<T>, ms: number, name: string) => Promise.race
  */
 export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Job[], error: string, ms: number) => void = () => undefined): Promise<{ jobs: Job[]; errors: string[] }> {
   const keyed = (load().sources as any);
-  const pick = q.sources?.length ? q.sources : [...DEFAULT_SOURCES, ...(keyed.adzunaKey ? ['adzuna'] : []), ...(keyed.joobleKey ? ['jooble'] : [])];
+  const pick = [...new Set(q.sources?.length ? q.sources : [...DEFAULT_SOURCES, ...(keyed.adzunaKey ? ['adzuna'] : []), ...(keyed.joobleKey ? ['jooble'] : [])])];
   const errors: string[] = [];
   const all = (await Promise.all(pick.map(async (s) => {
     const t = Date.now();
     if (!SOURCES[s]) { const msg=MANUAL_BOARDS.has(s)?'Manual access only; use the official job board directly.':'Unknown job board.';errors.push(`${s}: ${msg}`);onBatch(s,[],msg,Date.now()-t);return [] as Job[]; }
     try {
-      const result = await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000, s) as JobList;
+      const result = await withTimeout(SOURCES[s](q), SLOW.has(s) ? 45000 : 20000) as JobList;
       const list = filterJobs(result, q);
       if (result.partialReason) errors.push(`${s}: ${result.partialReason}`);
       onBatch(s, list, result.partialReason ?? '', Date.now() - t);
@@ -179,10 +185,11 @@ export async function searchJobs(q: JobQuery, onBatch: (source: string, jobs: Jo
 
 export function dedupe(list: Job[]) {
   const seen = new Set<string>();
+  const normalize = (s: string) => s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
   return list.filter((j) => {
-    // Same role at the same employer in another city is a different job; only exact repeats are merged.
-    const loc = j.location.toLowerCase().replace(/remote|anywhere|worldwide|[^a-z]/g, '');
-    const key = `${j.title}|${j.company}|${loc}`.toLowerCase().replace(/[^a-z0-9|]/g, '');
+    // Preserve international locations, remote scope, and distinct work arrangements.
+    const loc = normalize(j.location), employer = normalize(j.company);
+    const key = employer && loc ? JSON.stringify([normalize(j.title), employer, loc, j.workplace, j.type]) : JSON.stringify([j.source, j.id]);
     if (!j.title || seen.has(key)) return false;
     seen.add(key);
     return true;
