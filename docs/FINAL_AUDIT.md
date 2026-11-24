@@ -1,4 +1,4 @@
-# Final audit, v3.9.0 candidate
+# Final audit, v4.0.0 desktop candidate
 
 ## Combined v3.6–v3.9 desktop milestone
 
@@ -6,7 +6,7 @@
 - Business intelligence: compare adjacent 90-day stored-record counts and distinct customer repeat wins, scoped by workspace and current filters. Report exports include cohort results. Repeat wins are not subscription retention/churn; no market-wide claims.
 - Career intelligence: related roles require shared occupation-catalog tools, and personalized topics omit recorded skills. Salary samples split by experience level and currency; not market averages.
 - Data reliability: public cache inventory groups source families, distinguishes five-minute fresh, dated and seven-day expired snapshots, bounds serialized size and allows explicit removal of expired snapshots only. Health checks older than one day are labeled outdated. No paid dependency, unauthorized crawling or automatic submission.
-- Web edition v4.0 remains undecided; no hosting deployment. Existing access and signing blockers remain. Live and installer verification pending.
+- Existing access and signing blockers remain. Live and installer verification pending.
 - Local verification: typecheck, 117 unit tests, 83 integration tests, production build and production dependency audit passed. New live grants and desktop smoke checks are prepared for CI, but not yet run.
 
 ## Combined v3.1–v3.5 milestone
@@ -244,6 +244,6 @@ QF-039 Hunter, QF-042 Hunter/ZeroBounce, QF-059 Google OAuth, QF-060 Microsoft O
 - Partial: 0
 - Not done: 1
 
-### Web edition local verification (2026-11-23)
+### Desktop 4.0 verification
 
-Separate `web/` package, no desktop version bump and no deployment. Local web suites and build passed; desktop typecheck and 200 tests passed; npm production audit reported no known vulnerabilities. Browser preview and live discovery checked against actual public sources. The WordPress plugin is not installed. MySQL and WordPress validation, transactional SMTP, backup restoration, anti-abuse production controls, private staging and live OpenRouter configuration remain release gates. See `web/README.md` for details. Existing external desktop blockers remain classified separately.
+Regression coverage includes international locations, unknown locations, remote eligibility and provider deadlines. Provider HTTP failures are reported. Release remains gated by CI and installed-app smoke checks; no new live source coverage or signing claimed.

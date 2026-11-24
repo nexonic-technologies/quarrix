@@ -52,6 +52,6 @@ Releases are built by GitHub Actions for macOS, Windows and Linux whenever the v
 
 MIT. Made by [Nexonic Technologies](https://nexonictechnologies.com).
 
-## Quarrix Web preview
+## Desktop 4.0 — Performance & Verified Intelligence
 
-The separate local web preview is documented in [web/README.md](web/README.md). It does not change the desktop version or deploy automatically.
+International job locations and work arrangements stay distinct during deduplication. Job-board failures are reported rather than treated as empty successes, and completed provider deadlines release their timers. Original source evidence remains essential; a result is not a guarantee of legitimacy.

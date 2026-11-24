@@ -92,4 +92,14 @@ test('job duplicates keep the same role in different cities', async () => {
   const { dedupe } = await import('../src/main/jobsearch');
   const j = (id: string, location: string) => ({ id, source: 'x', title: 'Sales Manager', company: 'Acme', location, workplace: '' as const, type: '', level: '', salary: '', url: '', posted: '', tags: [], snippet: '' });
   assert.equal(dedupe([j('1', 'Lahore'), j('2', 'Karachi'), j('3', 'Lahore')]).length, 2);
+  assert.equal(dedupe([j('1', '東京'), j('2', '大阪'), j('3', '東京')]).length, 2);
+  assert.equal(dedupe([j('1', 'Remote'), j('2', 'Worldwide'), j('3', '')]).length, 3);
+  assert.equal(dedupe([j('1', ''), j('2', '')]).length, 2);
+});
+
+test('job provider deadlines settle promptly and handle late failures', async () => {
+  const { withTimeout } = await import('../src/main/jobsearch');
+  assert.equal(await withTimeout(Promise.resolve('ok'), 45_000), 'ok');
+  await assert.rejects(withTimeout(Promise.reject(new Error('provider failed')), 45_000), /provider failed/);
+  await assert.rejects(withTimeout(new Promise((_, reject) => setTimeout(() => reject(new Error('late')), 20)), 5), /no answer/);
 });
